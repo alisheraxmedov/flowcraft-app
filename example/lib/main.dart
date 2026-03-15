@@ -5,120 +5,115 @@ void main() {
   runApp(const FlowCraftExampleApp());
 }
 
-class FlowCraftExampleApp extends StatefulWidget {
+class FlowCraftExampleApp extends StatelessWidget {
   const FlowCraftExampleApp({super.key});
 
   @override
-  State<FlowCraftExampleApp> createState() => _FlowCraftExampleAppState();
+  Widget build(BuildContext context) {
+    return const _AppShell();
+  }
 }
 
-class _FlowCraftExampleAppState extends State<FlowCraftExampleApp> {
-  late FlowController _controller;
+class _AppShell extends StatefulWidget {
+  const _AppShell();
+
+  @override
+  State<_AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<_AppShell> {
   bool _darkMode = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'FlowCraft Demo',
+      theme: ThemeData(
+        brightness: _darkMode ? Brightness.dark : Brightness.light,
+        colorSchemeSeed: _darkMode
+            ? const Color(0xFF0F766E)
+            : const Color(0xFF2563EB),
+        useMaterial3: true,
+      ),
+      home: _HomePage(
+        darkMode: _darkMode,
+        onToggleTheme: () => setState(() => _darkMode = !_darkMode),
+      ),
+    );
+  }
+}
+
+class _HomePage extends StatefulWidget {
+  const _HomePage({
+    required this.darkMode,
+    required this.onToggleTheme,
+  });
+
+  final bool darkMode;
+  final VoidCallback onToggleTheme;
+
+  @override
+  State<_HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<_HomePage> {
+  late FlowController _controller;
+  String? _selectedNodeId;
+  String? _selectedEdgeId;
 
   @override
   void initState() {
     super.initState();
     _controller = _buildDemoController();
+    _controller.addListener(_onControllerChanged);
     _scheduleFitView();
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     super.dispose();
   }
 
-  FlowController _buildDemoController() {
-    final controller = FlowController();
+  void _onControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
-    final trigger = controller.addNode(
+  FlowController _buildDemoController() {
+    final controller = FlowController(snapToGrid: true, gridSnap: 20);
+
+    // Add independent demo nodes (NOT auto-connected)
+    controller.addNode(
       type: NodeType.input,
       label: 'Trigger',
       position: const Offset(100, 120),
-      data: const {
-        'type': 'Webhook',
-        'status': 'Active',
-      },
+      data: const {'type': 'Webhook', 'status': 'Active'},
     );
 
-    final transform = controller.addNode(
+    controller.addNode(
       label: 'Transform',
-      position: const Offset(380, 110),
-      data: const {
-        'action': 'Normalize payload',
-        'runtime': '42ms',
-      },
+      position: const Offset(400, 120),
+      data: const {'action': 'Normalize', 'runtime': '42ms'},
     );
 
-    final approval = controller.addNode(
+    controller.addNode(
       label: 'Approval',
-      position: const Offset(700, 240),
-      data: const {
-        'owner': 'Ops',
-        'sla': '2h',
-      },
+      position: const Offset(700, 260),
+      data: const {'owner': 'Ops', 'sla': '2h'},
     );
 
-    final deliver = controller.addNode(
+    controller.addNode(
       type: NodeType.output,
       label: 'Deliver',
-      position: const Offset(980, 110),
-      data: const {
-        'target': 'CRM',
-        'mode': 'Sync',
-      },
+      position: const Offset(1000, 120),
+      data: const {'target': 'CRM', 'mode': 'Sync'},
     );
 
-    controller.addEdge(
-      sourceNodeId: trigger.id,
-      targetNodeId: transform.id,
-      sourceHandleId: _handleId(trigger, HandlePosition.right),
-      targetHandleId: _handleId(transform, HandlePosition.left),
-      style: const EdgeStyle(
-        color: Color(0xFF2F80ED),
-        thickness: 3,
-        animated: true,
-        dashPattern: [10, 6],
-        label: 'ingest',
-      ),
-    );
-
-    controller.addEdge(
-      sourceNodeId: transform.id,
-      targetNodeId: approval.id,
-      sourceHandleId: _handleId(transform, HandlePosition.right),
-      targetHandleId: _handleId(approval, HandlePosition.left),
-      style: const EdgeStyle(
-        color: Color(0xFFF2994A),
-        thickness: 3,
-        edgeType: EdgeType.smoothStep,
-        animated: true,
-        dashPattern: [12, 6],
-        label: 'review',
-      ),
-    );
-
-    controller.addEdge(
-      sourceNodeId: approval.id,
-      targetNodeId: deliver.id,
-      sourceHandleId: _handleId(approval, HandlePosition.right),
-      targetHandleId: _handleId(deliver, HandlePosition.left),
-      style: const EdgeStyle(
-        color: Color(0xFF27AE60),
-        thickness: 3,
-        edgeType: EdgeType.straight,
-        animated: true,
-        dashPattern: [8, 5],
-        label: 'ship',
-      ),
-    );
-
+    // NO edges — user will drag from handles to connect them!
     return controller;
-  }
-
-  String _handleId(FlowNode node, HandlePosition position) {
-    return node.handles.firstWhere((handle) => handle.position == position).id;
   }
 
   void _scheduleFitView() {
@@ -135,50 +130,66 @@ class _FlowCraftExampleAppState extends State<FlowCraftExampleApp> {
 
   void _resetDemo() {
     final oldController = _controller;
+    oldController.removeListener(_onControllerChanged);
     setState(() {
+      _selectedNodeId = null;
+      _selectedEdgeId = null;
       _controller = _buildDemoController();
+      _controller.addListener(_onControllerChanged);
     });
     oldController.dispose();
     _scheduleFitView();
   }
 
   void _addNode() {
-    final previousNode =
-        _controller.nodes.isEmpty ? null : _controller.nodes.last;
     final nodeNumber = _controller.nodes.length + 1;
-    final row = (_controller.nodes.length - 1) ~/ 4;
-    final column = (_controller.nodes.length - 1) % 4;
+    final row = (_controller.nodes.length) ~/ 4;
+    final column = (_controller.nodes.length) % 4;
 
     final newNode = _controller.addNode(
       label: 'Step $nodeNumber',
       position: Offset(
-        120 + (column * 250),
-        420 + (row * 140),
+        100 + (column * 280),
+        400 + (row * 140),
       ),
-      data: {
-        'status': 'Draft',
-        'index': nodeNumber,
-      },
+      data: {'status': 'Draft', 'index': nodeNumber},
     );
 
-    if (previousNode != null) {
-      _controller.addEdge(
-        sourceNodeId: previousNode.id,
-        targetNodeId: newNode.id,
-        sourceHandleId: _handleId(previousNode, HandlePosition.right),
-        targetHandleId: _handleId(newNode, HandlePosition.left),
-        style: const EdgeStyle(
-          color: Color(0xFF9B51E0),
-          thickness: 3,
-          animated: true,
-          dashPattern: [9, 5],
-          label: 'new step',
-        ),
-      );
-    }
-
-    _showMessage('Added ${newNode.label}');
+    // New node is INDEPENDENT — no auto-connect!
+    _showMessage('Added ${newNode.label} — drag handles to connect');
     _scheduleFitView();
+  }
+
+  void _onNodeTap(String nodeId) {
+    setState(() {
+      _selectedEdgeId = null;
+      _selectedNodeId = _selectedNodeId == nodeId ? null : nodeId;
+    });
+  }
+
+  void _onEdgeTap(String edgeId) {
+    setState(() {
+      _selectedNodeId = null;
+      _selectedEdgeId = _selectedEdgeId == edgeId ? null : edgeId;
+    });
+  }
+
+  FlowNode? get _selectedNode {
+    if (_selectedNodeId == null) return null;
+    try {
+      return _controller.nodes.firstWhere((n) => n.id == _selectedNodeId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  FlowEdge? get _selectedEdge {
+    if (_selectedEdgeId == null) return null;
+    try {
+      return _controller.edges.firstWhere((e) => e.id == _selectedEdgeId);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _showMessage(String message) {
@@ -188,137 +199,770 @@ class _FlowCraftExampleAppState extends State<FlowCraftExampleApp> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          duration: const Duration(seconds: 1),
+          duration: const Duration(seconds: 2),
         ),
       );
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'FlowCraft Demo',
+    final selectedNode = _selectedNode;
+    final selectedEdge = _selectedEdge;
 
-      theme: ThemeData(
-        brightness: _darkMode ? Brightness.dark : Brightness.light,
-        colorSchemeSeed: _darkMode
-            ? const Color(0xFF0F766E)
-            : const Color(0xFF2563EB),
-        useMaterial3: true,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('FlowCraft Demo'),
+        actions: [
+          // Snap-to-grid toggle
+          IconButton(
+            tooltip: _controller.snapToGrid
+                ? 'Disable snap-to-grid'
+                : 'Enable snap-to-grid',
+            onPressed: () {
+              setState(() {
+                _controller.snapToGrid = !_controller.snapToGrid;
+              });
+            },
+            icon: Icon(
+              _controller.snapToGrid
+                  ? Icons.grid_on_rounded
+                  : Icons.grid_off_rounded,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Add node',
+            onPressed: _addNode,
+            icon: const Icon(Icons.add_box_outlined),
+          ),
+          IconButton(
+            tooltip: 'Undo',
+            onPressed: _controller.canUndo ? _controller.undo : null,
+            icon: const Icon(Icons.undo_rounded),
+          ),
+          IconButton(
+            tooltip: 'Redo',
+            onPressed: _controller.canRedo ? _controller.redo : null,
+            icon: const Icon(Icons.redo_rounded),
+          ),
+          IconButton(
+            tooltip: 'Fit view',
+            onPressed: _fitView,
+            icon: const Icon(Icons.fit_screen_outlined),
+          ),
+          IconButton(
+            tooltip: 'Reset demo',
+            onPressed: _resetDemo,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+          IconButton(
+            tooltip: widget.darkMode
+                ? 'Switch to light theme'
+                : 'Switch to dark theme',
+            onPressed: widget.onToggleTheme,
+            icon: Icon(
+              widget.darkMode
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
+            ),
+          ),
+        ],
       ),
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('FlowCraft Demo'),
-          actions: [
-            IconButton(
-              tooltip: 'Add node',
-              onPressed: _addNode,
-              icon: const Icon(Icons.add_box_outlined),
-            ),
-            IconButton(
-              tooltip: 'Undo',
-              onPressed: _controller.canUndo ? _controller.undo : null,
-              icon: const Icon(Icons.undo_rounded),
-            ),
-            IconButton(
-              tooltip: 'Redo',
-              onPressed: _controller.canRedo ? _controller.redo : null,
-              icon: const Icon(Icons.redo_rounded),
-            ),
-            IconButton(
-              tooltip: 'Fit view',
-              onPressed: _fitView,
-              icon: const Icon(Icons.fit_screen_outlined),
-            ),
-            IconButton(
-              tooltip: 'Reset demo',
-              onPressed: _resetDemo,
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-            IconButton(
-              tooltip: _darkMode
-                  ? 'Switch to light theme'
-                  : 'Switch to dark theme',
-              onPressed: () {
-                setState(() {
-                  _darkMode = !_darkMode;
-                });
+      body: Row(
+        children: [
+          // Main canvas
+          Expanded(
+            child: FlowCanvas(
+              controller: _controller,
+              theme: widget.darkMode ? FlowTheme.dark() : FlowTheme.light(),
+              showMiniMap: true,
+              showControls: true,
+              onNodeTap: _onNodeTap,
+              onEdgeTap: _onEdgeTap,
+              onConnectionCreated: (edgeId) {
+                _showMessage('Connection created!');
               },
-              icon: Icon(
-                _darkMode
-                    ? Icons.light_mode_outlined
-                    : Icons.dark_mode_outlined,
-              ),
+              onNodeAdded: (nodeId) =>
+                  _showMessage('Node added: $nodeId'),
             ),
-          ],
-        ),
-        body: FlowCanvas(
-          controller: _controller,
-          theme: _darkMode ? FlowTheme.dark() : FlowTheme.light(),
-          showMiniMap: true,
-          showControls: true,
-          onNodeTap: (nodeId) => _showMessage('Node tapped: $nodeId'),
-          onEdgeTap: (edgeId) => _showMessage('Edge tapped: $edgeId'),
-          onNodeAdded: (nodeId) => _showMessage('Node added: $nodeId'),
-          overlays: const [
-            _DemoHelpCard(),
-          ],
-        ),
+          ),
+
+          // Node edit panel
+          if (selectedNode != null)
+            _NodeEditPanel(
+              key: ValueKey(selectedNode.id),
+              node: selectedNode,
+              controller: _controller,
+              darkMode: widget.darkMode,
+              onClose: () => setState(() => _selectedNodeId = null),
+              onShowMessage: _showMessage,
+            ),
+
+          // Edge edit panel
+          if (selectedEdge != null && selectedNode == null)
+            _EdgeEditPanel(
+              key: ValueKey(selectedEdge.id),
+              edge: selectedEdge,
+              controller: _controller,
+              darkMode: widget.darkMode,
+              onClose: () => setState(() => _selectedEdgeId = null),
+              onShowMessage: _showMessage,
+            ),
+        ],
       ),
     );
   }
 }
 
-class _DemoHelpCard extends StatelessWidget {
-  const _DemoHelpCard();
+// ---------------------------------------------------------------------------
+// Node Edit Side Panel
+// ---------------------------------------------------------------------------
+
+class _NodeEditPanel extends StatefulWidget {
+  const _NodeEditPanel({
+    super.key,
+    required this.node,
+    required this.controller,
+    required this.darkMode,
+    required this.onClose,
+    required this.onShowMessage,
+  });
+
+  final FlowNode node;
+  final FlowController controller;
+  final bool darkMode;
+  final VoidCallback onClose;
+  final void Function(String message) onShowMessage;
+
+  @override
+  State<_NodeEditPanel> createState() => _NodeEditPanelState();
+}
+
+class _NodeEditPanelState extends State<_NodeEditPanel> {
+  late TextEditingController _labelController;
+  late TextEditingController _newKeyController;
+  late TextEditingController _newValueController;
+
+  @override
+  void initState() {
+    super.initState();
+    _labelController = TextEditingController(text: widget.node.label);
+    _newKeyController = TextEditingController();
+    _newValueController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _labelController.dispose();
+    _newKeyController.dispose();
+    _newValueController.dispose();
+    super.dispose();
+  }
+
+  void _renameNode() {
+    final newLabel = _labelController.text.trim();
+    if (newLabel.isEmpty) return;
+    widget.controller.renameNode(widget.node.id, newLabel);
+    widget.onShowMessage('Renamed to "$newLabel"');
+  }
+
+  void _changeNodeType(NodeType type) {
+    widget.controller.setNodeType(widget.node.id, type);
+    widget.onShowMessage('Type → ${type.name}');
+  }
+
+  void _addField() {
+    final key = _newKeyController.text.trim();
+    final value = _newValueController.text.trim();
+    if (key.isEmpty) return;
+    widget.controller.addNodeField(
+      widget.node.id,
+      key: key,
+      value: value.isEmpty ? '—' : value,
+    );
+    _newKeyController.clear();
+    _newValueController.clear();
+    widget.onShowMessage('Added field "$key"');
+  }
+
+  void _editField(String key, String currentValue) {
+    final controller = TextEditingController(text: currentValue);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit "$key"'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Value',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) {
+            widget.controller.addNodeField(
+              widget.node.id,
+              key: key,
+              value: controller.text.trim(),
+            );
+            Navigator.of(ctx).pop();
+            widget.onShowMessage('Updated "$key"');
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              widget.controller.addNodeField(
+                widget.node.id,
+                key: key,
+                value: controller.text.trim(),
+              );
+              Navigator.of(ctx).pop();
+              widget.onShowMessage('Updated "$key"');
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _removeField(String key) {
+    widget.controller.removeNodeField(widget.node.id, key);
+    widget.onShowMessage('Removed "$key"');
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: 16,
-      right: 16,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: const Color(0xDD111827),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 16,
-              offset: Offset(0, 8),
-            ),
-          ],
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      width: 320,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        border: Border(
+          left: BorderSide(color: colorScheme.outlineVariant),
         ),
-        child: const Padding(
-          padding: EdgeInsets.all(14),
-          child: DefaultTextStyle(
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              height: 1.4,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 12,
+            offset: const Offset(-4, 0),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header
+          _PanelHeader(
+            title: 'Edit Node',
+            icon: Icons.edit_note_rounded,
+            onClose: widget.onClose,
+          ),
+
+          // Content
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                Text(
-                  'Try it live',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                // Name
+                _SectionTitle(title: 'Name', icon: Icons.label_outline),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _labelController,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: 'Node name',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        onSubmitted: (_) => _renameNode(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(
+                      onPressed: _renameNode,
+                      child: const Text('Rename'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // Type
+                _SectionTitle(
+                    title: 'Type', icon: Icons.category_outlined),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: NodeType.values
+                      .where((t) => t != NodeType.custom)
+                      .map((type) {
+                    final isSelected = widget.node.type == type;
+                    return ChoiceChip(
+                      label: Text(_nodeTypeLabel(type)),
+                      selected: isSelected,
+                      onSelected: (_) => _changeNodeType(type),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+
+                // Fields
+                _SectionTitle(
+                    title: 'Data Fields', icon: Icons.data_object_rounded),
+                const SizedBox(height: 8),
+
+                if (widget.node.data.isEmpty)
+                  Text(
+                    'No fields',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  )
+                else
+                  ...widget.node.data.entries.map((entry) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: colorScheme.outlineVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(entry.key,
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                          color: colorScheme.primary,
+                                          fontWeight: FontWeight.w600,
+                                        )),
+                                    Text('${entry.value}',
+                                        style:
+                                            theme.textTheme.bodyMedium),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => _editField(
+                                    entry.key, '${entry.value}'),
+                                icon: const Icon(Icons.edit_outlined,
+                                    size: 18),
+                                tooltip: 'Edit',
+                              ),
+                              IconButton(
+                                onPressed: () =>
+                                    _removeField(entry.key),
+                                icon: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 18,
+                                    color: colorScheme.error),
+                                tooltip: 'Remove',
+                              ),
+                            ],
+                          ),
+                        ),
+                      )),
+
+                const SizedBox(height: 12),
+
+                // Add field
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer
+                        .withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color:
+                          colorScheme.primary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Add Field',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          )),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _newKeyController,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: 'Key',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _newValueController,
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: 'Value',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        onSubmitted: (_) => _addField(),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _addField,
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: const Text('Add Field'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(height: 8),
-                Text('Drag nodes to move them around the canvas.'),
-                Text('Tap a node to select it, then tap × to delete.'),
-                Text('Use the bottom-left controls to zoom and fit view.'),
-                Text('Use the AppBar to add nodes, undo/redo, or reset.'),
-                Text('The minimap in the bottom-right shows graph coverage.'),
+
+                const SizedBox(height: 20),
+
+                // Delete
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      widget.controller.removeNode(widget.node.id);
+                      widget.onClose();
+                      widget.onShowMessage(
+                          'Deleted "${widget.node.label}"');
+                    },
+                    icon: const Icon(Icons.delete_forever_rounded,
+                        size: 18),
+                    label: const Text('Delete Node'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      side: BorderSide(color: colorScheme.error),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  String _nodeTypeLabel(NodeType type) {
+    switch (type) {
+      case NodeType.defaultNode:
+        return 'Default';
+      case NodeType.input:
+        return 'Input';
+      case NodeType.output:
+        return 'Output';
+      case NodeType.custom:
+        return 'Custom';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Edge Edit Side Panel
+// ---------------------------------------------------------------------------
+
+class _EdgeEditPanel extends StatelessWidget {
+  const _EdgeEditPanel({
+    super.key,
+    required this.edge,
+    required this.controller,
+    required this.darkMode,
+    required this.onClose,
+    required this.onShowMessage,
+  });
+
+  final FlowEdge edge;
+  final FlowController controller;
+  final bool darkMode;
+  final VoidCallback onClose;
+  final void Function(String message) onShowMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      width: 320,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        border: Border(
+          left: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 12,
+            offset: const Offset(-4, 0),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          _PanelHeader(
+            title: 'Edit Edge',
+            icon: Icons.linear_scale_rounded,
+            onClose: onClose,
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Edge Type
+                _SectionTitle(
+                    title: 'Edge Type', icon: Icons.route_rounded),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: EdgeType.values.map((type) {
+                    final isSelected = edge.style.edgeType == type;
+                    return ChoiceChip(
+                      label: Text(_edgeTypeLabel(type)),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        controller.updateEdgeStyle(
+                          edge.id,
+                          edge.style.copyWith(edgeType: type),
+                        );
+                        onShowMessage('Edge type → ${type.name}');
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+
+                // Animated toggle
+                _SectionTitle(
+                    title: 'Animation',
+                    icon: Icons.animation_rounded),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('Animated'),
+                  value: edge.style.animated,
+                  dense: true,
+                  onChanged: (v) {
+                    controller.updateEdgeStyle(
+                      edge.id,
+                      edge.style.copyWith(animated: v),
+                    );
+                  },
+                ),
+
+                // Arrow toggle
+                SwitchListTile(
+                  title: const Text('Show Arrow'),
+                  value: edge.style.showArrow,
+                  dense: true,
+                  onChanged: (v) {
+                    controller.updateEdgeStyle(
+                      edge.id,
+                      edge.style.copyWith(showArrow: v),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                // Thickness
+                _SectionTitle(
+                    title: 'Thickness',
+                    icon: Icons.line_weight_rounded),
+                const SizedBox(height: 8),
+                Slider(
+                  value: edge.style.thickness,
+                  min: 1,
+                  max: 8,
+                  divisions: 7,
+                  label: edge.style.thickness.toStringAsFixed(0),
+                  onChanged: (v) {
+                    controller.updateEdgeStyle(
+                      edge.id,
+                      edge.style.copyWith(thickness: v),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 20),
+
+                // Edge ID
+                _SectionTitle(
+                    title: 'Edge ID',
+                    icon: Icons.fingerprint_rounded),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    edge.id,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Delete
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      controller.removeEdge(edge.id);
+                      onClose();
+                      onShowMessage('Deleted edge');
+                    },
+                    icon: const Icon(Icons.delete_forever_rounded,
+                        size: 18),
+                    label: const Text('Delete Edge'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      side: BorderSide(color: colorScheme.error),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _edgeTypeLabel(EdgeType type) {
+    switch (type) {
+      case EdgeType.bezier:
+        return 'Bezier';
+      case EdgeType.smoothStep:
+        return 'Smooth Step';
+      case EdgeType.step:
+        return 'Step';
+      case EdgeType.straight:
+        return 'Straight';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared Widgets
+// ---------------------------------------------------------------------------
+
+class _PanelHeader extends StatelessWidget {
+  const _PanelHeader({
+    required this.title,
+    required this.icon,
+    required this.onClose,
+  });
+
+  final String title;
+  final IconData icon;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+        border: Border(
+          bottom: BorderSide(color: colorScheme.outlineVariant),
         ),
       ),
+      child: Row(
+        children: [
+          Icon(icon, color: colorScheme.primary, size: 22),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onClose,
+            icon: const Icon(Icons.close_rounded, size: 20),
+            style: IconButton.styleFrom(
+              padding: const EdgeInsets.all(4),
+              minimumSize: const Size(28, 28),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title, required this.icon});
+
+  final String title;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }
