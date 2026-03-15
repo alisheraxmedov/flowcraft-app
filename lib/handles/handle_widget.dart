@@ -3,60 +3,101 @@ import 'package:flutter/widgets.dart';
 import 'package:flowcraft/core/enums/handle_position.dart';
 import 'package:flowcraft/core/models/flow_handle.dart';
 
-/// A small circle/dot representing a connection point on a node.
+/// Connection point displayed on node edges.
 ///
-/// Positioned on the edge of the node based on the handle's [HandlePosition].
-class HandleWidget extends StatelessWidget {
-  /// Creates a [HandleWidget].
+/// Shows a small interactive dot that supports drag gestures
+/// for creating edges between nodes.
+class HandleWidget extends StatefulWidget {
   const HandleWidget({
     super.key,
     required this.handle,
     required this.nodeSize,
     this.size = 10.0,
     this.color = const Color(0xFF2196F3),
+    this.onDragStarted,
+    this.onDragUpdated,
+    this.onDragEnded,
   });
 
-  /// The handle data.
   final FlowHandle handle;
-
-  /// The size of the parent node (used for positioning).
   final Size nodeSize;
-
-  /// The diameter of the handle dot.
   final double size;
-
-  /// The color of the handle dot.
   final Color color;
+  final void Function(FlowHandle handle)? onDragStarted;
+  final void Function(Offset globalPosition)? onDragUpdated;
+  final VoidCallback? onDragEnded;
+
+  @override
+  State<HandleWidget> createState() => _HandleWidgetState();
+}
+
+class _HandleWidgetState extends State<HandleWidget> {
+  bool _hovering = false;
+  bool _dragging = false;
+
+  bool get _active => _hovering || _dragging;
 
   @override
   Widget build(BuildContext context) {
-    final pos = _position();
+    final pos = _offset();
+    final displaySize = _active ? widget.size + 4 : widget.size;
 
     return Positioned(
-      left: pos.dx - size / 2,
-      top: pos.dy - size / 2,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: const Color(0xFFFFFFFF),
-          border: Border.all(color: color, width: 1.5),
+      left: pos.dx - displaySize / 2,
+      top: pos.dy - displaySize / 2,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        cursor: SystemMouseCursors.grab,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (_) {
+            setState(() => _dragging = true);
+            widget.onDragStarted?.call(widget.handle);
+          },
+          onPanUpdate: (d) => widget.onDragUpdated?.call(d.globalPosition),
+          onPanEnd: (_) {
+            setState(() => _dragging = false);
+            widget.onDragEnded?.call();
+          },
+          child: Container(
+            width: displaySize,
+            height: displaySize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _active ? widget.color : const Color(0xFFFFFFFF),
+              border: Border.all(
+                color: widget.color,
+                width: _active ? 2.0 : 1.5,
+              ),
+              boxShadow: _active
+                  ? [
+                      BoxShadow(
+                        color: widget.color.withValues(alpha: 0.4),
+                        blurRadius: 6,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Offset _position() {
-    switch (handle.position) {
+  Offset _offset() {
+    final w = widget.nodeSize.width;
+    final h = widget.nodeSize.height;
+    switch (widget.handle.position) {
       case HandlePosition.top:
-        return Offset(nodeSize.width / 2, 0);
+        return Offset(w / 2, 0);
       case HandlePosition.bottom:
-        return Offset(nodeSize.width / 2, nodeSize.height);
+        return Offset(w / 2, h);
       case HandlePosition.left:
-        return Offset(0, nodeSize.height / 2);
+        return Offset(0, h / 2);
       case HandlePosition.right:
-        return Offset(nodeSize.width, nodeSize.height / 2);
+        return Offset(w, h / 2);
     }
   }
 }

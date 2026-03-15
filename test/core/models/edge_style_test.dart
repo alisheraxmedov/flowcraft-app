@@ -4,7 +4,19 @@ import 'package:flowcraft/flowcraft.dart';
 
 void main() {
   group('EdgeStyle', () {
-    test('supports value equality', () {
+    test('default values: animated=true, color=blue', () {
+      const style = EdgeStyle();
+      expect(style.color, const Color(0xFF42A5F5));
+      expect(style.animated, isTrue);
+      expect(style.thickness, 2.0);
+      expect(style.edgeType, EdgeType.bezier);
+      expect(style.dashPattern, isEmpty);
+      expect(style.arrowSize, 8.0);
+      expect(style.showArrow, isTrue);
+      expect(style.label, isNull);
+    });
+
+    test('value equality', () {
       const style1 = EdgeStyle(
         color: Color(0xFF000000),
         thickness: 2.0,
@@ -24,7 +36,7 @@ void main() {
         thickness: 2.0,
         edgeType: EdgeType.bezier,
         animated: true,
-        dashPattern: [5.0, 5.0], // different
+        dashPattern: [5.0, 5.0],
       );
 
       expect(style1, style2);
@@ -32,7 +44,7 @@ void main() {
       expect(style1, isNot(style3));
     });
 
-    test('toJson and fromJson work correctly', () {
+    test('toJson/fromJson round-trip', () {
       const style = EdgeStyle(
         color: Color(0xFF123456),
         thickness: 3.5,
@@ -57,16 +69,33 @@ void main() {
       expect(restored.label, 'test edge');
     });
 
-    test('copyWith works correctly', () {
+    test('fromJson defaults for missing optional fields', () {
+      final json = {
+        'color': const Color(0xFF000000).toARGB32(),
+        'thickness': 1.0,
+        'edgeType': 'bezier',
+      };
+      final style = EdgeStyle.fromJson(json);
+      expect(style.animated, false);
+      expect(style.dashPattern, isEmpty);
+      expect(style.arrowSize, 8.0);
+      expect(style.showArrow, true);
+      expect(style.label, isNull);
+    });
+
+    test('copyWith replaces specified fields only', () {
       const style = EdgeStyle();
       final copied = style.copyWith(
         color: const Color(0xFFFFFFFF),
         thickness: 5.0,
+        animated: false,
       );
 
       expect(copied.color, const Color(0xFFFFFFFF));
       expect(copied.thickness, 5.0);
-      expect(copied.edgeType, style.edgeType); // unchanged
+      expect(copied.animated, false);
+      expect(copied.edgeType, style.edgeType);
+      expect(copied.showArrow, style.showArrow);
     });
   });
 }

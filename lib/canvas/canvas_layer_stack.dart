@@ -4,19 +4,22 @@ import 'package:flowcraft/canvas/grid_painter.dart';
 import 'package:flowcraft/canvas/viewport_transform.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/core/enums/handle_position.dart';
+import 'package:flowcraft/core/models/flow_handle.dart';
 import 'package:flowcraft/core/models/flow_viewport.dart';
 import 'package:flowcraft/edges/bezier_edge.dart';
 import 'package:flowcraft/edges/edge_label_widget.dart';
 import 'package:flowcraft/edges/edge_painter.dart';
 import 'package:flowcraft/edges/smooth_step_edge.dart';
+import 'package:flowcraft/edges/step_edge.dart';
 import 'package:flowcraft/edges/straight_edge.dart';
 import 'package:flowcraft/core/enums/edge_type.dart';
+import 'package:flowcraft/handles/connection_line_painter.dart';
 import 'package:flowcraft/nodes/base_node_widget.dart';
 import 'package:flowcraft/theme/flow_theme.dart';
 
-/// Builds the layered canvas stack: grid → edges → nodes → edge labels → overlays.
+/// Layered canvas: grid → edges → nodes → labels → overlays.
 ///
-/// Includes an [AnimationController] that drives animated dash edges.
+/// Drives edge dash animation and manages connection drag state.
 class CanvasLayerStack extends StatefulWidget {
   const CanvasLayerStack({
     super.key,
@@ -29,6 +32,7 @@ class CanvasLayerStack extends StatefulWidget {
     this.theme,
     this.onNodeTap,
     this.onEdgeTap,
+    this.onConnectionCreated,
   });
 
   final FlowController controller;
@@ -40,6 +44,7 @@ class CanvasLayerStack extends StatefulWidget {
   final FlowTheme? theme;
   final void Function(String nodeId)? onNodeTap;
   final void Function(String edgeId)? onEdgeTap;
+  final void Function(String edgeId)? onConnectionCreated;
 
   @override
   State<CanvasLayerStack> createState() => _CanvasLayerStackState();
@@ -47,12 +52,16 @@ class CanvasLayerStack extends StatefulWidget {
 
 class _CanvasLayerStackState extends State<CanvasLayerStack>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
+  late AnimationController _animController;
+
+  FlowHandle? _dragSourceHandle;
+  Offset? _dragStart;
+  Offset? _dragCurrent;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
+    _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat();
@@ -60,9 +69,99 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _animController.dispose();
     super.dispose();
   }
+
+  // ── Connection Drag ───────────────────────────────────────────────────────
+
+  void _onHandleDragStarted(FlowHandle handle) {
+    final node = widget.controller.graph.nodeById(handle.nodeId);
+    if (node == null) return;
+
+    final offset = handle.position.toOffset(node.rect);
+    final screen = ViewportTransform.canvasToScreen(
+      offset,
+      widget.controller.viewport,
+    );
+
+    setState(() {
+      _dragSourceHandle = handle;
+      _dragStart = screen;
+      _dragCurrent = screen;
+    });
+  }
+
+  void _onHandleDragUpdated(Offset globalPosition) {
+    if (_dragSourceHandle == null) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+
+    setState(() {
+      _dragCurrent = box.globalToLocal(globalPosition);
+    });
+  }
+
+  void _onHandleDragEnded() {
+    if (_dragSourceHandle == null || _dragCurrent == null) {
+      _cancelDrag();
+      return;
+    }
+
+    final target = _findTargetHandle(_dragCurrent!);
+    if (target != null) {
+      final edge = widget.controller.addEdge(
+        sourceNodeId: _dragSourceHandle!.nodeId,
+        targetNodeId: target.nodeId,
+        sourceHandleId: _dragSourceHandle!.id,
+        targetHandleId: target.id,
+      );
+      if (edge != null) {
+        widget.onConnectionCreated?.call(edge.id);
+      }
+    }
+
+    _cancelDrag();
+  }
+
+  void _cancelDrag() {
+    setState(() {
+      _dragSourceHandle = null;
+      _dragStart = null;
+      _dragCurrent = null;
+    });
+  }
+
+  FlowHandle? _findTargetHandle(Offset screenPos) {
+    const hitRadiusSq = 20.0 * 20.0;
+    double bestDistSq = hitRadiusSq;
+    FlowHandle? best;
+
+    for (final node in widget.controller.nodes) {
+      if (node.id == _dragSourceHandle?.nodeId) continue;
+
+      for (final handle in node.handles) {
+        final pos = handle.position.toOffset(node.rect);
+        final screen = ViewportTransform.canvasToScreen(
+          pos,
+          widget.controller.viewport,
+        );
+
+        final dx = screenPos.dx - screen.dx;
+        final dy = screenPos.dy - screen.dy;
+        final distSq = dx * dx + dy * dy;
+
+        if (distSq < bestDistSq) {
+          bestDistSq = distSq;
+          best = handle;
+        }
+      }
+    }
+
+    return best;
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -72,34 +171,53 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
     return ClipRect(
       child: Stack(
         children: [
-          // Layer 1: Background grid
+          // Grid
           Positioned.fill(
-            child: CustomPaint(
-              painter: GridPainter(
-                viewport: viewport,
-                gridType: widget.gridType,
-                gridColor: widget.gridColor,
-                gridSpacing: widget.gridSpacing,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: GridPainter(
+                  viewport: viewport,
+                  gridType: widget.gridType,
+                  gridColor: widget.gridColor,
+                  gridSpacing: widget.gridSpacing,
+                ),
               ),
             ),
           ),
 
-          // Layer 2: Edges (animated)
+          // Edges
           Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, child) {
-                return CustomPaint(
-                  painter: EdgePainter(
-                    controller: widget.controller,
-                    animationValue: _animationController.value,
-                  ),
-                );
-              },
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _animController,
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: EdgePainter(
+                      controller: widget.controller,
+                      animationValue: _animController.value,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
 
-          // Layer 3: Nodes (transformed)
+          // Connection preview line
+          if (_dragSourceHandle != null &&
+              _dragStart != null &&
+              _dragCurrent != null)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: ConnectionLinePainter(
+                  startPoint: _dragStart!,
+                  endPoint: _dragCurrent!,
+                  color: theme?.handleBorderColor ?? const Color(0xFF2196F3),
+                  strokeWidth: 2.0,
+                ),
+              ),
+            ),
+
+          // Nodes
           ...List.generate(widget.controller.nodes.length, (index) {
             final node = widget.controller.nodes[index];
             final screenPos = ViewportTransform.canvasToScreen(
@@ -123,16 +241,19 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
                           onTap: widget.onNodeTap != null
                               ? () => widget.onNodeTap!(node.id)
                               : null,
+                          onHandleDragStarted: _onHandleDragStarted,
+                          onHandleDragUpdated: _onHandleDragUpdated,
+                          onHandleDragEnded: _onHandleDragEnded,
                         ),
                 ),
               ),
             );
           }),
 
-          // Layer 4: Edge labels (rendered as widgets on top of nodes)
+          // Edge labels
           ..._buildEdgeLabels(viewport),
 
-          // Layer 5: Overlays (zoom controls, minimap, etc.)
+          // Overlays
           ...widget.overlays,
         ],
       ),
@@ -145,25 +266,22 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
     for (final edge in widget.controller.edges) {
       if (edge.style.label == null || edge.style.label!.isEmpty) continue;
 
-      final sourceNode =
-          widget.controller.graph.nodeById(edge.sourceNodeId);
-      final targetNode =
-          widget.controller.graph.nodeById(edge.targetNodeId);
+      final sourceNode = widget.controller.graph.nodeById(edge.sourceNodeId);
+      final targetNode = widget.controller.graph.nodeById(edge.targetNodeId);
       if (sourceNode == null || targetNode == null) continue;
 
       final sourceHandle = sourceNode.handleById(edge.sourceHandleId);
       final targetHandle = targetNode.handleById(edge.targetHandleId);
       if (sourceHandle == null || targetHandle == null) continue;
 
-      final sourceOffset =
-          sourceHandle.position.toOffset(sourceNode.rect);
-      final targetOffset =
-          targetHandle.position.toOffset(targetNode.rect);
-
-      final screenSource =
-          ViewportTransform.canvasToScreen(sourceOffset, viewport);
-      final screenTarget =
-          ViewportTransform.canvasToScreen(targetOffset, viewport);
+      final screenSource = ViewportTransform.canvasToScreen(
+        sourceHandle.position.toOffset(sourceNode.rect),
+        viewport,
+      );
+      final screenTarget = ViewportTransform.canvasToScreen(
+        targetHandle.position.toOffset(targetNode.rect),
+        viewport,
+      );
 
       final midpoint = _computeEdgeMidpoint(
         edge.style.edgeType,
@@ -212,6 +330,8 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
         );
       case EdgeType.smoothStep:
         return SmoothStepEdge.midpoint(source, target);
+      case EdgeType.step:
+        return StepEdge.midpoint(source, target);
       case EdgeType.straight:
         return StraightEdge.midpoint(source, target);
     }

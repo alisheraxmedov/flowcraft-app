@@ -1,9 +1,7 @@
 import 'package:flutter/rendering.dart';
 
-/// Paints a live temporary line while the user drags from a handle
-/// to create a new connection.
+/// Paints a temporary dashed bezier line during handle drag.
 class ConnectionLinePainter extends CustomPainter {
-  /// Creates a [ConnectionLinePainter].
   ConnectionLinePainter({
     required this.startPoint,
     required this.endPoint,
@@ -11,16 +9,9 @@ class ConnectionLinePainter extends CustomPainter {
     this.strokeWidth = 2.0,
   });
 
-  /// The screen-space start point (from the source handle).
   final Offset startPoint;
-
-  /// The screen-space end point (follows the user's cursor/finger).
   final Offset endPoint;
-
-  /// The color of the line.
   final Color color;
-
-  /// The stroke width.
   final double strokeWidth;
 
   @override
@@ -31,7 +22,6 @@ class ConnectionLinePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    // Draw a dashed bezier line
     final dx = (endPoint.dx - startPoint.dx).abs();
     final controlOffset = dx * 0.5 + 30;
 
@@ -46,28 +36,25 @@ class ConnectionLinePainter extends CustomPainter {
         endPoint.dy,
       );
 
-    // Draw dashed
     const dashLen = 6.0;
     const gapLen = 4.0;
-    final metrics = path.computeMetrics();
-    for (final metric in metrics) {
-      double distance = 0;
+    for (final metric in path.computeMetrics()) {
+      double dist = 0;
       bool draw = true;
-      while (distance < metric.length) {
+      while (dist < metric.length) {
         final len = draw ? dashLen : gapLen;
-        final end = (distance + len).clamp(0.0, metric.length);
+        final end = (dist + len).clamp(0.0, metric.length);
         if (draw) {
-          canvas.drawPath(metric.extractPath(distance, end), paint);
+          canvas.drawPath(metric.extractPath(dist, end), paint);
         }
-        distance = end;
+        dist = end;
         draw = !draw;
       }
     }
   }
 
   @override
-  bool shouldRepaint(ConnectionLinePainter oldDelegate) {
-    return startPoint != oldDelegate.startPoint ||
-        endPoint != oldDelegate.endPoint;
+  bool shouldRepaint(ConnectionLinePainter old) {
+    return startPoint != old.startPoint || endPoint != old.endPoint;
   }
 }

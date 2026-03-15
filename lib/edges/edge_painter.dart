@@ -9,23 +9,21 @@ import 'package:flowcraft/core/models/flow_edge.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/edges/bezier_edge.dart';
 import 'package:flowcraft/edges/smooth_step_edge.dart';
+import 'package:flowcraft/edges/step_edge.dart';
 import 'package:flowcraft/edges/straight_edge.dart';
 
-/// [CustomPainter] that draws all edges in the graph.
+/// Paints all edges using [CustomPainter].
 ///
-/// Delegates to [BezierEdge], [SmoothStepEdge], or [StraightEdge]
-/// based on each edge's [EdgeStyle.edgeType].
+/// Supports solid, dashed, and animated dash styles.
+/// Delegates path computation to [BezierEdge], [SmoothStepEdge],
+/// [StepEdge], or [StraightEdge].
 class EdgePainter extends CustomPainter {
-  /// Creates an [EdgePainter].
   EdgePainter({
     required this.controller,
     this.animationValue = 0.0,
   });
 
-  /// The flow controller providing edge and node data.
   final FlowController controller;
-
-  /// The current animation value [0..1] for animated edges.
   final double animationValue;
 
   @override
@@ -35,173 +33,129 @@ class EdgePainter extends CustomPainter {
     for (final edge in controller.edges) {
       final sourceNode = controller.graph.nodeById(edge.sourceNodeId);
       final targetNode = controller.graph.nodeById(edge.targetNodeId);
-        if (sourceNode == null || targetNode == null) continue;
+      if (sourceNode == null || targetNode == null) continue;
 
-        final sourceHandle = sourceNode.handleById(edge.sourceHandleId);
-        final targetHandle = targetNode.handleById(edge.targetHandleId);
-        if (sourceHandle == null || targetHandle == null) continue;
+      final sourceHandle = sourceNode.handleById(edge.sourceHandleId);
+      final targetHandle = targetNode.handleById(edge.targetHandleId);
+      if (sourceHandle == null || targetHandle == null) continue;
 
-        // Get handle positions in canvas space
-        final sourceOffset = sourceHandle.position.toOffset(sourceNode.rect);
-        final targetOffset = targetHandle.position.toOffset(targetNode.rect);
+      final screenSource = ViewportTransform.canvasToScreen(
+        sourceHandle.position.toOffset(sourceNode.rect),
+        viewport,
+      );
+      final screenTarget = ViewportTransform.canvasToScreen(
+        targetHandle.position.toOffset(targetNode.rect),
+        viewport,
+      );
 
-        // Convert to screen space
-        final screenSource =
-            ViewportTransform.canvasToScreen(sourceOffset, viewport);
-        final screenTarget =
-            ViewportTransform.canvasToScreen(targetOffset, viewport);
+      final path = _buildPath(
+        edge, screenSource, screenTarget,
+        sourceHandle.position, targetHandle.position,
+      );
 
-        // Build the path
-        final path = _buildPath(
-          edge,
-          screenSource,
-          screenTarget,
-          sourceHandle.position,
-          targetHandle.position,
-        );
+      final paint = Paint()
+        ..color = edge.style.color
+        ..strokeWidth = edge.style.thickness * viewport.zoom
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
 
-        // Draw the edge
-        final paint = Paint()
-          ..color = edge.style.color
-          ..strokeWidth = edge.style.thickness * viewport.zoom
+      // Selection highlight
+      if (controller.selection.isEdgeSelected(edge.id)) {
+        final highlight = Paint()
+          ..color = edge.style.color.withValues(alpha: 0.3)
+          ..strokeWidth = (edge.style.thickness + 4) * viewport.zoom
           ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
+          ..strokeCap = StrokeCap.round;
+        canvas.drawPath(path, highlight);
+      }
 
-        final isSelected = controller.selection.isEdgeSelected(edge.id);
-        if (isSelected) {
-          // Draw selection highlight
-          final highlightPaint = Paint()
-            ..color = edge.style.color.withValues(alpha: 0.3)
-            ..strokeWidth = (edge.style.thickness + 4) * viewport.zoom
-            ..style = PaintingStyle.stroke
-            ..strokeCap = StrokeCap.round;
-          canvas.drawPath(path, highlightPaint);
-        }
+      // Draw edge body
+      final dashes = _effectiveDashes(edge);
+      if (edge.style.animated) {
+        _drawAnimated(canvas, path, paint, dashes, viewport.zoom);
+      } else if (dashes.isNotEmpty) {
+        _drawDashed(canvas, path, paint, dashes);
+      } else {
+        canvas.drawPath(path, paint);
+      }
 
-        final dashPattern = _effectiveDashPattern(edge);
-
-        if (edge.style.animated) {
-          _drawAnimatedDashes(
-            canvas,
-            path,
-            paint,
-            dashPattern,
-            viewport.zoom,
-          );
-        } else if (dashPattern.isNotEmpty) {
-          _drawDashes(canvas, path, paint, dashPattern);
-        } else {
-          canvas.drawPath(path, paint);
-        }
-
-        // Draw arrow
-        if (edge.style.showArrow) {
-          _drawArrow(canvas, path, paint, edge.style.arrowSize * viewport.zoom);
-        }
+      // Arrow
+      if (edge.style.showArrow) {
+        _drawArrow(canvas, path, paint, edge.style.arrowSize * viewport.zoom);
+      }
     }
   }
 
-  List<double> _effectiveDashPattern(FlowEdge edge) {
-    if (edge.style.dashPattern.isNotEmpty) {
-      return edge.style.dashPattern;
-    }
-
-    if (edge.style.animated) {
-      return const [8.0, 4.0];
-    }
-
+  List<double> _effectiveDashes(FlowEdge edge) {
+    if (edge.style.dashPattern.isNotEmpty) return edge.style.dashPattern;
+    if (edge.style.animated) return const [8.0, 4.0];
     return const <double>[];
   }
 
   Path _buildPath(
-    FlowEdge edge,
-    Offset source,
-    Offset target,
-    HandlePosition sourcePos,
-    HandlePosition targetPos,
+    FlowEdge edge, Offset source, Offset target,
+    HandlePosition sourcePos, HandlePosition targetPos,
   ) {
     switch (edge.style.edgeType) {
       case EdgeType.bezier:
-        return BezierEdge.buildPath(
-          source,
-          target,
-          sourcePosition: sourcePos,
-          targetPosition: targetPos,
-        );
+        return BezierEdge.buildPath(source, target,
+            sourcePosition: sourcePos, targetPosition: targetPos);
       case EdgeType.smoothStep:
-        return SmoothStepEdge.buildPath(
-          source,
-          target,
-          sourcePosition: sourcePos,
-          targetPosition: targetPos,
-        );
+        return SmoothStepEdge.buildPath(source, target,
+            sourcePosition: sourcePos, targetPosition: targetPos);
+      case EdgeType.step:
+        return StepEdge.buildPath(source, target,
+            sourcePosition: sourcePos, targetPosition: targetPos);
       case EdgeType.straight:
         return StraightEdge.buildPath(source, target);
     }
   }
 
-  void _drawDashes(
-    Canvas canvas,
-    Path path,
-    Paint paint,
-    List<double> dashPattern,
+  void _drawDashed(
+    Canvas canvas, Path path, Paint paint, List<double> pattern,
   ) {
-    if (dashPattern.length < 2) {
+    if (pattern.length < 2) {
       canvas.drawPath(path, paint);
       return;
     }
-
-    final metrics = path.computeMetrics();
-    for (final metric in metrics) {
-      double distance = 0;
-      int dashIndex = 0;
-      while (distance < metric.length) {
-        final dashLen = dashPattern[dashIndex % dashPattern.length];
-        final isDash = dashIndex % 2 == 0;
-        final end = (distance + dashLen).clamp(0.0, metric.length);
-
-        if (isDash) {
-          final segment = metric.extractPath(distance, end);
-          canvas.drawPath(segment, paint);
+    for (final metric in path.computeMetrics()) {
+      double dist = 0;
+      int idx = 0;
+      while (dist < metric.length) {
+        final len = pattern[idx % pattern.length];
+        final end = (dist + len).clamp(0.0, metric.length);
+        if (idx % 2 == 0) {
+          canvas.drawPath(metric.extractPath(dist, end), paint);
         }
-
-        distance = end;
-        dashIndex++;
+        dist = end;
+        idx++;
       }
     }
   }
 
-  void _drawAnimatedDashes(
-    Canvas canvas,
-    Path path,
-    Paint paint,
-    List<double> dashPattern,
-    double zoom,
+  void _drawAnimated(
+    Canvas canvas, Path path, Paint paint,
+    List<double> pattern, double zoom,
   ) {
-    if (dashPattern.length < 2) {
+    if (pattern.length < 2) {
       canvas.drawPath(path, paint);
       return;
     }
+    final dashLen = pattern[0] * zoom;
+    final gapLen = pattern[1] * zoom;
+    final cycle = dashLen + gapLen;
+    final offset = animationValue * cycle;
 
-    final dashLen = dashPattern[0] * zoom;
-    final gapLen = dashPattern[1] * zoom;
-    final totalLen = dashLen + gapLen;
-    final offset = animationValue * totalLen;
-
-    final metrics = path.computeMetrics();
-    for (final metric in metrics) {
-      double distance = -offset;
-      while (distance < metric.length) {
-        final start = distance.clamp(0.0, metric.length);
-        final end = (distance + dashLen).clamp(0.0, metric.length);
-
+    for (final metric in path.computeMetrics()) {
+      double dist = offset - cycle;
+      while (dist < metric.length) {
+        final start = dist.clamp(0.0, metric.length);
+        final end = (dist + dashLen).clamp(0.0, metric.length);
         if (end > start) {
-          final segment = metric.extractPath(start, end);
-          canvas.drawPath(segment, paint);
+          canvas.drawPath(metric.extractPath(start, end), paint);
         }
-
-        distance += totalLen;
+        dist += cycle;
       }
     }
   }
@@ -209,26 +163,24 @@ class EdgePainter extends CustomPainter {
   void _drawArrow(Canvas canvas, Path path, Paint paint, double arrowSize) {
     for (final metric in path.computeMetrics()) {
       if (metric.length < 2) continue;
-
       final tangent = metric.getTangentForOffset(metric.length);
       if (tangent == null) continue;
 
-      final tipPoint = tangent.position;
+      final tip = tangent.position;
       final angle = tangent.angle;
 
-      final arrowPath = Path();
-      arrowPath.moveTo(tipPoint.dx, tipPoint.dy);
-      arrowPath.lineTo(
-        tipPoint.dx - arrowSize * math.cos(angle - 0.5),
-        tipPoint.dy - arrowSize * math.sin(angle - 0.5),
-      );
-      arrowPath.moveTo(tipPoint.dx, tipPoint.dy);
-      arrowPath.lineTo(
-        tipPoint.dx - arrowSize * math.cos(angle + 0.5),
-        tipPoint.dy - arrowSize * math.sin(angle + 0.5),
-      );
-
-      canvas.drawPath(arrowPath, paint);
+      final arrow = Path()
+        ..moveTo(tip.dx, tip.dy)
+        ..lineTo(
+          tip.dx - arrowSize * math.cos(angle - 0.5),
+          tip.dy - arrowSize * math.sin(angle - 0.5),
+        )
+        ..moveTo(tip.dx, tip.dy)
+        ..lineTo(
+          tip.dx - arrowSize * math.cos(angle + 0.5),
+          tip.dy - arrowSize * math.sin(angle + 0.5),
+        );
+      canvas.drawPath(arrow, paint);
       break;
     }
   }

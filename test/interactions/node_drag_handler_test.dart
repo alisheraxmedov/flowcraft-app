@@ -1,7 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/material.dart';
 import 'package:flowcraft/flowcraft.dart';
-import 'package:flowcraft/interactions/node_drag_handler.dart';
 
 void main() {
   group('NodeDragHandler', () {

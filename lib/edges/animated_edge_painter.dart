@@ -7,24 +7,20 @@ import 'package:flowcraft/core/models/flow_edge.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/edges/bezier_edge.dart';
 import 'package:flowcraft/edges/smooth_step_edge.dart';
+import 'package:flowcraft/edges/step_edge.dart';
 import 'package:flowcraft/edges/straight_edge.dart';
 
-/// A [CustomPainter] that draws animated dashed flowing edges.
+/// Draws only animated (flowing dash) edges.
 ///
-/// Uses [PathMetrics] to extract dash sub-paths and shifts them
-/// based on [animationValue] to create a flowing direction effect.
-/// This is the core implementation described in the research document.
+/// Used as a separate painter layer so it can repaint independently
+/// on every animation tick without affecting static edges.
 class AnimatedEdgePainter extends CustomPainter {
-  /// Creates an [AnimatedEdgePainter].
   AnimatedEdgePainter({
     required this.controller,
     required this.animationValue,
   });
 
-  /// The flow controller providing edge and node data.
   final FlowController controller;
-
-  /// Animation progress value cycling [0..1].
   final double animationValue;
 
   @override
@@ -42,32 +38,27 @@ class AnimatedEdgePainter extends CustomPainter {
       final targetHandle = targetNode.handleById(edge.targetHandleId);
       if (sourceHandle == null || targetHandle == null) continue;
 
-      final sourceOffset = sourceHandle.position.toOffset(sourceNode.rect);
-      final targetOffset = targetHandle.position.toOffset(targetNode.rect);
-
-      final screenSource =
-          ViewportTransform.canvasToScreen(sourceOffset, viewport);
-      final screenTarget =
-          ViewportTransform.canvasToScreen(targetOffset, viewport);
-
-      final path = _buildPath(
-        edge,
-        screenSource,
-        screenTarget,
-        sourceHandle.position,
-        targetHandle.position,
+      final screenSource = ViewportTransform.canvasToScreen(
+        sourceHandle.position.toOffset(sourceNode.rect),
+        viewport,
+      );
+      final screenTarget = ViewportTransform.canvasToScreen(
+        targetHandle.position.toOffset(targetNode.rect),
+        viewport,
       );
 
-      _drawAnimatedPath(canvas, path, edge, viewport.zoom);
+      final path = _buildPath(
+        edge, screenSource, screenTarget,
+        sourceHandle.position, targetHandle.position,
+      );
+
+      _drawAnimated(canvas, path, edge, viewport.zoom);
     }
   }
 
   Path _buildPath(
-    FlowEdge edge,
-    Offset source,
-    Offset target,
-    HandlePosition sourcePos,
-    HandlePosition targetPos,
+    FlowEdge edge, Offset source, Offset target,
+    HandlePosition sourcePos, HandlePosition targetPos,
   ) {
     switch (edge.style.edgeType) {
       case EdgeType.bezier:
@@ -76,25 +67,23 @@ class AnimatedEdgePainter extends CustomPainter {
       case EdgeType.smoothStep:
         return SmoothStepEdge.buildPath(source, target,
             sourcePosition: sourcePos, targetPosition: targetPos);
+      case EdgeType.step:
+        return StepEdge.buildPath(source, target,
+            sourcePosition: sourcePos, targetPosition: targetPos);
       case EdgeType.straight:
         return StraightEdge.buildPath(source, target);
     }
   }
 
-  void _drawAnimatedPath(
-    Canvas canvas,
-    Path path,
-    FlowEdge edge,
-    double zoom,
-  ) {
+  void _drawAnimated(Canvas canvas, Path path, FlowEdge edge, double zoom) {
     final style = edge.style;
-    final dashPattern = style.dashPattern.isNotEmpty
+    final pattern = style.dashPattern.isNotEmpty
         ? style.dashPattern
-        : [8.0, 4.0]; // default dash pattern
+        : [8.0, 4.0];
 
-    final dashLen = dashPattern[0] * zoom;
-    final gapLen = dashPattern[1] * zoom;
-    final cycleLen = dashLen + gapLen;
+    final dashLen = pattern[0] * zoom;
+    final gapLen = pattern[1] * zoom;
+    final cycle = dashLen + gapLen;
 
     final paint = Paint()
       ..color = style.color
@@ -102,28 +91,21 @@ class AnimatedEdgePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final metrics = path.computeMetrics();
-    for (final metric in metrics) {
-      // Shift starting position based on animation value
-      double distance = -(animationValue * cycleLen);
-
-      while (distance < metric.length) {
-        final start = distance.clamp(0.0, metric.length);
-        final end = (distance + dashLen).clamp(0.0, metric.length);
-
+    for (final metric in path.computeMetrics()) {
+      double dist = animationValue * cycle - cycle;
+      while (dist < metric.length) {
+        final start = dist.clamp(0.0, metric.length);
+        final end = (dist + dashLen).clamp(0.0, metric.length);
         if (end > start) {
-          final segment = metric.extractPath(start, end);
-          canvas.drawPath(segment, paint);
+          canvas.drawPath(metric.extractPath(start, end), paint);
         }
-
-        distance += cycleLen;
+        dist += cycle;
       }
     }
   }
 
   @override
   bool shouldRepaint(AnimatedEdgePainter oldDelegate) {
-    // Always repaint for animation ticks
     return animationValue != oldDelegate.animationValue;
   }
 }

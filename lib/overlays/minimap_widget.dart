@@ -2,12 +2,10 @@ import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/controller/flow_controller.dart';
 
-/// A small overview preview of the entire graph.
+/// Miniature overview of the entire graph with viewport indicator.
 ///
-/// Shows a miniature representation of all nodes and the current
-/// viewport rectangle, allowing quick navigation.
+/// Supports tap/drag to quickly pan the canvas.
 class MinimapWidget extends StatelessWidget {
-  /// Creates a [MinimapWidget].
   const MinimapWidget({
     super.key,
     required this.controller,
@@ -16,25 +14,16 @@ class MinimapWidget extends StatelessWidget {
     this.backgroundColor = const Color(0xFFF5F5F5),
     this.nodeColor = const Color(0xFF90CAF9),
     this.viewportColor = const Color(0x442196F3),
+    this.interactive = true,
   });
 
-  /// The flow controller.
   final FlowController controller;
-
-  /// The width of the minimap.
   final double width;
-
-  /// The height of the minimap.
   final double height;
-
-  /// Background color of the minimap.
   final Color backgroundColor;
-
-  /// Color used to represent nodes.
   final Color nodeColor;
-
-  /// Color of the viewport rectangle.
   final Color viewportColor;
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) {
@@ -58,16 +47,98 @@ class MinimapWidget extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(5),
-          child: CustomPaint(
-            painter: _MinimapPainter(
-              controller: controller,
-              nodeColor: nodeColor,
-              viewportColor: viewportColor,
-            ),
-          ),
+          child: interactive
+              ? _InteractiveMinimap(
+                  controller: controller,
+                  nodeColor: nodeColor,
+                  viewportColor: viewportColor,
+                  width: width,
+                  height: height,
+                )
+              : CustomPaint(
+                  painter: _MinimapPainter(
+                    controller: controller,
+                    nodeColor: nodeColor,
+                    viewportColor: viewportColor,
+                  ),
+                ),
         ),
       ),
     );
+  }
+}
+
+class _InteractiveMinimap extends StatelessWidget {
+  const _InteractiveMinimap({
+    required this.controller,
+    required this.nodeColor,
+    required this.viewportColor,
+    required this.width,
+    required this.height,
+  });
+
+  final FlowController controller;
+  final Color nodeColor;
+  final Color viewportColor;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (d) => _panTo(d.localPosition),
+      onPanUpdate: (d) => _panTo(d.localPosition),
+      child: CustomPaint(
+        painter: _MinimapPainter(
+          controller: controller,
+          nodeColor: nodeColor,
+          viewportColor: viewportColor,
+        ),
+      ),
+    );
+  }
+
+  void _panTo(Offset local) {
+    if (controller.nodes.isEmpty) return;
+
+    final bounds = _graphBounds();
+    if (bounds == null) return;
+
+    final scaleX = width / bounds.width;
+    final scaleY = height / bounds.height;
+    final scale = scaleX < scaleY ? scaleX : scaleY;
+
+    final graphX = local.dx / scale + bounds.left;
+    final graphY = local.dy / scale + bounds.top;
+    final zoom = controller.viewport.zoom;
+    controller.pan(Offset(-graphX * zoom, -graphY * zoom));
+  }
+
+  Rect? _graphBounds() {
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+
+    for (final node in controller.nodes) {
+      if (node.position.dx < minX) minX = node.position.dx;
+      if (node.position.dy < minY) minY = node.position.dy;
+      final right = node.position.dx + node.size.width;
+      final bottom = node.position.dy + node.size.height;
+      if (right > maxX) maxX = right;
+      if (bottom > maxY) maxY = bottom;
+    }
+
+    const p = 50.0;
+    minX -= p;
+    minY -= p;
+    maxX += p;
+    maxY += p;
+
+    final w = maxX - minX;
+    final h = maxY - minY;
+    if (w <= 0 || h <= 0) return null;
+
+    return Rect.fromLTWH(minX, minY, w, h);
   }
 }
 
@@ -86,7 +157,6 @@ class _MinimapPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (controller.nodes.isEmpty) return;
 
-    // Calculate bounds of all nodes
     double minX = double.infinity, minY = double.infinity;
     double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
 
@@ -99,21 +169,21 @@ class _MinimapPainter extends CustomPainter {
       if (bottom > maxY) maxY = bottom;
     }
 
-    const padding = 50.0;
-    minX -= padding;
-    minY -= padding;
-    maxX += padding;
-    maxY += padding;
+    const p = 50.0;
+    minX -= p;
+    minY -= p;
+    maxX += p;
+    maxY += p;
 
-    final graphWidth = maxX - minX;
-    final graphHeight = maxY - minY;
-    if (graphWidth <= 0 || graphHeight <= 0) return;
+    final graphW = maxX - minX;
+    final graphH = maxY - minY;
+    if (graphW <= 0 || graphH <= 0) return;
 
-    final scaleX = size.width / graphWidth;
-    final scaleY = size.height / graphHeight;
+    final scaleX = size.width / graphW;
+    final scaleY = size.height / graphH;
     final scale = scaleX < scaleY ? scaleX : scaleY;
 
-    // Draw nodes
+    // Nodes
     final nodePaint = Paint()
       ..color = nodeColor
       ..style = PaintingStyle.fill;
@@ -131,25 +201,24 @@ class _MinimapPainter extends CustomPainter {
       );
     }
 
-    // Draw viewport rectangle
-    final viewport = controller.viewport;
-    final vpPaint = Paint()
+    // Viewport indicator
+    final vp = controller.viewport;
+    final vpFill = Paint()
       ..color = viewportColor
       ..style = PaintingStyle.fill;
-    final vpBorderPaint = Paint()
+    final vpStroke = Paint()
       ..color = const Color(0xFF2196F3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    // This is approximate — shows what portion of the graph is visible
     final vpRect = Rect.fromLTWH(
-      (-viewport.offset.dx / viewport.zoom - minX) * scale,
-      (-viewport.offset.dy / viewport.zoom - minY) * scale,
-      (size.width / viewport.zoom) * scale / 2,
-      (size.height / viewport.zoom) * scale / 2,
+      (-vp.offset.dx / vp.zoom - minX) * scale,
+      (-vp.offset.dy / vp.zoom - minY) * scale,
+      (size.width / vp.zoom) * scale / 2,
+      (size.height / vp.zoom) * scale / 2,
     );
-    canvas.drawRect(vpRect, vpPaint);
-    canvas.drawRect(vpRect, vpBorderPaint);
+    canvas.drawRect(vpRect, vpFill);
+    canvas.drawRect(vpRect, vpStroke);
   }
 
   @override

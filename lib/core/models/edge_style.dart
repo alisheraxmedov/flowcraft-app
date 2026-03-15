@@ -4,49 +4,28 @@ import 'package:flutter/foundation.dart';
 
 import 'package:flowcraft/core/enums/edge_type.dart';
 
-/// Defines the visual style for an edge.
-///
-/// Controls color, thickness, type, animation, dasher patterns, and labels.
+/// Visual style configuration for an edge.
 class EdgeStyle {
-  /// Creates an [EdgeStyle].
   const EdgeStyle({
-    this.color = const Color(0xFF555555),
+    this.color = const Color(0xFF42A5F5),
     this.thickness = 2.0,
     this.edgeType = EdgeType.bezier,
-    this.animated = false,
+    this.animated = true,
     this.dashPattern = const <double>[],
     this.arrowSize = 8.0,
     this.showArrow = true,
     this.label,
   });
 
-  /// The color of the edge line.
   final Color color;
-
-  /// The stroke width of the edge.
   final double thickness;
-
-  /// The routing type of the edge (bezier, smoothStep, straight).
   final EdgeType edgeType;
-
-  /// Whether the edge should display a flowing dash animation.
   final bool animated;
-
-  /// Dash pattern as alternating [dash, gap] lengths.
-  ///
-  /// An empty list renders a solid line.
   final List<double> dashPattern;
-
-  /// The size of the arrow at the target end.
   final double arrowSize;
-
-  /// Whether to draw an arrow at the target end.
   final bool showArrow;
-
-  /// An optional text label displayed at the edge midpoint.
   final String? label;
 
-  /// Creates a copy of this [EdgeStyle] with the given fields replaced.
   EdgeStyle copyWith({
     Color? color,
     double? thickness,
@@ -69,7 +48,6 @@ class EdgeStyle {
     );
   }
 
-  /// Serializes this [EdgeStyle] to a JSON map.
   Map<String, dynamic> toJson() {
     return {
       'color': color.toARGB32(),
@@ -83,7 +61,6 @@ class EdgeStyle {
     };
   }
 
-  /// Deserializes an [EdgeStyle] from a JSON map.
   factory EdgeStyle.fromJson(Map<String, dynamic> json) {
     return EdgeStyle(
       color: Color(json['color'] as int),

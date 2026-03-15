@@ -1,15 +1,13 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/controller/flow_controller.dart';
+import 'package:flowcraft/core/models/flow_handle.dart';
 import 'package:flowcraft/core/models/flow_node.dart';
 import 'package:flowcraft/nodes/node_header.dart';
 import 'package:flowcraft/handles/handle_widget.dart';
 import 'package:flowcraft/theme/flow_theme.dart';
 
-/// The default base node widget used when no custom builder is provided.
-///
-/// Wraps a node with selection highlight, drag support, handles,
-/// delete button, and the standard header/fields layout.
+/// Default node widget with selection, drag, handles, and delete button.
 class DefaultBaseNodeWidget extends StatelessWidget {
   const DefaultBaseNodeWidget({
     super.key,
@@ -17,21 +15,27 @@ class DefaultBaseNodeWidget extends StatelessWidget {
     required this.node,
     this.onTap,
     this.theme,
+    this.onHandleDragStarted,
+    this.onHandleDragUpdated,
+    this.onHandleDragEnded,
   });
 
   final FlowController controller;
   final FlowNode node;
   final VoidCallback? onTap;
   final FlowTheme? theme;
+  final void Function(FlowHandle handle)? onHandleDragStarted;
+  final void Function(Offset globalPosition)? onHandleDragUpdated;
+  final VoidCallback? onHandleDragEnded;
 
   @override
   Widget build(BuildContext context) {
-    final isSelected = controller.selection.isNodeSelected(node.id);
-    final bgColor = theme?.nodeBackgroundColor ?? const Color(0xFFFFFFFF);
-    final borderColor = isSelected
+    final selected = controller.selection.isNodeSelected(node.id);
+    final bg = theme?.nodeBackgroundColor ?? const Color(0xFFFFFFFF);
+    final border = selected
         ? (theme?.nodeSelectedBorderColor ?? const Color(0xFF2196F3))
         : (theme?.nodeBorderColor ?? const Color(0xFFDDDDDD));
-    final headerBg = theme?.headerBackgroundColor;
+    final handleColor = theme?.handleBorderColor ?? const Color(0xFF2196F3);
 
     return GestureDetector(
       onTap: () {
@@ -42,30 +46,28 @@ class DefaultBaseNodeWidget extends StatelessWidget {
         controller.startNodeDrag(node.id);
         controller.selection.selectNode(node.id);
       },
-      onPanUpdate: (details) {
-        final delta = details.delta / controller.viewport.zoom;
-        controller.moveNodeBy(node.id, delta);
+      onPanUpdate: (d) {
+        controller.moveNodeBy(node.id, d.delta / controller.viewport.zoom);
       },
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Node body
           Container(
             width: node.size.width,
             height: node.size.height,
             decoration: BoxDecoration(
-              color: bgColor,
+              color: bg,
               borderRadius: BorderRadius.circular(
                 theme?.nodeBorderRadius ?? 8.0,
               ),
               border: Border.all(
-                color: borderColor,
-                width: isSelected ? 2 : 1,
+                color: border,
+                width: selected ? 2 : 1,
               ),
               boxShadow: [
                 BoxShadow(
                   color: const Color(0x1A000000),
-                  blurRadius: isSelected ? 8 : 4,
+                  blurRadius: selected ? 8 : 4,
                   offset: const Offset(0, 2),
                 ),
               ],
@@ -76,20 +78,24 @@ class DefaultBaseNodeWidget extends StatelessWidget {
                 NodeHeader(
                   label: node.label,
                   nodeType: node.type,
-                  backgroundColor: headerBg,
+                  backgroundColor: theme?.headerBackgroundColor,
                 ),
               ],
             ),
           ),
 
           // Handles
-          ...node.handles.map((handle) => HandleWidget(
-                handle: handle,
+          ...node.handles.map((h) => HandleWidget(
+                handle: h,
                 nodeSize: node.size,
+                color: handleColor,
+                onDragStarted: onHandleDragStarted,
+                onDragUpdated: onHandleDragUpdated,
+                onDragEnded: onHandleDragEnded,
               )),
 
-          // Delete button (visible when selected)
-          if (isSelected)
+          // Delete button
+          if (selected)
             Positioned(
               top: -8,
               right: -8,

@@ -34,7 +34,7 @@ class FlowNode {
       label: label,
       position: position,
       size: size,
-      data: data ?? {},
+      data: data != null ? Map.of(data) : {},
       handles: resolvedHandles,
     );
   }

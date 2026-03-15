@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcraft/flowcraft.dart';
-import 'package:flowcraft/nodes/default_node_widget.dart';
-import 'package:flowcraft/nodes/input_node_widget.dart';
-import 'package:flowcraft/nodes/output_node_widget.dart';
-import 'package:flowcraft/nodes/node_fields_panel.dart';
 
 void main() {
   Widget buildNode(Widget child) {

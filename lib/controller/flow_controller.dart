@@ -15,23 +15,17 @@ import 'package:flowcraft/core/utils/serializer.dart';
 import 'package:flowcraft/controller/history_manager.dart';
 import 'package:flowcraft/controller/selection_manager.dart';
 
-/// The central state manager for FlowCraft.
+/// Central state manager for FlowCraft.
 ///
-/// [FlowController] holds the entire graph state (nodes, edges, viewport)
-/// and exposes a clean public API for all operations. It extends
-/// [ChangeNotifier] to allow reactive rebuilds.
-///
-/// ```dart
-/// final controller = FlowController();
-/// controller.addNode(position: Offset(100, 200));
-/// controller.addEdge(sourceId, targetId);
-/// ```
+/// Holds the graph (nodes + edges), viewport, selection, and history.
+/// Extends [ChangeNotifier] for reactive UI updates.
 class FlowController extends ChangeNotifier {
-  /// Creates a [FlowController].
   FlowController({
     FlowGraph? graph,
     FlowViewport? viewport,
     int maxHistory = 50,
+    this.snapToGrid = false,
+    this.gridSnap = 20.0,
   })  : _graph = graph ?? FlowGraph(),
         _viewport = viewport ?? const FlowViewport(),
         _history = HistoryManager(maxHistory: maxHistory),
@@ -40,39 +34,39 @@ class FlowController extends ChangeNotifier {
   FlowGraph _graph;
   FlowViewport _viewport;
   final HistoryManager _history;
-
-  /// The selection manager for tracking selected nodes/edges.
   final SelectionManager selection;
 
-  // ---------------------------------------------------------------------------
-  // Getters
-  // ---------------------------------------------------------------------------
+  /// Whether node positions snap to grid during drag.
+  bool snapToGrid;
 
-  /// The current graph state.
+  /// Grid snap interval in logical pixels.
+  double gridSnap;
+
+  static const List<Color> _edgeColors = [
+    Color(0xFF42A5F5), // Blue
+    Color(0xFF66BB6A), // Green
+    Color(0xFFAB47BC), // Purple
+    Color(0xFFEF5350), // Red
+    Color(0xFFFFA726), // Orange
+    Color(0xFF26C6DA), // Cyan
+    Color(0xFFEC407A), // Pink
+    Color(0xFF8D6E63), // Brown
+  ];
+
+  int _edgeColorIndex = 0;
+  List<Map<String, dynamic>> _clipboard = [];
+
+  // ── Getters ───────────────────────────────────────────────────────────────
+
   FlowGraph get graph => _graph;
-
-  /// All nodes in the graph (unmodifiable view).
   List<FlowNode> get nodes => List.unmodifiable(_graph.nodes);
-
-  /// All edges in the graph (unmodifiable view).
   List<FlowEdge> get edges => List.unmodifiable(_graph.edges);
-
-  /// The current viewport state.
   FlowViewport get viewport => _viewport;
-
-  /// Whether undo is available.
   bool get canUndo => _history.canUndo;
-
-  /// Whether redo is available.
   bool get canRedo => _history.canRedo;
 
-  // ---------------------------------------------------------------------------
-  // Node Operations
-  // ---------------------------------------------------------------------------
+  // ── Nodes ─────────────────────────────────────────────────────────────────
 
-  /// Adds a new node to the graph.
-  ///
-  /// Returns the created [FlowNode].
   FlowNode addNode({
     NodeType type = NodeType.defaultNode,
     String label = 'Node',
@@ -95,7 +89,6 @@ class FlowController extends ChangeNotifier {
     return node;
   }
 
-  /// Removes a node and all connected edges from the graph.
   void removeNode(String nodeId) {
     _pushHistory();
     GraphUtils.removeEdgesForNode(_graph, nodeId);
@@ -104,82 +97,64 @@ class FlowController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Moves a node to a new position.
   void moveNode(String nodeId, Offset newPosition) {
     final node = _graph.nodeById(nodeId);
     if (node == null) return;
-    node.position = newPosition;
+    node.position = snapToGrid ? _snap(newPosition) : newPosition;
     notifyListeners();
   }
 
-  /// Moves a node by a delta offset (for drag operations).
   void moveNodeBy(String nodeId, Offset delta) {
     final node = _graph.nodeById(nodeId);
     if (node == null) return;
-    node.position = Offset(
-      node.position.dx + delta.dx,
-      node.position.dy + delta.dy,
-    );
+    final raw = node.position + delta;
+    node.position = snapToGrid ? _snap(raw) : raw;
     notifyListeners();
   }
 
-  /// Saves a snapshot before starting a drag (for undo).
-  void startNodeDrag(String nodeId) {
-    _pushHistory();
+  Offset _snap(Offset pos) {
+    return Offset(
+      (pos.dx / gridSnap).round() * gridSnap,
+      (pos.dy / gridSnap).round() * gridSnap,
+    );
   }
 
-  /// Renames a node.
+  void startNodeDrag(String nodeId) => _pushHistory();
+
   void renameNode(String nodeId, String newLabel) {
     _pushHistory();
-    final node = _graph.nodeById(nodeId);
-    if (node == null) return;
-    node.label = newLabel;
+    _graph.nodeById(nodeId)?.label = newLabel;
     notifyListeners();
   }
 
-  /// Sets the type of a node.
   void setNodeType(String nodeId, NodeType newType) {
     _pushHistory();
-    final node = _graph.nodeById(nodeId);
-    if (node == null) return;
-    node.type = newType;
+    _graph.nodeById(nodeId)?.type = newType;
     notifyListeners();
   }
 
-  /// Resizes a node.
   void resizeNode(String nodeId, Size newSize) {
     _pushHistory();
-    final node = _graph.nodeById(nodeId);
-    if (node == null) return;
-    node.size = newSize;
+    _graph.nodeById(nodeId)?.size = newSize;
     notifyListeners();
   }
 
-  /// Adds or updates a data field on a node.
   void addNodeField(String nodeId, {required String key, dynamic value}) {
     _pushHistory();
-    final node = _graph.nodeById(nodeId);
-    if (node == null) return;
-    node.data[key] = value;
+    _graph.nodeById(nodeId)?.data[key] = value;
     notifyListeners();
   }
 
-  /// Removes a data field from a node.
   void removeNodeField(String nodeId, String key) {
     _pushHistory();
-    final node = _graph.nodeById(nodeId);
-    if (node == null) return;
-    node.data.remove(key);
+    _graph.nodeById(nodeId)?.data.remove(key);
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // Edge Operations
-  // ---------------------------------------------------------------------------
+  // ── Edges ─────────────────────────────────────────────────────────────────
 
-  /// Adds a new edge between two handles.
-  ///
-  /// Returns the created [FlowEdge], or `null` if validation fails.
+  /// Creates an edge. Returns `null` if validation fails.
+  /// Auto-assigns a vibrant color when no custom style is given.
   FlowEdge? addEdge({
     required String sourceNodeId,
     required String targetNodeId,
@@ -196,20 +171,25 @@ class FlowController extends ChangeNotifier {
     );
     if (error != null) return null;
 
+    final effectiveStyle = style ??
+        EdgeStyle(
+          color: _edgeColors[_edgeColorIndex % _edgeColors.length],
+        );
+    _edgeColorIndex++;
+
     _pushHistory();
     final edge = FlowEdge(
       sourceNodeId: sourceNodeId,
       targetNodeId: targetNodeId,
       sourceHandleId: sourceHandleId,
       targetHandleId: targetHandleId,
-      style: style,
+      style: effectiveStyle,
     );
     _graph.edges.add(edge);
     notifyListeners();
     return edge;
   }
 
-  /// Removes an edge by its ID.
   void removeEdge(String edgeId) {
     _pushHistory();
     _graph.edges.removeWhere((e) => e.id == edgeId);
@@ -217,76 +197,50 @@ class FlowController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Updates the style of an edge.
   void updateEdgeStyle(String edgeId, EdgeStyle newStyle) {
     _pushHistory();
-    final edge = _graph.edgeById(edgeId);
-    if (edge == null) return;
-    edge.style = newStyle;
+    _graph.edgeById(edgeId)?.style = newStyle;
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // Viewport Operations
-  // ---------------------------------------------------------------------------
+  // ── Viewport ──────────────────────────────────────────────────────────────
 
-  /// Sets the viewport pan offset.
   void pan(Offset newOffset) {
     _viewport = _viewport.copyWith(offset: newOffset);
     notifyListeners();
   }
 
-  /// Adds a delta to the current pan offset.
   void panBy(Offset delta) {
     _viewport = _viewport.copyWith(
-      offset: Offset(
-        _viewport.offset.dx + delta.dx,
-        _viewport.offset.dy + delta.dy,
-      ),
+      offset: _viewport.offset + delta,
     );
     notifyListeners();
   }
 
-  /// Sets the zoom level.
   void setZoom(double zoom) {
     _viewport = _viewport.copyWith(zoom: zoom);
     notifyListeners();
   }
 
-  /// Sets both pan offset and zoom level in a single update.
-  ///
-  /// Use this instead of calling [pan] + [setZoom] separately to avoid
-  /// triggering two rebuilds.
+  /// Sets offset and zoom in a single update to avoid double rebuild.
   void setViewport({Offset? offset, double? zoom}) {
     _viewport = _viewport.copyWith(offset: offset, zoom: zoom);
     notifyListeners();
   }
 
-  /// Zooms in by a factor.
-  void zoomIn({double factor = 0.1}) {
-    setZoom(_viewport.zoom + factor);
-  }
+  void zoomIn({double factor = 0.1}) => setZoom(_viewport.zoom + factor);
+  void zoomOut({double factor = 0.1}) => setZoom(_viewport.zoom - factor);
 
-  /// Zooms out by a factor.
-  void zoomOut({double factor = 0.1}) {
-    setZoom(_viewport.zoom - factor);
-  }
-
-  /// Fits the viewport to show all nodes.
   void fitView(Size canvasSize) {
     if (_graph.nodes.isEmpty) return;
 
-    final allPositions =
-        _graph.nodes.map((n) => n.position).toList();
-    final allBottomRights = _graph.nodes
-        .map((n) => Offset(
-              n.position.dx + n.size.width,
-              n.position.dy + n.size.height,
-            ))
+    final positions = _graph.nodes.map((n) => n.position).toList();
+    final bottomRights = _graph.nodes
+        .map((n) => n.position + Offset(n.size.width, n.size.height))
         .toList();
 
     final bounds = MathUtils.boundingRect(
-      [...allPositions, ...allBottomRights],
+      [...positions, ...bottomRights],
       padding: 50,
     );
 
@@ -305,11 +259,8 @@ class FlowController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // Selection
-  // ---------------------------------------------------------------------------
+  // ── Selection ─────────────────────────────────────────────────────────────
 
-  /// Selects all nodes and edges.
   void selectAll() {
     selection.selectAll(
       _graph.nodes.map((n) => n.id).toSet(),
@@ -317,28 +268,23 @@ class FlowController extends ChangeNotifier {
     );
   }
 
-  /// Removes all currently selected nodes and edges.
   void deleteSelection() {
     _pushHistory();
-    // Copy the sets to avoid concurrent modification
     final edgeIds = Set<String>.of(selection.selectedEdgeIds);
     final nodeIds = Set<String>.of(selection.selectedNodeIds);
-    for (final edgeId in edgeIds) {
-      _graph.edges.removeWhere((e) => e.id == edgeId);
+    for (final id in edgeIds) {
+      _graph.edges.removeWhere((e) => e.id == id);
     }
-    for (final nodeId in nodeIds) {
-      GraphUtils.removeEdgesForNode(_graph, nodeId);
-      _graph.nodes.removeWhere((n) => n.id == nodeId);
+    for (final id in nodeIds) {
+      GraphUtils.removeEdgesForNode(_graph, id);
+      _graph.nodes.removeWhere((n) => n.id == id);
     }
     selection.clearSelection();
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // History
-  // ---------------------------------------------------------------------------
+  // ── History ───────────────────────────────────────────────────────────────
 
-  /// Undoes the last action.
   void undo() {
     final previous = _history.undo(_graph);
     if (previous != null) {
@@ -347,7 +293,6 @@ class FlowController extends ChangeNotifier {
     }
   }
 
-  /// Redoes the last undone action.
   void redo() {
     final next = _history.redo(_graph);
     if (next != null) {
@@ -356,20 +301,39 @@ class FlowController extends ChangeNotifier {
     }
   }
 
-  void _pushHistory() {
-    _history.pushSnapshot(_graph);
+  void _pushHistory() => _history.pushSnapshot(_graph);
+
+  // ── Copy / Paste ──────────────────────────────────────────────────────────
+
+  void copySelectedNodes() {
+    _clipboard = selection.selectedNodeIds
+        .map((id) => _graph.nodeById(id))
+        .whereType<FlowNode>()
+        .map((n) => n.toJson())
+        .toList();
   }
 
-  // ---------------------------------------------------------------------------
-  // Serialization
-  // ---------------------------------------------------------------------------
-
-  /// Serializes the entire state to a JSON string.
-  String toJson() {
-    return Serializer.serialize(graph: _graph, viewport: _viewport);
+  void pasteNodes({Offset offset = const Offset(30, 30)}) {
+    if (_clipboard.isEmpty) return;
+    _pushHistory();
+    selection.clearSelection();
+    for (final json in _clipboard) {
+      final original = FlowNode.fromJson(json);
+      final pasted = addNode(
+        type: original.type,
+        label: '${original.label} (copy)',
+        position: original.position + offset,
+        size: original.size,
+        data: Map<String, dynamic>.from(original.data),
+      );
+      selection.selectNode(pasted.id, clearExisting: false);
+    }
   }
 
-  /// Loads state from a JSON string.
+  // ── Serialization ─────────────────────────────────────────────────────────
+
+  String toJson() => Serializer.serialize(graph: _graph, viewport: _viewport);
+
   void fromJson(String jsonString) {
     _pushHistory();
     final result = Serializer.deserialize(jsonString);
@@ -378,12 +342,10 @@ class FlowController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Serializes state to a JSON map.
   Map<String, dynamic> toMap() {
     return Serializer.toMap(graph: _graph, viewport: _viewport);
   }
 
-  /// Loads state from a JSON map.
   void fromMap(Map<String, dynamic> map) {
     _pushHistory();
     final result = Serializer.fromMap(map);
@@ -392,7 +354,6 @@ class FlowController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clears all nodes, edges, viewport, history, and selection.
   void clear() {
     _pushHistory();
     _graph = FlowGraph();

@@ -1,105 +1,81 @@
 import 'package:flutter/foundation.dart';
 
-/// Manages the selection state of nodes and edges.
+/// Tracks selected node and edge IDs.
 ///
-/// Tracks which node/edge IDs are currently selected and
-/// notifies listeners on changes.
+/// Notifies listeners on selection changes for UI updates.
 class SelectionManager extends ChangeNotifier {
-  final Set<String> _selectedNodeIds = {};
-  final Set<String> _selectedEdgeIds = {};
+  final Set<String> _nodeIds = {};
+  final Set<String> _edgeIds = {};
 
-  /// The set of currently selected node IDs.
-  Set<String> get selectedNodeIds => Set.unmodifiable(_selectedNodeIds);
+  Set<String> get selectedNodeIds => Set.unmodifiable(_nodeIds);
+  Set<String> get selectedEdgeIds => Set.unmodifiable(_edgeIds);
+  bool get hasSelection => _nodeIds.isNotEmpty || _edgeIds.isNotEmpty;
 
-  /// The set of currently selected edge IDs.
-  Set<String> get selectedEdgeIds => Set.unmodifiable(_selectedEdgeIds);
+  bool isNodeSelected(String id) => _nodeIds.contains(id);
+  bool isEdgeSelected(String id) => _edgeIds.contains(id);
 
-  /// Whether any nodes or edges are selected.
-  bool get hasSelection =>
-      _selectedNodeIds.isNotEmpty || _selectedEdgeIds.isNotEmpty;
-
-  /// Whether the given [nodeId] is currently selected.
-  bool isNodeSelected(String nodeId) => _selectedNodeIds.contains(nodeId);
-
-  /// Whether the given [edgeId] is currently selected.
-  bool isEdgeSelected(String edgeId) => _selectedEdgeIds.contains(edgeId);
-
-  /// Selects a single node, clearing any previous selection.
-  void selectNode(String nodeId) {
-    _selectedNodeIds.clear();
-    _selectedEdgeIds.clear();
-    _selectedNodeIds.add(nodeId);
+  void selectNode(String nodeId, {bool clearExisting = true}) {
+    if (clearExisting) {
+      _nodeIds.clear();
+      _edgeIds.clear();
+    }
+    _nodeIds.add(nodeId);
     notifyListeners();
   }
 
-  /// Selects a single edge, clearing any previous selection.
   void selectEdge(String edgeId) {
-    _selectedNodeIds.clear();
-    _selectedEdgeIds.clear();
-    _selectedEdgeIds.add(edgeId);
+    _nodeIds.clear();
+    _edgeIds
+      ..clear()
+      ..add(edgeId);
     notifyListeners();
   }
 
-  /// Toggles the selection state of a node (for multi-select).
   void toggleNodeSelection(String nodeId) {
-    if (_selectedNodeIds.contains(nodeId)) {
-      _selectedNodeIds.remove(nodeId);
-    } else {
-      _selectedNodeIds.add(nodeId);
-    }
+    _nodeIds.contains(nodeId)
+        ? _nodeIds.remove(nodeId)
+        : _nodeIds.add(nodeId);
     notifyListeners();
   }
 
-  /// Toggles the selection state of an edge.
   void toggleEdgeSelection(String edgeId) {
-    if (_selectedEdgeIds.contains(edgeId)) {
-      _selectedEdgeIds.remove(edgeId);
-    } else {
-      _selectedEdgeIds.add(edgeId);
-    }
+    _edgeIds.contains(edgeId)
+        ? _edgeIds.remove(edgeId)
+        : _edgeIds.add(edgeId);
     notifyListeners();
   }
 
-  /// Selects multiple nodes, optionally adding to existing selection.
   void selectNodes(Set<String> nodeIds, {bool addToSelection = false}) {
     if (!addToSelection) {
-      _selectedNodeIds.clear();
-      _selectedEdgeIds.clear();
+      _nodeIds.clear();
+      _edgeIds.clear();
     }
-    _selectedNodeIds.addAll(nodeIds);
+    _nodeIds.addAll(nodeIds);
     notifyListeners();
   }
 
-  /// Selects all given node and edge IDs.
   void selectAll(Set<String> nodeIds, Set<String> edgeIds) {
-    _selectedNodeIds
+    _nodeIds
       ..clear()
       ..addAll(nodeIds);
-    _selectedEdgeIds
+    _edgeIds
       ..clear()
       ..addAll(edgeIds);
     notifyListeners();
   }
 
-  /// Clears all selection.
   void clearSelection() {
     if (!hasSelection) return;
-    _selectedNodeIds.clear();
-    _selectedEdgeIds.clear();
+    _nodeIds.clear();
+    _edgeIds.clear();
     notifyListeners();
   }
 
-  /// Removes a node from selection (e.g., when a node is deleted).
   void deselectNode(String nodeId) {
-    if (_selectedNodeIds.remove(nodeId)) {
-      notifyListeners();
-    }
+    if (_nodeIds.remove(nodeId)) notifyListeners();
   }
 
-  /// Removes an edge from selection.
   void deselectEdge(String edgeId) {
-    if (_selectedEdgeIds.remove(edgeId)) {
-      notifyListeners();
-    }
+    if (_edgeIds.remove(edgeId)) notifyListeners();
   }
 }

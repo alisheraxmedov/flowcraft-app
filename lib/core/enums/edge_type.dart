@@ -6,6 +6,9 @@ enum EdgeType {
   /// Right-angle path segments with optional rounded corners.
   smoothStep,
 
+  /// Right-angle path segments with sharp corners (no rounding).
+  step,
+
   /// A direct straight line from source to target.
   straight;
 
@@ -17,3 +20,4 @@ enum EdgeType {
     );
   }
 }
+

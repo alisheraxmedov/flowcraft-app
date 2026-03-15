@@ -44,6 +44,7 @@ export 'edges/bezier_edge.dart';
 export 'edges/edge_label_widget.dart';
 export 'edges/edge_painter.dart';
 export 'edges/smooth_step_edge.dart';
+export 'edges/step_edge.dart';
 export 'edges/straight_edge.dart';
 
 // Nodes
