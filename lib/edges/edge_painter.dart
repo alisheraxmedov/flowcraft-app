@@ -79,10 +79,18 @@ class EdgePainter extends CustomPainter {
           canvas.drawPath(path, highlightPaint);
         }
 
-        if (edge.style.animated && edge.style.dashPattern.isNotEmpty) {
-          _drawAnimatedDashes(canvas, path, paint, edge, viewport.zoom);
-        } else if (edge.style.dashPattern.isNotEmpty) {
-          _drawDashes(canvas, path, paint, edge.style.dashPattern);
+        final dashPattern = _effectiveDashPattern(edge);
+
+        if (edge.style.animated) {
+          _drawAnimatedDashes(
+            canvas,
+            path,
+            paint,
+            dashPattern,
+            viewport.zoom,
+          );
+        } else if (dashPattern.isNotEmpty) {
+          _drawDashes(canvas, path, paint, dashPattern);
         } else {
           canvas.drawPath(path, paint);
         }
@@ -92,6 +100,18 @@ class EdgePainter extends CustomPainter {
           _drawArrow(canvas, path, paint, edge.style.arrowSize * viewport.zoom);
         }
     }
+  }
+
+  List<double> _effectiveDashPattern(FlowEdge edge) {
+    if (edge.style.dashPattern.isNotEmpty) {
+      return edge.style.dashPattern;
+    }
+
+    if (edge.style.animated) {
+      return const [8.0, 4.0];
+    }
+
+    return const <double>[];
   }
 
   Path _buildPath(
@@ -156,10 +176,9 @@ class EdgePainter extends CustomPainter {
     Canvas canvas,
     Path path,
     Paint paint,
-    FlowEdge edge,
+    List<double> dashPattern,
     double zoom,
   ) {
-    final dashPattern = edge.style.dashPattern;
     if (dashPattern.length < 2) {
       canvas.drawPath(path, paint);
       return;

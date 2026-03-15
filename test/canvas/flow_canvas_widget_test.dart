@@ -37,7 +37,7 @@ void main() {
       );
 
       await tester.pumpWidget(buildApp(controller));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // Nodes are typically rendered via BaseNodeWidget -> DefaultNodeWidget
       expect(find.text('N1'), findsOneWidget);
@@ -49,14 +49,14 @@ void main() {
       controller.addNode(position: const Offset(10, 10), label: 'PanMe');
       
       await tester.pumpWidget(buildApp(controller));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(controller.viewport.offset, Offset.zero);
 
       // Pan the canvas
       final canvasCenter = tester.getCenter(find.byType(FlowCanvas));
       await tester.dragFrom(canvasCenter, const Offset(100, 50));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(controller.viewport.offset.dx, 80);
       expect(controller.viewport.offset.dy, 40);

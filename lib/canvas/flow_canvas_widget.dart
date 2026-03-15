@@ -21,7 +21,6 @@ import 'package:flowcraft/theme/flow_theme.dart';
 /// )
 /// ```
 class FlowCanvas extends StatefulWidget {
-  /// Creates a [FlowCanvas].
   const FlowCanvas({
     super.key,
     required this.controller,
@@ -39,43 +38,18 @@ class FlowCanvas extends StatefulWidget {
     this.overlays = const [],
   });
 
-  /// The controller managing all flow state.
   final FlowController controller;
-
-  /// Optional theme configuration.
   final FlowTheme? theme;
-
-  /// Called when a node is tapped.
   final void Function(String nodeId)? onNodeTap;
-
-  /// Called when an edge is tapped.
   final void Function(String edgeId)? onEdgeTap;
-
-  /// Called when the canvas background is tapped.
   final VoidCallback? onCanvasTap;
-
-  /// Called after a new node is added.
   final void Function(String nodeId)? onNodeAdded;
-
-  /// Whether to show the minimap overlay.
   final bool showMiniMap;
-
-  /// Whether to show the zoom controls overlay.
   final bool showControls;
-
-  /// The type of background grid.
   final GridType gridType;
-
-  /// Minimum zoom level.
   final double minZoom;
-
-  /// Maximum zoom level.
   final double maxZoom;
-
-  /// Optional custom node builder.
   final Widget Function(FlowController controller, int index)? nodeBuilder;
-
-  /// Additional overlay widgets.
   final List<Widget> overlays;
 
   @override
@@ -112,7 +86,6 @@ class _FlowCanvasState extends State<FlowCanvas> {
   Widget build(BuildContext context) {
     final theme = widget.theme ?? FlowTheme.light();
 
-    // Build the overlays list including optional minimap and controls
     final allOverlays = <Widget>[
       ...widget.overlays,
       if (widget.showControls)
@@ -137,6 +110,9 @@ class _FlowCanvasState extends State<FlowCanvas> {
           gridColor: theme.gridColor,
           nodeBuilder: widget.nodeBuilder,
           overlays: allOverlays,
+          theme: theme,
+          onNodeTap: widget.onNodeTap,
+          onEdgeTap: widget.onEdgeTap,
         ),
       ),
     );
