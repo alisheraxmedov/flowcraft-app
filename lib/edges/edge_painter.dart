@@ -21,14 +21,17 @@ class EdgePainter extends CustomPainter {
   EdgePainter({
     required this.controller,
     this.animationValue = 0.0,
+    this.canvasSize,
   });
 
   final FlowController controller;
   final double animationValue;
+  final Size? canvasSize;
 
   @override
   void paint(Canvas canvas, Size size) {
     final viewport = controller.viewport;
+    final effectiveSize = canvasSize ?? size;
 
     for (final edge in controller.edges) {
       final sourceNode = controller.graph.nodeById(edge.sourceNodeId);
@@ -47,6 +50,11 @@ class EdgePainter extends CustomPainter {
         targetHandle.position.toOffset(targetNode.rect),
         viewport,
       );
+
+      // Viewport culling: skip edges entirely off-screen
+      if (_isEdgeOffScreen(screenSource, screenTarget, effectiveSize)) {
+        continue;
+      }
 
       final path = _buildPath(
         edge, screenSource, screenTarget,
@@ -85,6 +93,19 @@ class EdgePainter extends CustomPainter {
         _drawArrow(canvas, path, paint, edge.style.arrowSize * viewport.zoom);
       }
     }
+  }
+
+  bool _isEdgeOffScreen(Offset source, Offset target, Size size) {
+    const margin = 100.0;
+    final minX = math.min(source.dx, target.dx);
+    final maxX = math.max(source.dx, target.dx);
+    final minY = math.min(source.dy, target.dy);
+    final maxY = math.max(source.dy, target.dy);
+
+    return maxX < -margin ||
+        minX > size.width + margin ||
+        maxY < -margin ||
+        minY > size.height + margin;
   }
 
   List<double> _effectiveDashes(FlowEdge edge) {
@@ -186,8 +207,6 @@ class EdgePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(EdgePainter oldDelegate) {
-    return animationValue != oldDelegate.animationValue ||
-        controller != oldDelegate.controller;
-  }
+  bool shouldRepaint(EdgePainter oldDelegate) => true;
 }
+

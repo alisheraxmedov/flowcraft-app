@@ -61,26 +61,13 @@ class _FlowCanvasState extends State<FlowCanvas> {
   void initState() {
     super.initState();
     _focusNode = FocusNode();
-    widget.controller.addListener(_rebuild);
-  }
-
-  @override
-  void didUpdateWidget(FlowCanvas oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_rebuild);
-      widget.controller.addListener(_rebuild);
-    }
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_rebuild);
     _focusNode.dispose();
     super.dispose();
   }
-
-  void _rebuild() => setState(() {});
 
   void _handleKey(KeyEvent event) {
     if (!widget.enableKeyboardShortcuts) return;
@@ -155,23 +142,28 @@ class _FlowCanvasState extends State<FlowCanvas> {
         behavior: HitTestBehavior.translucent,
         child: Container(
           color: theme.canvasColor,
-          child: CanvasGestureHandler(
-            controller: widget.controller,
-            onCanvasTap: () {
-              _focusNode.requestFocus();
-              widget.onCanvasTap?.call();
+          child: ListenableBuilder(
+            listenable: widget.controller,
+            builder: (context, _) {
+              return CanvasGestureHandler(
+                controller: widget.controller,
+                onCanvasTap: () {
+                  _focusNode.requestFocus();
+                  widget.onCanvasTap?.call();
+                },
+                child: CanvasLayerStack(
+                  controller: widget.controller,
+                  gridType: widget.gridType,
+                  gridColor: theme.gridColor,
+                  nodeBuilder: widget.nodeBuilder,
+                  overlays: allOverlays,
+                  theme: theme,
+                  onNodeTap: widget.onNodeTap,
+                  onEdgeTap: widget.onEdgeTap,
+                  onConnectionCreated: widget.onConnectionCreated,
+                ),
+              );
             },
-            child: CanvasLayerStack(
-              controller: widget.controller,
-              gridType: widget.gridType,
-              gridColor: theme.gridColor,
-              nodeBuilder: widget.nodeBuilder,
-              overlays: allOverlays,
-              theme: theme,
-              onNodeTap: widget.onNodeTap,
-              onEdgeTap: widget.onEdgeTap,
-              onConnectionCreated: widget.onConnectionCreated,
-            ),
           ),
         ),
       ),

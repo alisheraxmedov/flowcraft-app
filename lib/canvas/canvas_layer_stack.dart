@@ -53,6 +53,7 @@ class CanvasLayerStack extends StatefulWidget {
 class _CanvasLayerStackState extends State<CanvasLayerStack>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
+  bool _animationRunning = false;
 
   FlowHandle? _dragSourceHandle;
   Offset? _dragStart;
@@ -64,13 +65,32 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
-    )..repeat();
+    );
+    _syncAnimationState();
+  }
+
+  @override
+  void didUpdateWidget(CanvasLayerStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncAnimationState();
   }
 
   @override
   void dispose() {
     _animController.dispose();
     super.dispose();
+  }
+
+  void _syncAnimationState() {
+    final hasAnimated = widget.controller.edges.any((e) => e.style.animated);
+    if (hasAnimated && !_animationRunning) {
+      _animController.repeat();
+      _animationRunning = true;
+    } else if (!hasAnimated && _animationRunning) {
+      _animController.stop();
+      _animController.value = 0;
+      _animationRunning = false;
+    }
   }
 
   // ── Connection Drag ───────────────────────────────────────────────────────
@@ -161,6 +181,18 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
     return best;
   }
 
+  // ── Viewport culling ──────────────────────────────────────────────────────
+
+  bool _isNodeVisible(Offset screenPos, Size nodeSize, double zoom, Size canvasSize) {
+    final scaledWidth = nodeSize.width * zoom;
+    final scaledHeight = nodeSize.height * zoom;
+    const margin = 50.0;
+    return screenPos.dx + scaledWidth > -margin &&
+        screenPos.dx < canvasSize.width + margin &&
+        screenPos.dy + scaledHeight > -margin &&
+        screenPos.dy < canvasSize.height + margin;
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -169,95 +201,126 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
     final theme = widget.theme;
 
     return ClipRect(
-      child: Stack(
-        children: [
-          // Grid
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: GridPainter(
-                  viewport: viewport,
-                  gridType: widget.gridType,
-                  gridColor: widget.gridColor,
-                  gridSpacing: widget.gridSpacing,
-                ),
-              ),
-            ),
-          ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final canvasSize = Size(constraints.maxWidth, constraints.maxHeight);
 
-          // Edges
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _animController,
-                builder: (context, _) {
-                  return CustomPaint(
-                    painter: EdgePainter(
-                      controller: widget.controller,
-                      animationValue: _animController.value,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // Connection preview line
-          if (_dragSourceHandle != null &&
-              _dragStart != null &&
-              _dragCurrent != null)
-            Positioned.fill(
-              child: CustomPaint(
-                painter: ConnectionLinePainter(
-                  startPoint: _dragStart!,
-                  endPoint: _dragCurrent!,
-                  color: theme?.handleBorderColor ?? const Color(0xFF2196F3),
-                  strokeWidth: 2.0,
-                ),
-              ),
-            ),
-
-          // Nodes
-          ...List.generate(widget.controller.nodes.length, (index) {
-            final node = widget.controller.nodes[index];
-            final screenPos = ViewportTransform.canvasToScreen(
-              node.position,
-              viewport,
-            );
-
-            return Positioned(
-              left: screenPos.dx,
-              top: screenPos.dy,
-              child: Transform.scale(
-                scale: viewport.zoom,
-                alignment: Alignment.topLeft,
+          return Stack(
+            children: [
+              // Grid
+              Positioned.fill(
                 child: RepaintBoundary(
-                  child: widget.nodeBuilder != null
-                      ? widget.nodeBuilder!(widget.controller, index)
-                      : DefaultBaseNodeWidget(
-                          controller: widget.controller,
-                          node: node,
-                          theme: theme,
-                          onTap: widget.onNodeTap != null
-                              ? () => widget.onNodeTap!(node.id)
-                              : null,
-                          onHandleDragStarted: _onHandleDragStarted,
-                          onHandleDragUpdated: _onHandleDragUpdated,
-                          onHandleDragEnded: _onHandleDragEnded,
+                  child: CustomPaint(
+                    painter: GridPainter(
+                      viewport: viewport,
+                      gridType: widget.gridType,
+                      gridColor: widget.gridColor,
+                      gridSpacing: widget.gridSpacing,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Edges
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: _animationRunning
+                      ? AnimatedBuilder(
+                          animation: _animController,
+                          builder: (context, _) {
+                            return CustomPaint(
+                              painter: EdgePainter(
+                                controller: widget.controller,
+                                animationValue: _animController.value,
+                                canvasSize: canvasSize,
+                              ),
+                            );
+                          },
+                        )
+                      : CustomPaint(
+                          painter: EdgePainter(
+                            controller: widget.controller,
+                            animationValue: 0,
+                            canvasSize: canvasSize,
+                          ),
                         ),
                 ),
               ),
-            );
-          }),
 
-          // Edge labels
-          ..._buildEdgeLabels(viewport),
+              // Connection preview line
+              if (_dragSourceHandle != null &&
+                  _dragStart != null &&
+                  _dragCurrent != null)
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: ConnectionLinePainter(
+                      startPoint: _dragStart!,
+                      endPoint: _dragCurrent!,
+                      color: theme?.handleBorderColor ?? const Color(0xFF2196F3),
+                      strokeWidth: 2.0,
+                    ),
+                  ),
+                ),
 
-          // Overlays
-          ...widget.overlays,
-        ],
+              // Nodes (with viewport culling and ValueKey)
+              ..._buildVisibleNodes(viewport, canvasSize),
+
+              // Edge labels
+              ..._buildEdgeLabels(viewport),
+
+              // Overlays
+              ...widget.overlays,
+            ],
+          );
+        },
       ),
     );
+  }
+
+  List<Widget> _buildVisibleNodes(FlowViewport viewport, Size canvasSize) {
+    final nodes = widget.controller.nodes;
+    final result = <Widget>[];
+
+    for (int i = 0; i < nodes.length; i++) {
+      final node = nodes[i];
+      final screenPos = ViewportTransform.canvasToScreen(
+        node.position,
+        viewport,
+      );
+
+      if (!_isNodeVisible(screenPos, node.size, viewport.zoom, canvasSize)) {
+        continue;
+      }
+
+      result.add(
+        Positioned(
+          key: ValueKey(node.id),
+          left: screenPos.dx,
+          top: screenPos.dy,
+          child: Transform.scale(
+            scale: viewport.zoom,
+            alignment: Alignment.topLeft,
+            child: RepaintBoundary(
+              child: widget.nodeBuilder != null
+                  ? widget.nodeBuilder!(widget.controller, i)
+                  : DefaultBaseNodeWidget(
+                      controller: widget.controller,
+                      node: node,
+                      theme: widget.theme,
+                      onTap: widget.onNodeTap != null
+                          ? () => widget.onNodeTap!(node.id)
+                          : null,
+                      onHandleDragStarted: _onHandleDragStarted,
+                      onHandleDragUpdated: _onHandleDragUpdated,
+                      onHandleDragEnded: _onHandleDragEnded,
+                    ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return result;
   }
 
   List<Widget> _buildEdgeLabels(FlowViewport viewport) {

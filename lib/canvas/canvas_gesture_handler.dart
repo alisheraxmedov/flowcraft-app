@@ -57,6 +57,8 @@ class _CanvasGestureHandlerState extends State<CanvasGestureHandler> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
+    if (_controller.isDraggingNode) return;
+
     final focalPoint = details.localFocalPoint;
 
     if (details.pointerCount == 1) {

@@ -8,7 +8,10 @@ import 'package:flowcraft/handles/handle_widget.dart';
 import 'package:flowcraft/theme/flow_theme.dart';
 
 /// Default node widget with selection, drag, handles, and delete button.
-class DefaultBaseNodeWidget extends StatelessWidget {
+///
+/// Uses raw [Listener] for drag handling to avoid gesture arena conflicts
+/// with the canvas pan gesture.
+class DefaultBaseNodeWidget extends StatefulWidget {
   const DefaultBaseNodeWidget({
     super.key,
     required this.controller,
@@ -29,36 +32,71 @@ class DefaultBaseNodeWidget extends StatelessWidget {
   final VoidCallback? onHandleDragEnded;
 
   @override
-  Widget build(BuildContext context) {
-    final selected = controller.selection.isNodeSelected(node.id);
-    final bg = theme?.nodeBackgroundColor ?? const Color(0xFFFFFFFF);
-    final border = selected
-        ? (theme?.nodeSelectedBorderColor ?? const Color(0xFF2196F3))
-        : (theme?.nodeBorderColor ?? const Color(0xFFDDDDDD));
-    final handleColor = theme?.handleBorderColor ?? const Color(0xFF2196F3);
+  State<DefaultBaseNodeWidget> createState() => _DefaultBaseNodeWidgetState();
+}
 
-    return GestureDetector(
-      onTap: () {
-        controller.selection.selectNode(node.id);
-        onTap?.call();
-      },
-      onPanStart: (_) {
-        controller.startNodeDrag(node.id);
-        controller.selection.selectNode(node.id);
-      },
-      onPanUpdate: (d) {
-        controller.moveNodeBy(node.id, d.delta / controller.viewport.zoom);
-      },
+class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
+  bool _isDragging = false;
+  bool _isHandleDragging = false;
+  Offset? _lastPointerPosition;
+
+  void _onPointerDown(PointerDownEvent event) {
+    _lastPointerPosition = event.position;
+    _isDragging = false;
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (_lastPointerPosition == null || _isHandleDragging) return;
+
+    if (!_isDragging) {
+      _isDragging = true;
+      widget.controller.startNodeDrag(widget.node.id);
+      widget.controller.selection.selectNode(widget.node.id);
+    }
+
+    final delta = event.position - _lastPointerPosition!;
+    _lastPointerPosition = event.position;
+
+    final scaledDelta = delta / widget.controller.viewport.zoom;
+    widget.controller.moveNodeBy(widget.node.id, scaledDelta);
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    if (!_isDragging) {
+      widget.controller.selection.selectNode(widget.node.id);
+      widget.onTap?.call();
+    } else {
+      widget.controller.endNodeDrag();
+    }
+    _isDragging = false;
+    _lastPointerPosition = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = widget.controller.selection.isNodeSelected(widget.node.id);
+    final bg = widget.theme?.nodeBackgroundColor ?? const Color(0xFFFFFFFF);
+    final border = selected
+        ? (widget.theme?.nodeSelectedBorderColor ?? const Color(0xFF2196F3))
+        : (widget.theme?.nodeBorderColor ?? const Color(0xFFDDDDDD));
+    final handleColor =
+        widget.theme?.handleBorderColor ?? const Color(0xFF2196F3);
+
+    return Listener(
+      onPointerDown: _onPointerDown,
+      onPointerMove: _onPointerMove,
+      onPointerUp: _onPointerUp,
+      behavior: HitTestBehavior.opaque,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: node.size.width,
-            height: node.size.height,
+            width: widget.node.size.width,
+            height: widget.node.size.height,
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(
-                theme?.nodeBorderRadius ?? 8.0,
+                widget.theme?.nodeBorderRadius ?? 8.0,
               ),
               border: Border.all(
                 color: border,
@@ -76,22 +114,28 @@ class DefaultBaseNodeWidget extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 NodeHeader(
-                  label: node.label,
-                  nodeType: node.type,
-                  backgroundColor: theme?.headerBackgroundColor,
+                  label: widget.node.label,
+                  nodeType: widget.node.type,
+                  backgroundColor: widget.theme?.headerBackgroundColor,
                 ),
               ],
             ),
           ),
 
           // Handles
-          ...node.handles.map((h) => HandleWidget(
+          ...widget.node.handles.map((h) => HandleWidget(
                 handle: h,
-                nodeSize: node.size,
+                nodeSize: widget.node.size,
                 color: handleColor,
-                onDragStarted: onHandleDragStarted,
-                onDragUpdated: onHandleDragUpdated,
-                onDragEnded: onHandleDragEnded,
+                onDragStarted: (handle) {
+                  _isHandleDragging = true;
+                  widget.onHandleDragStarted?.call(handle);
+                },
+                onDragUpdated: widget.onHandleDragUpdated,
+                onDragEnded: () {
+                  _isHandleDragging = false;
+                  widget.onHandleDragEnded?.call();
+                },
               )),
 
           // Delete button
@@ -100,7 +144,7 @@ class DefaultBaseNodeWidget extends StatelessWidget {
               top: -8,
               right: -8,
               child: GestureDetector(
-                onTap: () => controller.removeNode(node.id),
+                onTap: () => widget.controller.removeNode(widget.node.id),
                 child: Container(
                   width: 20,
                   height: 20,

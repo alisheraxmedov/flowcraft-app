@@ -42,6 +42,13 @@ class FlowController extends ChangeNotifier {
   /// Grid snap interval in logical pixels.
   double gridSnap;
 
+  /// Whether a node is currently being dragged.
+  /// Used to prevent canvas pan during node drag.
+  bool isDraggingNode = false;
+
+  /// Tracks which nodes are being dragged for deferred snap.
+  final Set<String> _draggingNodeIds = {};
+
   static const List<Color> _edgeColors = [
     Color(0xFF42A5F5), // Blue
     Color(0xFF66BB6A), // Green
@@ -56,14 +63,27 @@ class FlowController extends ChangeNotifier {
   int _edgeColorIndex = 0;
   List<Map<String, dynamic>> _clipboard = [];
 
+  List<FlowNode>? _cachedNodes;
+  List<FlowEdge>? _cachedEdges;
+
   // ── Getters ───────────────────────────────────────────────────────────────
 
   FlowGraph get graph => _graph;
-  List<FlowNode> get nodes => List.unmodifiable(_graph.nodes);
-  List<FlowEdge> get edges => List.unmodifiable(_graph.edges);
+
+  List<FlowNode> get nodes =>
+      _cachedNodes ??= List.unmodifiable(_graph.nodes);
+
+  List<FlowEdge> get edges =>
+      _cachedEdges ??= List.unmodifiable(_graph.edges);
+
   FlowViewport get viewport => _viewport;
   bool get canUndo => _history.canUndo;
   bool get canRedo => _history.canRedo;
+
+  void _invalidateCache() {
+    _cachedNodes = null;
+    _cachedEdges = null;
+  }
 
   // ── Nodes ─────────────────────────────────────────────────────────────────
 
@@ -85,6 +105,8 @@ class FlowController extends ChangeNotifier {
       handles: handles,
     );
     _graph.nodes.add(node);
+    _graph.indexNode(node);
+    _invalidateCache();
     notifyListeners();
     return node;
   }
@@ -93,6 +115,8 @@ class FlowController extends ChangeNotifier {
     _pushHistory();
     GraphUtils.removeEdgesForNode(_graph, nodeId);
     _graph.nodes.removeWhere((n) => n.id == nodeId);
+    _graph.unindexNode(nodeId);
+    _invalidateCache();
     selection.deselectNode(nodeId);
     notifyListeners();
   }
@@ -108,7 +132,7 @@ class FlowController extends ChangeNotifier {
     final node = _graph.nodeById(nodeId);
     if (node == null) return;
     final raw = node.position + delta;
-    node.position = snapToGrid ? _snap(raw) : raw;
+    node.position = (snapToGrid && !isDraggingNode) ? _snap(raw) : raw;
     notifyListeners();
   }
 
@@ -119,7 +143,25 @@ class FlowController extends ChangeNotifier {
     );
   }
 
-  void startNodeDrag(String nodeId) => _pushHistory();
+  void startNodeDrag(String nodeId) {
+    _pushHistory();
+    isDraggingNode = true;
+    _draggingNodeIds.add(nodeId);
+  }
+
+  void endNodeDrag() {
+    if (snapToGrid) {
+      for (final id in _draggingNodeIds) {
+        final node = _graph.nodeById(id);
+        if (node != null) {
+          node.position = _snap(node.position);
+        }
+      }
+    }
+    _draggingNodeIds.clear();
+    isDraggingNode = false;
+    notifyListeners();
+  }
 
   void renameNode(String nodeId, String newLabel) {
     _pushHistory();
@@ -186,6 +228,8 @@ class FlowController extends ChangeNotifier {
       style: effectiveStyle,
     );
     _graph.edges.add(edge);
+    _graph.indexEdge(edge);
+    _invalidateCache();
     notifyListeners();
     return edge;
   }
@@ -193,6 +237,8 @@ class FlowController extends ChangeNotifier {
   void removeEdge(String edgeId) {
     _pushHistory();
     _graph.edges.removeWhere((e) => e.id == edgeId);
+    _graph.unindexEdge(edgeId);
+    _invalidateCache();
     selection.deselectEdge(edgeId);
     notifyListeners();
   }
@@ -274,11 +320,14 @@ class FlowController extends ChangeNotifier {
     final nodeIds = Set<String>.of(selection.selectedNodeIds);
     for (final id in edgeIds) {
       _graph.edges.removeWhere((e) => e.id == id);
+      _graph.unindexEdge(id);
     }
     for (final id in nodeIds) {
       GraphUtils.removeEdgesForNode(_graph, id);
       _graph.nodes.removeWhere((n) => n.id == id);
+      _graph.unindexNode(id);
     }
+    _invalidateCache();
     selection.clearSelection();
     notifyListeners();
   }
@@ -289,6 +338,7 @@ class FlowController extends ChangeNotifier {
     final previous = _history.undo(_graph);
     if (previous != null) {
       _graph = previous;
+      _invalidateCache();
       notifyListeners();
     }
   }
@@ -297,6 +347,7 @@ class FlowController extends ChangeNotifier {
     final next = _history.redo(_graph);
     if (next != null) {
       _graph = next;
+      _invalidateCache();
       notifyListeners();
     }
   }
@@ -339,6 +390,7 @@ class FlowController extends ChangeNotifier {
     final result = Serializer.deserialize(jsonString);
     _graph = result.graph;
     _viewport = result.viewport;
+    _invalidateCache();
     notifyListeners();
   }
 
@@ -351,6 +403,7 @@ class FlowController extends ChangeNotifier {
     final result = Serializer.fromMap(map);
     _graph = result.graph;
     _viewport = result.viewport;
+    _invalidateCache();
     notifyListeners();
   }
 
@@ -358,6 +411,7 @@ class FlowController extends ChangeNotifier {
     _pushHistory();
     _graph = FlowGraph();
     _viewport = const FlowViewport();
+    _invalidateCache();
     selection.clearSelection();
     _history.clear();
     notifyListeners();

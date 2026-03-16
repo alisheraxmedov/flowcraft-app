@@ -189,4 +189,95 @@ void main() {
       expect(controller.nodes.length, 2);
     });
   });
+
+  group('FlowCanvas ListenableBuilder Integration', () {
+    testWidgets('canvas updates when node is added via controller', (tester) async {
+      final controller = FlowController();
+      await tester.pumpWidget(buildApp(controller));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Dynamic'), findsNothing);
+
+      controller.addNode(label: 'Dynamic', position: const Offset(50, 50));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Dynamic'), findsOneWidget);
+    });
+
+    testWidgets('canvas updates when node is removed via controller', (tester) async {
+      final controller = FlowController();
+      final node = controller.addNode(label: 'WillDisappear', position: const Offset(50, 50));
+
+      await tester.pumpWidget(buildApp(controller));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('WillDisappear'), findsOneWidget);
+
+      controller.removeNode(node.id);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('WillDisappear'), findsNothing);
+    });
+
+    testWidgets('canvas updates when node label is renamed', (tester) async {
+      final controller = FlowController();
+      final node = controller.addNode(label: 'OldLabel', position: const Offset(50, 50));
+
+      await tester.pumpWidget(buildApp(controller));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('OldLabel'), findsOneWidget);
+
+      controller.renameNode(node.id, 'NewLabel');
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('NewLabel'), findsOneWidget);
+      expect(find.text('OldLabel'), findsNothing);
+    });
+
+    testWidgets('canvas still renders after clear and re-add', (tester) async {
+      final controller = FlowController();
+      controller.addNode(label: 'First', position: const Offset(50, 50));
+
+      await tester.pumpWidget(buildApp(controller));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('First'), findsOneWidget);
+
+      controller.clear();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('First'), findsNothing);
+
+      controller.addNode(label: 'Second', position: const Offset(50, 50));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Second'), findsOneWidget);
+    });
+
+    testWidgets('multiple nodes render correctly with keyed widgets', (tester) async {
+      final controller = FlowController();
+      controller.addNode(label: 'A', position: const Offset(50, 50));
+      controller.addNode(label: 'B', position: const Offset(250, 50));
+      controller.addNode(label: 'C', position: const Offset(450, 50));
+
+      await tester.pumpWidget(buildApp(controller));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('A'), findsOneWidget);
+      expect(find.text('B'), findsOneWidget);
+      expect(find.text('C'), findsOneWidget);
+    });
+
+    testWidgets('undo restores previous canvas state visually', (tester) async {
+      final controller = FlowController();
+      controller.addNode(label: 'Persistent', position: const Offset(50, 50));
+
+      await tester.pumpWidget(buildApp(controller));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      controller.addNode(label: 'Temporary', position: const Offset(250, 50));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Temporary'), findsOneWidget);
+
+      controller.undo();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Temporary'), findsNothing);
+      expect(find.text('Persistent'), findsOneWidget);
+    });
+  });
 }

@@ -40,4 +40,9 @@ class NodeDragHandler {
       controller.moveNodeBy(selectedId, scaledDelta);
     }
   }
+
+  /// Call this at drag end.
+  void onDragEnd() {
+    controller.endNodeDrag();
+  }
 }

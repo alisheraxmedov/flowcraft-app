@@ -222,5 +222,10 @@ class _MinimapPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_MinimapPainter oldDelegate) => true;
+  bool shouldRepaint(_MinimapPainter oldDelegate) {
+    return controller != oldDelegate.controller ||
+        nodeColor != oldDelegate.nodeColor ||
+        viewportColor != oldDelegate.viewportColor;
+  }
 }
+

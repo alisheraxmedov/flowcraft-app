@@ -397,4 +397,246 @@ void main() {
       expect(controller.nodes.length, 1);
     });
   });
+
+  group('FlowController - Cache Invalidation', () {
+    test('nodes getter returns updated list after addNode', () {
+      final controller = FlowController();
+      final initialNodes = controller.nodes;
+      expect(initialNodes.length, 0);
+
+      controller.addNode(label: 'New');
+      final updatedNodes = controller.nodes;
+      expect(updatedNodes.length, 1);
+    });
+
+    test('edges getter returns updated list after addEdge', () {
+      final controller = FlowController();
+      final n1 = controller.addNode();
+      final n2 = controller.addNode();
+
+      final initialEdges = controller.edges;
+      expect(initialEdges.length, 0);
+
+      controller.addEdge(
+        sourceNodeId: n1.id,
+        targetNodeId: n2.id,
+        sourceHandleId: n1.handles.first.id,
+        targetHandleId: n2.handles.first.id,
+      );
+
+      expect(controller.edges.length, 1);
+    });
+
+    test('nodes getter returns updated list after removeNode', () {
+      final controller = FlowController();
+      final node = controller.addNode();
+      expect(controller.nodes.length, 1);
+
+      controller.removeNode(node.id);
+      expect(controller.nodes.length, 0);
+    });
+
+    test('edges getter returns updated list after removeEdge', () {
+      final controller = FlowController();
+      final n1 = controller.addNode();
+      final n2 = controller.addNode();
+      final edge = controller.addEdge(
+        sourceNodeId: n1.id,
+        targetNodeId: n2.id,
+        sourceHandleId: n1.handles.first.id,
+        targetHandleId: n2.handles.first.id,
+      );
+      expect(controller.edges.length, 1);
+
+      controller.removeEdge(edge!.id);
+      expect(controller.edges.length, 0);
+    });
+
+    test('nodes getter returns updated list after undo', () {
+      final controller = FlowController();
+      controller.addNode();
+      expect(controller.nodes.length, 1);
+
+      controller.addNode();
+      expect(controller.nodes.length, 2);
+
+      controller.undo();
+      expect(controller.nodes.length, 1);
+    });
+
+    test('nodes getter returns updated list after redo', () {
+      final controller = FlowController();
+      controller.addNode();
+      controller.addNode();
+      controller.undo();
+      expect(controller.nodes.length, 1);
+
+      controller.redo();
+      expect(controller.nodes.length, 2);
+    });
+
+    test('nodes getter returns empty list after clear', () {
+      final controller = FlowController();
+      controller.addNode();
+      controller.addNode();
+      expect(controller.nodes.length, 2);
+
+      controller.clear();
+      expect(controller.nodes.length, 0);
+      expect(controller.edges.length, 0);
+    });
+
+    test('nodes getter returns updated list after fromJson', () {
+      final controller = FlowController();
+      controller.addNode(label: 'Serialized');
+      final jsonStr = controller.toJson();
+
+      controller.clear();
+      expect(controller.nodes.length, 0);
+
+      controller.fromJson(jsonStr);
+      expect(controller.nodes.length, 1);
+      expect(controller.nodes.first.label, 'Serialized');
+    });
+
+    test('nodes getter returns updated list after fromMap', () {
+      final controller = FlowController();
+      controller.addNode(label: 'MapNode');
+      final map = controller.toMap();
+
+      controller.clear();
+      expect(controller.nodes.length, 0);
+
+      controller.fromMap(map);
+      expect(controller.nodes.length, 1);
+      expect(controller.nodes.first.label, 'MapNode');
+    });
+
+    test('cached nodes list is unmodifiable', () {
+      final controller = FlowController();
+      controller.addNode();
+
+      expect(
+        () => controller.nodes.add(FlowNode(id: 'hacked')),
+        throwsA(isA<UnsupportedError>()),
+      );
+    });
+
+    test('cached edges list is unmodifiable', () {
+      final controller = FlowController();
+      final n1 = controller.addNode();
+      final n2 = controller.addNode();
+      controller.addEdge(
+        sourceNodeId: n1.id,
+        targetNodeId: n2.id,
+        sourceHandleId: n1.handles.first.id,
+        targetHandleId: n2.handles.first.id,
+      );
+
+      expect(
+        () => controller.edges.add(FlowEdge(
+          sourceNodeId: 'a',
+          targetNodeId: 'b',
+          sourceHandleId: 'h1',
+          targetHandleId: 'h2',
+        )),
+        throwsA(isA<UnsupportedError>()),
+      );
+    });
+
+    test('deleteSelection invalidates cache', () {
+      final controller = FlowController();
+      final n1 = controller.addNode(label: 'ToDelete');
+      controller.selection.selectNode(n1.id);
+      expect(controller.nodes.length, 1);
+
+      controller.deleteSelection();
+      expect(controller.nodes.length, 0);
+    });
+  });
+
+  group('FlowController - Graph Index Maintenance', () {
+    test('nodeById works after addNode via controller', () {
+      final controller = FlowController();
+      final node = controller.addNode(label: 'Indexed');
+
+      expect(controller.graph.nodeById(node.id), isNotNull);
+      expect(controller.graph.nodeById(node.id)!.label, 'Indexed');
+    });
+
+    test('nodeById returns null after removeNode via controller', () {
+      final controller = FlowController();
+      final node = controller.addNode(label: 'WillRemove');
+      final id = node.id;
+
+      controller.removeNode(id);
+      expect(controller.graph.nodeById(id), isNull);
+    });
+
+    test('edgeById works after addEdge via controller', () {
+      final controller = FlowController();
+      final n1 = controller.addNode();
+      final n2 = controller.addNode();
+
+      final edge = controller.addEdge(
+        sourceNodeId: n1.id,
+        targetNodeId: n2.id,
+        sourceHandleId: n1.handles.first.id,
+        targetHandleId: n2.handles.first.id,
+      );
+
+      expect(controller.graph.edgeById(edge!.id), isNotNull);
+    });
+
+    test('edgeById returns null after removeEdge via controller', () {
+      final controller = FlowController();
+      final n1 = controller.addNode();
+      final n2 = controller.addNode();
+      final edge = controller.addEdge(
+        sourceNodeId: n1.id,
+        targetNodeId: n2.id,
+        sourceHandleId: n1.handles.first.id,
+        targetHandleId: n2.handles.first.id,
+      );
+      final edgeId = edge!.id;
+
+      controller.removeEdge(edgeId);
+      expect(controller.graph.edgeById(edgeId), isNull);
+    });
+
+    test('associated edges are removed when node is removed', () {
+      final controller = FlowController();
+      final n1 = controller.addNode();
+      final n2 = controller.addNode();
+      controller.addEdge(
+        sourceNodeId: n1.id,
+        targetNodeId: n2.id,
+        sourceHandleId: n1.handles.first.id,
+        targetHandleId: n2.handles.first.id,
+      );
+      expect(controller.edges.length, 1);
+
+      controller.removeNode(n1.id);
+      expect(controller.edges.length, 0);
+    });
+
+    test('deleteSelection removes nodes and edges from index', () {
+      final controller = FlowController();
+      final n1 = controller.addNode();
+      final n2 = controller.addNode();
+      final edge = controller.addEdge(
+        sourceNodeId: n1.id,
+        targetNodeId: n2.id,
+        sourceHandleId: n1.handles.first.id,
+        targetHandleId: n2.handles.first.id,
+      );
+
+      controller.selection.selectNode(n1.id);
+      controller.selection.toggleEdgeSelection(edge!.id);
+      controller.deleteSelection();
+
+      expect(controller.graph.nodeById(n1.id), isNull);
+      expect(controller.graph.edgeById(edge.id), isNull);
+    });
+  });
 }

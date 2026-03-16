@@ -66,20 +66,13 @@ class _HomePageState extends State<_HomePage> {
   void initState() {
     super.initState();
     _controller = _buildDemoController();
-    _controller.addListener(_onControllerChanged);
     _scheduleFitView();
   }
 
   @override
   void dispose() {
-    _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     super.dispose();
-  }
-
-  void _onControllerChanged() {
-    if (!mounted) return;
-    setState(() {});
   }
 
   FlowController _buildDemoController() {
@@ -130,12 +123,10 @@ class _HomePageState extends State<_HomePage> {
 
   void _resetDemo() {
     final oldController = _controller;
-    oldController.removeListener(_onControllerChanged);
     setState(() {
       _selectedNodeId = null;
       _selectedEdgeId = null;
       _controller = _buildDemoController();
-      _controller.addListener(_onControllerChanged);
     });
     oldController.dispose();
     _scheduleFitView();
