@@ -56,6 +56,7 @@ export 'nodes/node_header.dart';
 export 'nodes/node_resize_handle.dart';
 export 'nodes/node_type_registry.dart';
 export 'nodes/output_node_widget.dart';
+export 'nodes/trigger_node_widget.dart';
 
 // Handles
 export 'handles/connection_line_painter.dart';

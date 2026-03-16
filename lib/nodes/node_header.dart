@@ -25,10 +25,19 @@ class NodeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final headerBg = backgroundColor ?? _headerColor(nodeType);
+    final isDark = headerBg.computeLuminance() < 0.5;
+    final textColor = isDark
+        ? const Color(0xFFE0E0E0)
+        : const Color(0xFF333333);
+    final badgeTextColor = isDark
+        ? const Color(0xFFBBBBBB)
+        : const Color(0xFF666666);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: backgroundColor ?? _headerColor(nodeType),
+        color: headerBg,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(7),
           topRight: Radius.circular(7),
@@ -39,10 +48,10 @@ class NodeHeader extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF333333),
+                color: textColor,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -51,14 +60,16 @@ class NodeHeader extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               decoration: BoxDecoration(
-                color: const Color(0x22000000),
+                color: isDark
+                    ? const Color(0x33FFFFFF)
+                    : const Color(0x22000000),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 nodeType.name,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 9,
-                  color: Color(0xFF666666),
+                  color: badgeTextColor,
                 ),
               ),
             ),
@@ -73,6 +84,8 @@ class NodeHeader extends StatelessWidget {
         return const Color(0xFFC8E6C9);
       case NodeType.output:
         return const Color(0xFFFFCDD2);
+      case NodeType.trigger:
+        return const Color(0xFFFFE0B2);
       case NodeType.custom:
         return const Color(0xFFE1BEE7);
       case NodeType.defaultNode:

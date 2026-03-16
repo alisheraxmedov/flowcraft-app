@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flowcraft/flowcraft.dart';
 
 void main() {
@@ -78,12 +81,12 @@ class _HomePageState extends State<_HomePage> {
   FlowController _buildDemoController() {
     final controller = FlowController(snapToGrid: true, gridSnap: 20);
 
-    // Add independent demo nodes (NOT auto-connected)
     controller.addNode(
-      type: NodeType.input,
-      label: 'Trigger',
+      type: NodeType.trigger,
+      label: 'W',
       position: const Offset(100, 120),
-      data: const {'type': 'Webhook', 'status': 'Active'},
+      size: const Size(80, 60),
+      data: const {'direction': 'input', 'type': 'HTTP POST'},
     );
 
     controller.addNode(
@@ -99,13 +102,13 @@ class _HomePageState extends State<_HomePage> {
     );
 
     controller.addNode(
-      type: NodeType.output,
+      type: NodeType.trigger,
       label: 'Deliver',
       position: const Offset(1000, 120),
-      data: const {'target': 'CRM', 'mode': 'Sync'},
+      size: const Size(120, 60),
+      data: const {'direction': 'output', 'target': 'CRM'},
     );
 
-    // NO edges — user will drag from handles to connect them!
     return controller;
   }
 
@@ -118,7 +121,7 @@ class _HomePageState extends State<_HomePage> {
 
   void _fitView() {
     final size = MediaQuery.sizeOf(context);
-    _controller.fitView(Size(size.width, size.height - kToolbarHeight));
+    _controller.fitView(size);
   }
 
   void _resetDemo() {
@@ -195,76 +198,55 @@ class _HomePageState extends State<_HomePage> {
       );
   }
 
+  void _exportJson() {
+    final jsonStr = _controller.toJson();
+    final formatted = const JsonEncoder.withIndent('  ')
+        .convert(jsonDecode(jsonStr));
+    Clipboard.setData(ClipboardData(text: formatted));
+    _showMessage('JSON copied to clipboard!');
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Workflow JSON'),
+        content: SizedBox(
+          width: 500,
+          height: 400,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              formatted,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedNode = _selectedNode;
     final selectedEdge = _selectedEdge;
+    final isDark = widget.darkMode;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('FlowCraft Demo'),
-        actions: [
-          // Snap-to-grid toggle
-          IconButton(
-            tooltip: _controller.snapToGrid
-                ? 'Disable snap-to-grid'
-                : 'Enable snap-to-grid',
-            onPressed: () {
-              setState(() {
-                _controller.snapToGrid = !_controller.snapToGrid;
-              });
-            },
-            icon: Icon(
-              _controller.snapToGrid
-                  ? Icons.grid_on_rounded
-                  : Icons.grid_off_rounded,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Add node',
-            onPressed: _addNode,
-            icon: const Icon(Icons.add_box_outlined),
-          ),
-          IconButton(
-            tooltip: 'Undo',
-            onPressed: _controller.canUndo ? _controller.undo : null,
-            icon: const Icon(Icons.undo_rounded),
-          ),
-          IconButton(
-            tooltip: 'Redo',
-            onPressed: _controller.canRedo ? _controller.redo : null,
-            icon: const Icon(Icons.redo_rounded),
-          ),
-          IconButton(
-            tooltip: 'Fit view',
-            onPressed: _fitView,
-            icon: const Icon(Icons.fit_screen_outlined),
-          ),
-          IconButton(
-            tooltip: 'Reset demo',
-            onPressed: _resetDemo,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          IconButton(
-            tooltip: widget.darkMode
-                ? 'Switch to light theme'
-                : 'Switch to dark theme',
-            onPressed: widget.onToggleTheme,
-            icon: Icon(
-              widget.darkMode
-                  ? Icons.light_mode_outlined
-                  : Icons.dark_mode_outlined,
-            ),
-          ),
-        ],
-      ),
       body: Row(
         children: [
-          // Main canvas
           Expanded(
             child: FlowCanvas(
               controller: _controller,
-              theme: widget.darkMode ? FlowTheme.dark() : FlowTheme.light(),
+              theme: isDark ? FlowTheme.dark() : FlowTheme.light(),
               showMiniMap: true,
               showControls: true,
               onNodeTap: _onNodeTap,
@@ -274,6 +256,110 @@ class _HomePageState extends State<_HomePage> {
               },
               onNodeAdded: (nodeId) =>
                   _showMessage('Node added: $nodeId'),
+              overlays: [
+                Positioned(
+                  left: 12,
+                  bottom: 124,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHigh
+                          .withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: colorScheme.outlineVariant
+                            .withValues(alpha: 0.3),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF000000)
+                              .withValues(alpha: 0.12),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ToolbarButton(
+                          icon: Icons.add_rounded,
+                          tooltip: 'Add node',
+                          onTap: _addNode,
+                          color: colorScheme.primary,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
+                          icon: _controller.snapToGrid
+                              ? Icons.grid_on_rounded
+                              : Icons.grid_off_rounded,
+                          tooltip: _controller.snapToGrid
+                              ? 'Disable snap-to-grid'
+                              : 'Enable snap-to-grid',
+                          onTap: () {
+                            setState(() {
+                              _controller.snapToGrid =
+                                  !_controller.snapToGrid;
+                            });
+                          },
+                          color: _controller.snapToGrid
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
+                          icon: Icons.undo_rounded,
+                          tooltip: 'Undo',
+                          onTap: _controller.canUndo
+                              ? _controller.undo
+                              : null,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
+                          icon: Icons.redo_rounded,
+                          tooltip: 'Redo',
+                          onTap: _controller.canRedo
+                              ? _controller.redo
+                              : null,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
+                          icon: Icons.fit_screen_outlined,
+                          tooltip: 'Fit view',
+                          onTap: _fitView,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
+                          icon: Icons.refresh_rounded,
+                          tooltip: 'Reset',
+                          onTap: _resetDemo,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
+                          icon: isDark
+                              ? Icons.light_mode_outlined
+                              : Icons.dark_mode_outlined,
+                          tooltip: isDark
+                              ? 'Light theme'
+                              : 'Dark theme',
+                          onTap: widget.onToggleTheme,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
+                          icon: Icons.download_rounded,
+                          tooltip: 'Export JSON',
+                          onTap: _exportJson,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -283,7 +369,7 @@ class _HomePageState extends State<_HomePage> {
               key: ValueKey(selectedNode.id),
               node: selectedNode,
               controller: _controller,
-              darkMode: widget.darkMode,
+              darkMode: isDark,
               onClose: () => setState(() => _selectedNodeId = null),
               onShowMessage: _showMessage,
             ),
@@ -294,12 +380,20 @@ class _HomePageState extends State<_HomePage> {
               key: ValueKey(selectedEdge.id),
               edge: selectedEdge,
               controller: _controller,
-              darkMode: widget.darkMode,
+              darkMode: isDark,
               onClose: () => setState(() => _selectedEdgeId = null),
               onShowMessage: _showMessage,
             ),
         ],
       ),
+    );
+  }
+
+  Widget _divider(ColorScheme colorScheme) {
+    return Container(
+      height: 1,
+      width: 28,
+      color: colorScheme.outlineVariant.withValues(alpha: 0.3),
     );
   }
 }
@@ -681,6 +775,8 @@ class _NodeEditPanelState extends State<_NodeEditPanel> {
         return 'Input';
       case NodeType.output:
         return 'Output';
+      case NodeType.trigger:
+        return 'Trigger';
       case NodeType.custom:
         return 'Custom';
     }
@@ -954,6 +1050,45 @@ class _SectionTitle extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ToolbarButton extends StatelessWidget {
+  const _ToolbarButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final isEnabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      preferBelow: false,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          child: Icon(
+            icon,
+            size: 20,
+            color: isEnabled
+                ? (color ?? const Color(0xFF555555))
+                : (color ?? const Color(0xFF555555))
+                    .withValues(alpha: 0.3),
+          ),
+        ),
+      ),
     );
   }
 }

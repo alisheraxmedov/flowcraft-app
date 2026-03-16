@@ -4,7 +4,9 @@ import 'package:flowcraft/canvas/grid_painter.dart';
 import 'package:flowcraft/canvas/viewport_transform.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/core/enums/handle_position.dart';
+import 'package:flowcraft/core/enums/node_type.dart';
 import 'package:flowcraft/core/models/flow_handle.dart';
+import 'package:flowcraft/core/models/flow_node.dart';
 import 'package:flowcraft/core/models/flow_viewport.dart';
 import 'package:flowcraft/edges/bezier_edge.dart';
 import 'package:flowcraft/edges/edge_label_widget.dart';
@@ -13,6 +15,7 @@ import 'package:flowcraft/edges/smooth_step_edge.dart';
 import 'package:flowcraft/edges/step_edge.dart';
 import 'package:flowcraft/edges/straight_edge.dart';
 import 'package:flowcraft/core/enums/edge_type.dart';
+import 'package:flowcraft/nodes/trigger_node_widget.dart';
 import 'package:flowcraft/handles/connection_line_painter.dart';
 import 'package:flowcraft/nodes/base_node_widget.dart';
 import 'package:flowcraft/theme/flow_theme.dart';
@@ -303,17 +306,7 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
             child: RepaintBoundary(
               child: widget.nodeBuilder != null
                   ? widget.nodeBuilder!(widget.controller, i)
-                  : DefaultBaseNodeWidget(
-                      controller: widget.controller,
-                      node: node,
-                      theme: widget.theme,
-                      onTap: widget.onNodeTap != null
-                          ? () => widget.onNodeTap!(node.id)
-                          : null,
-                      onHandleDragStarted: _onHandleDragStarted,
-                      onHandleDragUpdated: _onHandleDragUpdated,
-                      onHandleDragEnded: _onHandleDragEnded,
-                    ),
+                  : _buildNodeWidget(node),
             ),
           ),
         ),
@@ -321,6 +314,35 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
     }
 
     return result;
+  }
+
+  Widget _buildNodeWidget(FlowNode node) {
+    if (node.type == NodeType.trigger) {
+      final isOutputTrigger = node.data['direction'] == 'output';
+      return TriggerNodeWidget(
+        controller: widget.controller,
+        node: node,
+        reversed: isOutputTrigger,
+        theme: widget.theme,
+        onTap: widget.onNodeTap != null
+            ? () => widget.onNodeTap!(node.id)
+            : null,
+        onHandleDragStarted: _onHandleDragStarted,
+        onHandleDragUpdated: _onHandleDragUpdated,
+        onHandleDragEnded: _onHandleDragEnded,
+      );
+    }
+    return DefaultBaseNodeWidget(
+      controller: widget.controller,
+      node: node,
+      theme: widget.theme,
+      onTap: widget.onNodeTap != null
+          ? () => widget.onNodeTap!(node.id)
+          : null,
+      onHandleDragStarted: _onHandleDragStarted,
+      onHandleDragUpdated: _onHandleDragUpdated,
+      onHandleDragEnded: _onHandleDragEnded,
+    );
   }
 
   List<Widget> _buildEdgeLabels(FlowViewport viewport) {

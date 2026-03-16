@@ -29,7 +29,9 @@ class FlowController extends ChangeNotifier {
   })  : _graph = graph ?? FlowGraph(),
         _viewport = viewport ?? const FlowViewport(),
         _history = HistoryManager(maxHistory: maxHistory),
-        selection = SelectionManager();
+        selection = SelectionManager() {
+    selection.addListener(notifyListeners);
+  }
 
   FlowGraph _graph;
   FlowViewport _viewport;
@@ -419,6 +421,7 @@ class FlowController extends ChangeNotifier {
 
   @override
   void dispose() {
+    selection.removeListener(notifyListeners);
     selection.dispose();
     super.dispose();
   }

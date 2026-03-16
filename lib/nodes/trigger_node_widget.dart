@@ -3,21 +3,23 @@ import 'package:flutter/widgets.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/core/models/flow_handle.dart';
 import 'package:flowcraft/core/models/flow_node.dart';
-import 'package:flowcraft/nodes/node_header.dart';
 import 'package:flowcraft/handles/handle_widget.dart';
 import 'package:flowcraft/theme/flow_theme.dart';
 
-/// Default node widget with selection, drag, handles, and delete button.
+/// A D-shaped trigger node for workflow entry/exit points.
 ///
-/// Uses raw [Listener] for drag handling to avoid gesture arena conflicts
-/// with the canvas pan gesture.
-class DefaultBaseNodeWidget extends StatefulWidget {
-  const DefaultBaseNodeWidget({
+/// Input triggers have rounded LEFT corners (D shape).
+/// Output triggers have rounded RIGHT corners (reversed D shape).
+/// The radius is half the node height, creating a capsule-like curve.
+class TriggerNodeWidget extends StatefulWidget {
+  const TriggerNodeWidget({
     super.key,
     required this.controller,
     required this.node,
-    this.onTap,
+    this.reversed = false,
+    this.accentColor = const Color(0xFFFF9800),
     this.theme,
+    this.onTap,
     this.onHandleDragStarted,
     this.onHandleDragUpdated,
     this.onHandleDragEnded,
@@ -25,17 +27,23 @@ class DefaultBaseNodeWidget extends StatefulWidget {
 
   final FlowController controller;
   final FlowNode node;
-  final VoidCallback? onTap;
+
+  /// If false (input): left corners rounded (D shape).
+  /// If true (output): right corners rounded (reversed D shape).
+  final bool reversed;
+
+  final Color accentColor;
   final FlowTheme? theme;
+  final VoidCallback? onTap;
   final void Function(FlowHandle handle)? onHandleDragStarted;
   final void Function(Offset globalPosition)? onHandleDragUpdated;
   final VoidCallback? onHandleDragEnded;
 
   @override
-  State<DefaultBaseNodeWidget> createState() => _DefaultBaseNodeWidgetState();
+  State<TriggerNodeWidget> createState() => _TriggerNodeWidgetState();
 }
 
-class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
+class _TriggerNodeWidgetState extends State<TriggerNodeWidget> {
   bool _isDragging = false;
   bool _isHandleDragging = false;
   Offset? _lastPointerPosition;
@@ -76,17 +84,31 @@ class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
     }
     _isDragging = false;
     _lastPointerPosition = null;
+    _initialPointerPosition = null;
   }
 
   @override
   Widget build(BuildContext context) {
     final selected = widget.controller.selection.isNodeSelected(widget.node.id);
-    final bg = widget.theme?.nodeBackgroundColor ?? const Color(0xFFFFFFFF);
-    final border = selected
-        ? (widget.theme?.nodeSelectedBorderColor ?? const Color(0xFF2196F3))
-        : (widget.theme?.nodeBorderColor ?? const Color(0xFFDDDDDD));
+    final accent = widget.accentColor;
     final handleColor =
         widget.theme?.handleBorderColor ?? const Color(0xFF2196F3);
+
+    final w = widget.node.size.width;
+    final h = widget.node.size.height;
+    final halfH = h / 2;
+
+    // Input (D): left corners rounded, right corners square
+    // Output (reversed D): right corners rounded, left corners square
+    final borderRadius = widget.reversed
+        ? BorderRadius.only(
+            topRight: Radius.circular(halfH),
+            bottomRight: Radius.circular(halfH),
+          )
+        : BorderRadius.only(
+            topLeft: Radius.circular(halfH),
+            bottomLeft: Radius.circular(halfH),
+          );
 
     return Listener(
       onPointerDown: _onPointerDown,
@@ -97,32 +119,44 @@ class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: widget.node.size.width,
-            height: widget.node.size.height,
+            width: w,
+            height: h,
             decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(
-                widget.theme?.nodeBorderRadius ?? 8.0,
-              ),
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: borderRadius,
               border: Border.all(
-                color: border,
-                width: selected ? 2 : 1,
+                color: selected ? accent : accent.withValues(alpha: 0.4),
+                width: selected ? 2.5 : 1.5,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0x1A000000),
-                  blurRadius: selected ? 8 : 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+            ),
+            padding: EdgeInsets.only(
+              left: widget.reversed ? 14 : halfH + 8,
+              right: widget.reversed ? halfH + 8 : 14,
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: widget.reversed
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                NodeHeader(
-                  label: widget.node.label,
-                  nodeType: widget.node.type,
-                  backgroundColor: widget.theme?.headerBackgroundColor,
+                Text(
+                  widget.node.label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                    letterSpacing: 0.3,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.reversed ? 'output' : 'input',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                    color: accent.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ),

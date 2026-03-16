@@ -9,6 +9,9 @@ enum NodeType {
   /// An exit-point node, typically styled with a rounded bottom.
   output,
 
+  /// A trigger/start node, typically styled with an amber accent.
+  trigger,
+
   /// A custom node type whose rendering is provided by a [NodeTypeRegistry].
   custom;
 
