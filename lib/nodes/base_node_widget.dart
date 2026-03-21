@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/core/models/flow_handle.dart';
 import 'package:flowcraft/core/models/flow_node.dart';
+import 'package:flowcraft/engine/node_status.dart';
 import 'package:flowcraft/nodes/node_header.dart';
 import 'package:flowcraft/handles/handle_widget.dart';
 import 'package:flowcraft/theme/flow_theme.dart';
@@ -69,6 +70,7 @@ class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
 
   void _onPointerUp(PointerUpEvent event) {
     if (!_isDragging) {
+      widget.controller.markNodeTapped();
       widget.controller.selection.selectNode(widget.node.id);
       widget.onTap?.call();
     } else {
@@ -81,10 +83,12 @@ class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
   @override
   Widget build(BuildContext context) {
     final selected = widget.controller.selection.isNodeSelected(widget.node.id);
+    final runtimeStatus = widget.controller.nodeStatus(widget.node.id);
     final bg = widget.theme?.nodeBackgroundColor ?? const Color(0xFFFFFFFF);
-    final border = selected
+    final statusBorder = _statusBorderColor(runtimeStatus);
+    final border = statusBorder ?? (selected
         ? (widget.theme?.nodeSelectedBorderColor ?? const Color(0xFF2196F3))
-        : (widget.theme?.nodeBorderColor ?? const Color(0xFFDDDDDD));
+        : (widget.theme?.nodeBorderColor ?? const Color(0xFFDDDDDD)));
     final handleColor =
         widget.theme?.handleBorderColor ?? const Color(0xFF2196F3);
 
@@ -106,7 +110,7 @@ class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
               ),
               border: Border.all(
                 color: border,
-                width: selected ? 2 : 1,
+                width: selected || statusBorder != null ? 2 : 1,
               ),
               boxShadow: [
                 BoxShadow(
@@ -127,6 +131,22 @@ class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
               ],
             ),
           ),
+
+          // Runtime status indicator
+          if (runtimeStatus != NodeStatus.idle)
+            Positioned(
+              bottom: -4,
+              left: 8,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _statusColor(runtimeStatus),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: bg, width: 1),
+                ),
+              ),
+            ),
 
           // Handles
           ...widget.node.handles.map((h) => HandleWidget(
@@ -182,5 +202,35 @@ class _DefaultBaseNodeWidgetState extends State<DefaultBaseNodeWidget> {
         ],
       ),
     );
+  }
+
+  static Color _statusColor(NodeStatus status) {
+    switch (status) {
+      case NodeStatus.queued:
+        return const Color(0xFF90A4AE);
+      case NodeStatus.running:
+        return const Color(0xFF42A5F5);
+      case NodeStatus.success:
+        return const Color(0xFF66BB6A);
+      case NodeStatus.error:
+        return const Color(0xFFEF5350);
+      case NodeStatus.skipped:
+        return const Color(0xFFFFCA28);
+      case NodeStatus.idle:
+        return const Color(0x00000000);
+    }
+  }
+
+  static Color? _statusBorderColor(NodeStatus status) {
+    switch (status) {
+      case NodeStatus.running:
+        return const Color(0xFF42A5F5);
+      case NodeStatus.success:
+        return const Color(0xFF66BB6A);
+      case NodeStatus.error:
+        return const Color(0xFFEF5350);
+      default:
+        return null;
+    }
   }
 }

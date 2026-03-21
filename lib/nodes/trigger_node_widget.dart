@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/core/models/flow_handle.dart';
 import 'package:flowcraft/core/models/flow_node.dart';
+import 'package:flowcraft/engine/node_status.dart';
 import 'package:flowcraft/handles/handle_widget.dart';
 import 'package:flowcraft/theme/flow_theme.dart';
 
@@ -90,6 +91,7 @@ class _TriggerNodeWidgetState extends State<TriggerNodeWidget> {
   @override
   Widget build(BuildContext context) {
     final selected = widget.controller.selection.isNodeSelected(widget.node.id);
+    final runtimeStatus = widget.controller.nodeStatus(widget.node.id);
     final accent = widget.accentColor;
     final handleColor =
         widget.theme?.handleBorderColor ?? const Color(0xFF2196F3);
@@ -98,8 +100,10 @@ class _TriggerNodeWidgetState extends State<TriggerNodeWidget> {
     final h = widget.node.size.height;
     final halfH = h / 2;
 
-    // Input (D): left corners rounded, right corners square
-    // Output (reversed D): right corners rounded, left corners square
+    final statusBorder = _statusBorderColor(runtimeStatus);
+    final borderColor = statusBorder ?? (selected ? accent : accent.withValues(alpha: 0.4));
+    final borderWidth = (selected || statusBorder != null) ? 2.5 : 1.5;
+
     final borderRadius = widget.reversed
         ? BorderRadius.only(
             topRight: Radius.circular(halfH),
@@ -125,8 +129,8 @@ class _TriggerNodeWidgetState extends State<TriggerNodeWidget> {
               color: accent.withValues(alpha: 0.12),
               borderRadius: borderRadius,
               border: Border.all(
-                color: selected ? accent : accent.withValues(alpha: 0.4),
-                width: selected ? 2.5 : 1.5,
+                color: borderColor,
+                width: borderWidth,
               ),
             ),
             padding: EdgeInsets.only(
@@ -178,6 +182,22 @@ class _TriggerNodeWidgetState extends State<TriggerNodeWidget> {
                 },
               )),
 
+          // Runtime status indicator
+          if (runtimeStatus != NodeStatus.idle)
+            Positioned(
+              bottom: -4,
+              left: widget.reversed ? null : 8,
+              right: widget.reversed ? 8 : null,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _statusColor(runtimeStatus),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+
           // Delete button
           if (selected)
             Positioned(
@@ -216,5 +236,35 @@ class _TriggerNodeWidgetState extends State<TriggerNodeWidget> {
         ],
       ),
     );
+  }
+
+  static Color _statusColor(NodeStatus status) {
+    switch (status) {
+      case NodeStatus.queued:
+        return const Color(0xFF90A4AE);
+      case NodeStatus.running:
+        return const Color(0xFF42A5F5);
+      case NodeStatus.success:
+        return const Color(0xFF66BB6A);
+      case NodeStatus.error:
+        return const Color(0xFFEF5350);
+      case NodeStatus.skipped:
+        return const Color(0xFFFFCA28);
+      case NodeStatus.idle:
+        return const Color(0x00000000);
+    }
+  }
+
+  static Color? _statusBorderColor(NodeStatus status) {
+    switch (status) {
+      case NodeStatus.running:
+        return const Color(0xFF42A5F5);
+      case NodeStatus.success:
+        return const Color(0xFF66BB6A);
+      case NodeStatus.error:
+        return const Color(0xFFEF5350);
+      default:
+        return null;
+    }
   }
 }

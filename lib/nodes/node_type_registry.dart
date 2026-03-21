@@ -1,13 +1,17 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/controller/flow_controller.dart';
+import 'package:flowcraft/core/models/flow_handle.dart';
 import 'package:flowcraft/core/models/flow_node.dart';
 
 /// A function that builds a custom node widget.
 typedef NodeWidgetBuilder = Widget Function(
   FlowController controller,
-  FlowNode node,
-);
+  FlowNode node, {
+  void Function(FlowHandle handle)? onHandleDragStarted,
+  void Function(Offset globalPosition)? onHandleDragUpdated,
+  VoidCallback? onHandleDragEnded,
+});
 
 /// A registry for custom node type widget builders.
 ///

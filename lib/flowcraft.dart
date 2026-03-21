@@ -71,8 +71,36 @@ export 'interactions/selection_box_painter.dart';
 // Overlays
 export 'overlays/controls_widget.dart';
 export 'overlays/minimap_widget.dart';
+export 'overlays/node_properties_panel.dart';
 export 'overlays/node_toolbar_widget.dart';
 
 // Theme
 export 'theme/default_theme.dart';
 export 'theme/flow_theme.dart';
+
+// Engine
+export 'engine/execution_context.dart';
+export 'engine/execution_engine.dart';
+export 'engine/execution_result.dart';
+export 'engine/node_definition.dart';
+export 'engine/node_definition_registry.dart';
+export 'engine/node_status.dart';
+export 'engine/param_definition.dart';
+export 'engine/port_definition.dart';
+export 'engine/workflow_result.dart';
+
+// Engine — Built-in Nodes
+export 'engine/nodes/condition_node_def.dart';
+export 'engine/nodes/delay_node_def.dart';
+export 'engine/nodes/error_handler_node_def.dart';
+export 'engine/nodes/gemini_node_def.dart';
+export 'engine/nodes/http_request_node_def.dart';
+export 'engine/nodes/loop_node_def.dart';
+export 'engine/nodes/merge_node_def.dart';
+export 'engine/nodes/openai_node_def.dart';
+export 'engine/nodes/output_node_def.dart';
+export 'engine/nodes/telegram_node_def.dart';
+export 'engine/nodes/transform_node_def.dart';
+export 'engine/nodes/trigger_node_def.dart';
+export 'engine/nodes/variable_node_def.dart';
+export 'engine/nodes/webhook_node_def.dart';

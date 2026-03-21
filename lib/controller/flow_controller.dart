@@ -14,6 +14,12 @@ import 'package:flowcraft/core/utils/math_utils.dart';
 import 'package:flowcraft/core/utils/serializer.dart';
 import 'package:flowcraft/controller/history_manager.dart';
 import 'package:flowcraft/controller/selection_manager.dart';
+import 'package:flowcraft/engine/execution_engine.dart';
+import 'package:flowcraft/engine/execution_result.dart';
+import 'package:flowcraft/engine/node_definition_registry.dart';
+import 'package:flowcraft/engine/node_status.dart';
+import 'package:flowcraft/engine/workflow_result.dart';
+import 'package:flowcraft/nodes/node_type_registry.dart';
 
 /// Central state manager for FlowCraft.
 ///
@@ -38,14 +44,45 @@ class FlowController extends ChangeNotifier {
   final HistoryManager _history;
   final SelectionManager selection;
 
+  /// Registry of available node type definitions for execution.
+  final NodeDefinitionRegistry nodeDefinitionRegistry = NodeDefinitionRegistry();
+
+  /// Registry of custom node widget builders for rendering.
+  final NodeTypeRegistry nodeTypeRegistry = NodeTypeRegistry();
+
+  /// Runtime status of each node during/after workflow execution.
+  final Map<String, NodeStatus> runtimeStates = {};
+
+  /// Execution results per node after workflow execution.
+  final Map<String, ExecutionResult> nodeResults = {};
+
+  /// Whether a workflow is currently executing.
+  bool isExecuting = false;
+
+  /// The last workflow execution result.
+  WorkflowResult? lastWorkflowResult;
+
   /// Whether node positions snap to grid during drag.
   bool snapToGrid;
 
   /// Grid snap interval in logical pixels.
   double gridSnap;
 
+  bool _nodeTapped = false;
+
+  /// Marks that a node tap occurred this frame.
+  void markNodeTapped() => _nodeTapped = true;
+
+  /// Returns true and resets if a node was tapped this frame.
+  bool consumeNodeTap() {
+    if (_nodeTapped) {
+      _nodeTapped = false;
+      return true;
+    }
+    return false;
+  }
+
   /// Whether a node is currently being dragged.
-  /// Used to prevent canvas pan during node drag.
   bool isDraggingNode = false;
 
   /// Tracks which nodes are being dragged for deferred snap.
@@ -416,7 +453,70 @@ class FlowController extends ChangeNotifier {
     _invalidateCache();
     selection.clearSelection();
     _history.clear();
+    runtimeStates.clear();
+    nodeResults.clear();
+    lastWorkflowResult = null;
     notifyListeners();
+  }
+
+  // ── Workflow Execution ──────────────────────────────────────────────────
+
+  /// Executes the current workflow graph.
+  ///
+  /// Uses the [nodeDefinitionRegistry] to resolve node types.
+  /// Updates [runtimeStates] during execution for UI feedback.
+  Future<WorkflowResult> executeWorkflow({
+    Map<String, dynamic> credentials = const {},
+  }) async {
+    if (isExecuting) {
+      return WorkflowResult(
+        nodeResults: {},
+        status: NodeStatus.error,
+        duration: Duration.zero,
+      );
+    }
+
+    isExecuting = true;
+    runtimeStates.clear();
+    nodeResults.clear();
+
+    // Set all nodes to queued
+    for (final node in _graph.nodes) {
+      runtimeStates[node.id] = NodeStatus.queued;
+    }
+    notifyListeners();
+
+    final result = await ExecutionEngine.execute(
+      graph: _graph,
+      registry: nodeDefinitionRegistry,
+      credentials: credentials,
+      nodeTypeResolver: (node) =>
+          node.data['definitionType'] as String? ?? node.type.name,
+      onStatusChanged: (nodeId, status) {
+        runtimeStates[nodeId] = status;
+        notifyListeners();
+      },
+    );
+
+    lastWorkflowResult = result;
+    nodeResults.addAll(result.nodeResults);
+    isExecuting = false;
+    notifyListeners();
+
+    return result;
+  }
+
+  /// Resets all runtime states to idle.
+  void resetRuntimeStates() {
+    runtimeStates.clear();
+    nodeResults.clear();
+    lastWorkflowResult = null;
+    notifyListeners();
+  }
+
+  /// Gets the runtime status of a specific node.
+  NodeStatus nodeStatus(String nodeId) {
+    return runtimeStates[nodeId] ?? NodeStatus.idle;
   }
 
   @override

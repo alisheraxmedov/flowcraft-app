@@ -5,6 +5,7 @@ import 'package:flowcraft/canvas/viewport_transform.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/core/enums/handle_position.dart';
 import 'package:flowcraft/core/enums/node_type.dart';
+import 'package:flowcraft/core/models/flow_edge.dart';
 import 'package:flowcraft/core/models/flow_handle.dart';
 import 'package:flowcraft/core/models/flow_node.dart';
 import 'package:flowcraft/core/models/flow_viewport.dart';
@@ -196,6 +197,57 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
         screenPos.dy < canvasSize.height + margin;
   }
 
+  // ── Edge hit-test ─────────────────────────────────────────────────────────
+
+  FlowEdge? _hitTestEdge(Offset tapPosition, FlowViewport viewport) {
+    const hitTolerance = 12.0;
+    double bestDist = hitTolerance;
+    FlowEdge? bestEdge;
+
+    for (final edge in widget.controller.edges) {
+      final sourceNode = widget.controller.graph.nodeById(edge.sourceNodeId);
+      final targetNode = widget.controller.graph.nodeById(edge.targetNodeId);
+      if (sourceNode == null || targetNode == null) continue;
+
+      final sourceHandle = sourceNode.handleById(edge.sourceHandleId);
+      final targetHandle = targetNode.handleById(edge.targetHandleId);
+      if (sourceHandle == null || targetHandle == null) continue;
+
+      final screenSource = ViewportTransform.canvasToScreen(
+        sourceHandle.position.toOffset(sourceNode.rect),
+        viewport,
+      );
+      final screenTarget = ViewportTransform.canvasToScreen(
+        targetHandle.position.toOffset(targetNode.rect),
+        viewport,
+      );
+
+      final dist = _distanceToSegment(tapPosition, screenSource, screenTarget);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestEdge = edge;
+      }
+    }
+
+    return bestEdge;
+  }
+
+  static double _distanceToSegment(Offset point, Offset a, Offset b) {
+    final dx = b.dx - a.dx;
+    final dy = b.dy - a.dy;
+    final lenSq = dx * dx + dy * dy;
+
+    if (lenSq == 0) {
+      return (point - a).distance;
+    }
+
+    var t = ((point.dx - a.dx) * dx + (point.dy - a.dy) * dy) / lenSq;
+    t = t.clamp(0.0, 1.0);
+
+    final proj = Offset(a.dx + t * dx, a.dy + t * dy);
+    return (point - proj).distance;
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -247,6 +299,20 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
                             canvasSize: canvasSize,
                           ),
                         ),
+                ),
+              ),
+
+              // Edge tap hit-test layer
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTapUp: (details) {
+                    final tappedEdge = _hitTestEdge(details.localPosition, viewport);
+                    if (tappedEdge != null) {
+                      widget.controller.selection.selectEdge(tappedEdge.id);
+                      widget.onEdgeTap?.call(tappedEdge.id);
+                    }
+                  },
                 ),
               ),
 
@@ -306,7 +372,7 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
             child: RepaintBoundary(
               child: widget.nodeBuilder != null
                   ? widget.nodeBuilder!(widget.controller, i)
-                  : _buildNodeWidget(node),
+                  : _buildNodeWidgetFromRegistry(node),
             ),
           ),
         ),
@@ -314,6 +380,23 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
     }
 
     return result;
+  }
+
+  Widget _buildNodeWidgetFromRegistry(FlowNode node) {
+    final defType = node.data['definitionType'] as String?;
+    if (defType != null) {
+      final builder = widget.controller.nodeTypeRegistry.builderFor(defType);
+      if (builder != null) {
+        return builder(
+          widget.controller,
+          node,
+          onHandleDragStarted: _onHandleDragStarted,
+          onHandleDragUpdated: _onHandleDragUpdated,
+          onHandleDragEnded: _onHandleDragEnded,
+        );
+      }
+    }
+    return _buildNodeWidget(node);
   }
 
   Widget _buildNodeWidget(FlowNode node) {

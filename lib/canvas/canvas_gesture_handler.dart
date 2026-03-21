@@ -103,6 +103,7 @@ class _CanvasGestureHandlerState extends State<CanvasGestureHandler> {
   }
 
   void _onTap() {
+    if (_controller.consumeNodeTap()) return;
     _controller.selection.clearSelection();
     widget.onCanvasTap?.call();
   }
