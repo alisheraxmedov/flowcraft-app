@@ -15,6 +15,10 @@ Currently, pub.dev has no mature, ReactFlow-equivalent package for Flutter. Exis
 - Full **interactive canvas** (pan, zoom, drag)
 - **Custom node types** with dynamic fields
 - **Animated, colorful, curved edges**
+- **Workflow execution engine** with 14 built-in node definitions
+- **Telegram Bot integration** — 18 API actions + polling trigger
+- **AI integration** — Gemini and OpenAI nodes
+- **HTTP/Webhook** — REST client + webhook receiver
 - **Zero external dependencies** (pure Flutter SDK only)
 - Production-ready **pub.dev package**
 
@@ -125,6 +129,33 @@ flowcraft/
 │       ├── flow_theme.dart             # Full theme data (colors, sizes, fonts)
 │       └── default_theme.dart          # Built-in light + dark defaults
 │
+│   └── engine/
+│       ├── execution_engine.dart       # DAG-based sequential workflow execution
+│       ├── execution_context.dart      # Runtime context (params, credentials)
+│       ├── execution_result.dart       # Per-node result (success/error/skipped)
+│       ├── workflow_result.dart        # Aggregate workflow result
+│       ├── node_definition.dart        # Abstract base for executable nodes
+│       ├── node_definition_registry.dart # TypeId-based node lookup
+│       ├── node_status.dart            # Execution status enum
+│       ├── param_definition.dart       # Parameter definitions (7 types)
+│       ├── port_definition.dart        # Input/output port definitions (6 types)
+│       └── nodes/
+│           ├── trigger_node_def.dart          # Manual workflow start
+│           ├── condition_node_def.dart        # 6-operator routing
+│           ├── transform_node_def.dart        # Data manipulation
+│           ├── merge_node_def.dart            # Multi-input merge
+│           ├── output_node_def.dart           # Terminal output
+│           ├── variable_node_def.dart         # Named variable store
+│           ├── loop_node_def.dart             # List iteration
+│           ├── delay_node_def.dart            # Timed pause
+│           ├── error_handler_node_def.dart    # Error catching + fallback
+│           ├── gemini_node_def.dart           # Google Gemini AI
+│           ├── openai_node_def.dart           # OpenAI GPT
+│           ├── http_request_node_def.dart     # REST client
+│           ├── webhook_node_def.dart          # Webhook receiver
+│           ├── telegram_node_def.dart         # 18 Telegram API actions
+│           └── telegram_trigger_node_def.dart # Telegram polling trigger
+│
 ├── example/
 │   ├── lib/
 │   │   ├── main.dart                   # Example app entry point
@@ -136,15 +167,44 @@ flowcraft/
 │   └── pubspec.yaml
 │
 ├── test/
-│   ├── unit/
-│   │   ├── flow_node_test.dart         # Model creation, toJson/fromJson
-│   │   ├── flow_edge_test.dart
-│   │   ├── flow_controller_test.dart   # addNode, removeNode, undo/redo
-│   │   └── serializer_test.dart        # Save/load full graph JSON
+│   ├── core/
+│   │   ├── models/
+│   │   │   ├── flow_node_test.dart     # Construction, JSON round-trip, equality
+│   │   │   ├── flow_edge_test.dart     # Construction, JSON round-trip, equality
+│   │   │   ├── edge_style_test.dart
+│   │   │   ├── flow_graph_test.dart
+│   │   │   ├── flow_handle_test.dart
+│   │   │   └── flow_viewport_test.dart
+│   │   └── utils/
+│   │       ├── graph_utils_test.dart
+│   │       ├── id_generator_test.dart
+│   │       ├── math_utils_test.dart
+│   │       └── serializer_test.dart
 │   │
-│   └── widget/
-│       ├── flow_canvas_widget_test.dart
-│       └── node_widget_test.dart
+│   ├── controller/
+│   │   ├── flow_controller_test.dart
+│   │   ├── history_manager_test.dart
+│   │   └── selection_manager_test.dart
+│   │
+│   ├── engine/
+│   │   ├── execution_context_test.dart
+│   │   ├── execution_result_test.dart
+│   │   ├── workflow_result_test.dart
+│   │   ├── node_definition_registry_test.dart
+│   │   └── nodes/
+│   │       ├── telegram_node_def_test.dart
+│   │       ├── telegram_trigger_node_def_test.dart
+│   │       ├── condition_node_def_test.dart
+│   │       ├── transform_node_def_test.dart
+│   │       └── engine_nodes_test.dart     # delay, loop, merge, output, trigger, variable, error_handler
+│   │
+│   ├── canvas/flow_canvas_widget_test.dart
+│   ├── edges/edge_paths_test.dart
+│   ├── interactions/node_drag_handler_test.dart
+│   ├── nodes/node_widgets_test.dart
+│   └── overlays/
+│       ├── node_toolbar_widget_test.dart
+│       └── overlays_test.dart
 │
 ├── pubspec.yaml                        # Package metadata — zero dependencies
 ├── README.md                           # pub.dev landing page
@@ -327,15 +387,18 @@ EdgeStyle(
 
 ## What Antigravity Needs to Deliver
 
-1. **Implement all models** in `core/models/` with full `toJson`/`fromJson` support
-2. **Build the canvas engine** — pan, zoom, grid painter
-3. **Node widget system** — base node + 3 built-in types + custom type registry
-4. **Edge painter** — bezier, smoothStep, straight, animated variants
-5. **FlowController** — complete public API with undo/redo
-6. **MiniMap + Controls** overlay widgets
-7. **Theme system** — light/dark + fully customizable
-8. **Example app** — shows off all features visually
-9. **Tests** — unit tests for controller and models
-10. **pub.dev publish** — with README, CHANGELOG, MIT license, pub points: 140/140
+1. **Implement all models** in `core/models/` with full `toJson`/`fromJson` support ✅
+2. **Build the canvas engine** — pan, zoom, grid painter ✅
+3. **Node widget system** — base node + 3 built-in types + custom type registry ✅
+4. **Edge painter** — bezier, smoothStep, straight, animated variants ✅
+5. **FlowController** — complete public API with undo/redo ✅
+6. **MiniMap + Controls** overlay widgets ✅
+7. **Theme system** — light/dark + fully customizable ✅
+8. **Example app** — shows off all features visually ✅
+9. **Execution Engine** — DAG-based workflow runner with 14 node definitions ✅
+10. **Telegram Bot** — 18 API actions + polling trigger (N8N-style) ✅
+11. **AI Integration** — Gemini and OpenAI node definitions ✅
+12. **Tests** — 329 unit tests across 29 files ✅
+13. **pub.dev publish** — with README, CHANGELOG, MIT license, pub points: 140/140
 
-The end result is a **drop-in Flutter package** any developer can add to their app with `flutter pub add flowcraft` and get a full ReactFlow-like canvas in minutes.
+The end result is a **drop-in Flutter package** any developer can add to their app with `flutter pub add flowcraft` and get a full ReactFlow-like canvas with workflow automation in minutes.

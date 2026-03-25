@@ -100,6 +100,7 @@ export 'engine/nodes/merge_node_def.dart';
 export 'engine/nodes/openai_node_def.dart';
 export 'engine/nodes/output_node_def.dart';
 export 'engine/nodes/telegram_node_def.dart';
+export 'engine/nodes/telegram_trigger_node_def.dart';
 export 'engine/nodes/transform_node_def.dart';
 export 'engine/nodes/trigger_node_def.dart';
 export 'engine/nodes/variable_node_def.dart';

@@ -1,13 +1,13 @@
 # FlowCraft
 
-**ReactFlow-style interactive node-based flow diagrams for Flutter.**
+**ReactFlow-style interactive node-based flow diagrams + workflow execution engine for Flutter.**
 
 [![pub.dev](https://img.shields.io/pub/v/flowcraft.svg)](https://pub.dev/packages/flowcraft)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Flutter](https://img.shields.io/badge/Flutter-%E2%89%A51.17.0-02569B.svg)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-%E2%89%A53.10.0-0175C2.svg)](https://dart.dev)
 
-FlowCraft is an open-source Flutter package that brings fully interactive, animated, node-based flow diagram capabilities to your Flutter app — **with zero external dependencies**.
+FlowCraft is an open-source Flutter package that combines a fully interactive visual flow canvas with a powerful workflow execution engine — **with zero external dependencies**. Build visual diagrams, automate workflows, and integrate with Telegram, AI models, and HTTP APIs.
 
 ```
  ┌──────────────┐          ┌──────────────┐          ┌──────────────┐
@@ -20,6 +20,7 @@ FlowCraft is an open-source Flutter package that brings fully interactive, anima
 
 ## ✨ Features
 
+### 🎨 Visual Canvas
 - **Interactive Canvas** — Infinite 2D workspace with pan, zoom, and configurable grid
 - **Node System** — 4 built-in types (default, input, output, custom) + custom node registry
 - **Edge Routing** — Bezier curves, smooth step (right-angle), and straight lines
@@ -29,7 +30,18 @@ FlowCraft is an open-source Flutter package that brings fully interactive, anima
 - **Multi-Select** — Lasso selection and group drag
 - **Overlays** — Minimap, zoom controls, and floating toolbar
 - **Theming** — Complete light/dark themes + fully customizable `FlowTheme`
+
+### ⚡ Execution Engine
+- **Workflow Engine** — Topological-sort-based sequential node execution
+- **14 Built-in Nodes** — Trigger, Condition, Transform, Loop, Delay, Variable, Merge, Output, Error Handler, HTTP, Webhook, Gemini, OpenAI, Telegram
+- **Telegram Bot** — 18 API actions + polling trigger (N8N-style)
+- **AI Integration** — Gemini and OpenAI node definitions
+- **HTTP/Webhook** — Full REST client + webhook receiver nodes
+- **329 Tests** — Comprehensive unit test coverage
+
+### 🔒 Architecture
 - **Zero Dependencies** — Only Flutter SDK. No external packages.
+- **Modular** — Engine and canvas are independent layers
 
 ---
 
@@ -114,7 +126,30 @@ flowcraft/lib/
 ├── handles/       ← Connection point widgets
 ├── interactions/  ← Drag, connect, select, context menu
 ├── overlays/      ← Minimap, controls, toolbar
-└── theme/         ← Light/dark themes + customization
+├── theme/         ← Light/dark themes + customization
+└── engine/        ← Workflow execution engine
+    ├── execution_engine.dart      ← Topological sort + sequential execution
+    ├── execution_context.dart     ← Runtime context (params, credentials)
+    ├── execution_result.dart      ← Node execution results
+    ├── workflow_result.dart       ← Aggregate workflow results
+    ├── node_definition.dart       ← Abstract base for executable nodes
+    ├── node_definition_registry.dart ← Type-based node registry
+    └── nodes/                     ← 14 built-in node definitions
+        ├── telegram_node_def.dart         ← 18 Telegram API actions
+        ├── telegram_trigger_node_def.dart ← Polling trigger
+        ├── gemini_node_def.dart           ← Google Gemini AI
+        ├── openai_node_def.dart           ← OpenAI API
+        ├── http_request_node_def.dart     ← REST client
+        ├── webhook_node_def.dart          ← Webhook receiver
+        ├── condition_node_def.dart        ← 6 operators
+        ├── transform_node_def.dart        ← Data manipulation
+        ├── loop_node_def.dart             ← List iteration
+        ├── variable_node_def.dart         ← State management
+        ├── delay_node_def.dart            ← Timed pause
+        ├── merge_node_def.dart            ← Data merging
+        ├── trigger_node_def.dart          ← Manual start
+        ├── output_node_def.dart           ← Terminal output
+        └── error_handler_node_def.dart    ← Error catching
 ```
 
 ---
@@ -138,6 +173,8 @@ Full documentation is available in the [`documentation/`](documentation/) direct
 | 11 | [Theming](documentation/11_theming.md) | Light/dark themes, custom themes, FlowTheme properties |
 | 12 | [Serialization](documentation/12_serialization.md) | JSON save/load, format specification |
 | 13 | [Performance](documentation/13_performance.md) | Optimization strategies and best practices |
+| 14 | [Engine](documentation/14_engine.md) | Execution engine, node definitions, workflow execution |
+| 15 | [Telegram](documentation/15_telegram.md) | Telegram Bot integration (18 actions + trigger) |
 
 ---
 
@@ -172,6 +209,67 @@ final json = controller.toJson();
 // Load
 controller.fromJson(json);
 ```
+
+---
+
+## ⚡ Execution Engine
+
+FlowCraft includes a full workflow execution engine for automating node-based logic:
+
+```dart
+import 'package:flowcraft/flowcraft.dart';
+
+// Register node definitions
+final registry = NodeDefinitionRegistry();
+registry.register(TriggerNodeDef());
+registry.register(ConditionNodeDef());
+registry.register(TransformNodeDef());
+registry.register(TelegramNodeDef());
+
+// Execute a workflow
+final engine = ExecutionEngine(registry: registry);
+final result = await engine.execute(graph);
+
+if (result.isSuccess) {
+  print('Workflow completed: ${result.nodeResults}');
+}
+```
+
+### Built-in Node Definitions
+
+| Category | Nodes |
+|----------|-------|
+| **Core** | Trigger, Condition (6 operators), Transform (set/rename/remove/keep), Merge, Output |
+| **Flow** | Variable, Loop, Delay, Error Handler |
+| **AI** | Gemini, OpenAI |
+| **Network** | HTTP Request (GET/POST/PUT/DELETE), Webhook |
+| **Integration** | Telegram Bot (18 actions), Telegram Trigger |
+
+---
+
+## 🤖 Telegram Bot Integration
+
+N8N-style Telegram Bot node with 18 API actions:
+
+```dart
+final telegram = TelegramNodeDef();
+
+// Send a message
+final ctx = ExecutionContext(
+  nodeId: 'telegram_1',
+  params: {
+    'botToken': 'YOUR_BOT_TOKEN',
+    'action': 'sendMessage',
+    'chatId': '123456789',
+    'text': 'Hello from FlowCraft! 🚀',
+  },
+);
+final result = await telegram.execute(ctx);
+```
+
+**Supported actions:** `sendMessage`, `sendPhoto`, `sendDocument`, `sendVideo`, `sendSticker`, `sendLocation`, `sendChatAction`, `editMessageText`, `deleteMessage`, `forwardMessage`, `copyMessage`, `pinChatMessage`, `unpinChatMessage`, `answerCallbackQuery`, `getMe`, `getChat`, `getChatMember`, `getUpdates`
+
+**Trigger node:** Use `TelegramTriggerNodeDef` to start workflows from incoming messages via long polling.
 
 ---
 
