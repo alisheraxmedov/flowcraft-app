@@ -4,6 +4,7 @@ import 'package:flowcraft/flowcraft.dart';
 import 'home.dart';
 import 'execution_test_page.dart';
 import 'node_toolkit_page.dart';
+import 'sketch_demo_page.dart';
 import 'nodes/webhook_node.dart';
 import 'nodes/openai_node.dart';
 import 'nodes/telegram_node.dart';
@@ -223,6 +224,13 @@ class _CleanCanvasPageState extends State<CleanCanvasPage> {
             tooltip: 'Old Home Page',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const HomePage()),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.brush_rounded),
+            tooltip: 'Sketch demo (Excalidraw-style)',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SketchDemoPage()),
             ),
           ),
           IconButton(

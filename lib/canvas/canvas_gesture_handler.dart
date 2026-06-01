@@ -15,6 +15,7 @@ class CanvasGestureHandler extends StatefulWidget {
     required this.controller,
     required this.child,
     this.onCanvasTap,
+    this.enabled = true,
   });
 
   /// The flow controller that receives pan/zoom updates.
@@ -25,6 +26,11 @@ class CanvasGestureHandler extends StatefulWidget {
 
   /// Called when the user taps on the canvas background.
   final VoidCallback? onCanvasTap;
+
+  /// When `false`, the gesture detector is bypassed entirely so an
+  /// overlay (e.g. a drawing layer) can claim pointer events without
+  /// the canvas competing for pan / zoom.
+  final bool enabled;
 
   @override
   State<CanvasGestureHandler> createState() => _CanvasGestureHandlerState();
@@ -38,6 +44,15 @@ class _CanvasGestureHandlerState extends State<CanvasGestureHandler> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.enabled) {
+      // Bypass entirely — an overlay is handling pointer input. We still
+      // want the wheel-zoom behaviour on web/desktop, so a passive
+      // pointer-signal listener stays attached.
+      return Listener(
+        onPointerSignal: _onPointerSignal,
+        child: widget.child,
+      );
+    }
     return Listener(
       onPointerSignal: _onPointerSignal,
       child: GestureDetector(
