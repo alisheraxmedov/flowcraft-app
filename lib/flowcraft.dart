@@ -88,6 +88,7 @@ export 'engine/node_status.dart';
 export 'engine/param_definition.dart';
 export 'engine/port_definition.dart';
 export 'engine/workflow_result.dart';
+export 'engine/workflow_server.dart';
 
 // Engine — Built-in Nodes
 export 'engine/nodes/condition_node_def.dart';

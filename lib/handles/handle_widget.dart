@@ -41,10 +41,12 @@ class _HandleWidgetState extends State<HandleWidget> {
   Widget build(BuildContext context) {
     final pos = _offset();
     final displaySize = _active ? widget.size + 4 : widget.size;
+    const double hitPadding = 20.0;
+    final hitSize = displaySize + hitPadding * 2;
 
     return Positioned(
-      left: pos.dx - displaySize / 2,
-      top: pos.dy - displaySize / 2,
+      left: pos.dx - hitSize / 2,
+      top: pos.dy - hitSize / 2,
       child: MouseRegion(
         onEnter: (_) => setState(() => _hovering = true),
         onExit: (_) => setState(() => _hovering = false),
@@ -60,25 +62,31 @@ class _HandleWidgetState extends State<HandleWidget> {
             setState(() => _dragging = false);
             widget.onDragEnded?.call();
           },
-          child: Container(
-            width: displaySize,
-            height: displaySize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _active ? widget.color : const Color(0xFFFFFFFF),
-              border: Border.all(
-                color: widget.color,
-                width: _active ? 2.0 : 1.5,
+          child: SizedBox(
+            width: hitSize,
+            height: hitSize,
+            child: Center(
+              child: Container(
+                width: displaySize,
+                height: displaySize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _active ? widget.color : const Color(0xFFFFFFFF),
+                  border: Border.all(
+                    color: widget.color,
+                    width: _active ? 2.0 : 1.5,
+                  ),
+                  boxShadow: _active
+                      ? [
+                          BoxShadow(
+                            color: widget.color.withValues(alpha: 0.4),
+                            blurRadius: 6,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
+                ),
               ),
-              boxShadow: _active
-                  ? [
-                      BoxShadow(
-                        color: widget.color.withValues(alpha: 0.4),
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
             ),
           ),
         ),

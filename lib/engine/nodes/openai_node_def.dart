@@ -50,12 +50,14 @@ class OpenAiNodeDef extends NodeDefinition {
           displayName: 'API Key',
           type: ParamType.credential,
           description: 'OpenAI API key (sk-...)',
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'model',
           displayName: 'Model',
           type: ParamType.string,
           description: 'Model name (e.g. gpt-4o, gpt-4o-mini, o1, etc.)',
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'systemMessage',
@@ -68,6 +70,7 @@ class OpenAiNodeDef extends NodeDefinition {
           displayName: 'User Message',
           type: ParamType.string,
           description: 'The user message to send. Use {{fieldName}} for input data interpolation',
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'temperature',

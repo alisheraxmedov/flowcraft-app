@@ -6,6 +6,7 @@ import 'package:flowcraft/canvas/viewport_transform.dart';
 import 'package:flowcraft/core/enums/edge_type.dart';
 import 'package:flowcraft/core/enums/handle_position.dart';
 import 'package:flowcraft/core/models/flow_edge.dart';
+import 'package:flowcraft/core/models/flow_viewport.dart';
 import 'package:flowcraft/controller/flow_controller.dart';
 import 'package:flowcraft/edges/bezier_edge.dart';
 import 'package:flowcraft/edges/smooth_step_edge.dart';
@@ -20,22 +21,40 @@ import 'package:flowcraft/edges/straight_edge.dart';
 class EdgePainter extends CustomPainter {
   EdgePainter({
     required this.controller,
+    required this.viewport,
+    required this.edges,
+    required this.selectedEdgeIds,
+    required this.paintGen,
     this.animationValue = 0.0,
     this.canvasSize,
   });
 
   final FlowController controller;
+  final FlowViewport viewport;
+  final List<FlowEdge> edges;
+  final Set<String> selectedEdgeIds;
+  final int paintGen;
   final double animationValue;
   final Size? canvasSize;
 
+  // Reusable paints — mutated per edge instead of allocated each time.
+  static final Paint _bodyPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
+  static final Paint _highlightPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final viewport = controller.viewport;
     final effectiveSize = canvasSize ?? size;
+    final zoom = viewport.zoom;
+    final graph = controller.graph;
 
-    for (final edge in controller.edges) {
-      final sourceNode = controller.graph.nodeById(edge.sourceNodeId);
-      final targetNode = controller.graph.nodeById(edge.targetNodeId);
+    for (final edge in edges) {
+      final sourceNode = graph.nodeById(edge.sourceNodeId);
+      final targetNode = graph.nodeById(edge.targetNodeId);
       if (sourceNode == null || targetNode == null) continue;
 
       final sourceHandle = sourceNode.handleById(edge.sourceHandleId);
@@ -51,7 +70,6 @@ class EdgePainter extends CustomPainter {
         viewport,
       );
 
-      // Viewport culling: skip edges entirely off-screen
       if (_isEdgeOffScreen(screenSource, screenTarget, effectiveSize)) {
         continue;
       }
@@ -61,36 +79,29 @@ class EdgePainter extends CustomPainter {
         sourceHandle.position, targetHandle.position,
       );
 
-      final paint = Paint()
+      final scaledThickness = edge.style.thickness * zoom;
+      _bodyPaint
         ..color = edge.style.color
-        ..strokeWidth = edge.style.thickness * viewport.zoom
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
+        ..strokeWidth = scaledThickness;
 
-      // Selection highlight
-      if (controller.selection.isEdgeSelected(edge.id)) {
-        final highlight = Paint()
+      if (selectedEdgeIds.contains(edge.id)) {
+        _highlightPaint
           ..color = edge.style.color.withValues(alpha: 0.3)
-          ..strokeWidth = (edge.style.thickness + 4) * viewport.zoom
-          ..style = PaintingStyle.stroke
-          ..strokeCap = StrokeCap.round;
-        canvas.drawPath(path, highlight);
+          ..strokeWidth = (edge.style.thickness + 4) * zoom;
+        canvas.drawPath(path, _highlightPaint);
       }
 
-      // Draw edge body
       final dashes = _effectiveDashes(edge);
       if (edge.style.animated) {
-        _drawAnimated(canvas, path, paint, dashes, viewport.zoom);
+        _drawAnimated(canvas, path, _bodyPaint, dashes, zoom);
       } else if (dashes.isNotEmpty) {
-        _drawDashed(canvas, path, paint, dashes);
+        _drawDashed(canvas, path, _bodyPaint, dashes);
       } else {
-        canvas.drawPath(path, paint);
+        canvas.drawPath(path, _bodyPaint);
       }
 
-      // Arrow
       if (edge.style.showArrow) {
-        _drawArrow(canvas, path, paint, edge.style.arrowSize * viewport.zoom);
+        _drawArrow(canvas, path, _bodyPaint, edge.style.arrowSize * zoom);
       }
     }
   }
@@ -207,6 +218,19 @@ class EdgePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(EdgePainter oldDelegate) => true;
-}
+  bool shouldRepaint(EdgePainter old) {
+    return paintGen != old.paintGen ||
+        animationValue != old.animationValue ||
+        viewport != old.viewport ||
+        !_setEquals(selectedEdgeIds, old.selectedEdgeIds);
+  }
 
+  static bool _setEquals(Set<String> a, Set<String> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (final e in a) {
+      if (!b.contains(e)) return false;
+    }
+    return true;
+  }
+}

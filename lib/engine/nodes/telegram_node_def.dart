@@ -119,6 +119,7 @@ class TelegramNodeDef extends NodeDefinition {
           displayName: 'Bot Token',
           type: ParamType.credential,
           description: 'Telegram Bot API token from @BotFather',
+          isRequired: true,
         ),
 
         // ── Target ──
@@ -127,6 +128,7 @@ class TelegramNodeDef extends NodeDefinition {
           displayName: 'Chat ID',
           type: ParamType.string,
           description: 'Target chat, group, or channel ID',
+          isRequired: true,
         ),
 
         // ── Action selector ──

@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' show PointMode;
+
 import 'package:flutter/rendering.dart';
 
 import 'package:flowcraft/core/models/flow_viewport.dart';
@@ -71,29 +74,67 @@ class GridPainter extends CustomPainter {
 
   void _paintDots(Canvas canvas, Size size, double startX, double startY,
       double spacing, Paint paint) {
+    // Count points first to size buffer once.
+    int countX = 0;
+    for (double x = startX; x <= size.width; x += spacing) {
+      countX++;
+    }
+    int countY = 0;
+    for (double y = startY; y <= size.height; y += spacing) {
+      countY++;
+    }
+    final total = countX * countY;
+    if (total == 0) return;
+
+    final dotSize = dotRadius * 2 * viewport.zoom.clamp(0.5, 1.5);
+    paint
+      ..strokeWidth = dotSize
+      ..strokeCap = StrokeCap.round;
+
+    // drawRawPoints with packed Float32List avoids Offset allocations.
+    final buf = Float32List(total * 2);
+    int i = 0;
     for (double x = startX; x <= size.width; x += spacing) {
       for (double y = startY; y <= size.height; y += spacing) {
-        canvas.drawCircle(
-          Offset(x, y),
-          dotRadius * viewport.zoom.clamp(0.5, 1.5),
-          paint,
-        );
+        buf[i++] = x;
+        buf[i++] = y;
       }
     }
+    canvas.drawRawPoints(PointMode.points, buf, paint);
   }
 
   void _paintLines(Canvas canvas, Size size, double startX, double startY,
       double spacing, Paint paint) {
     paint.strokeWidth = 0.5;
 
-    // Vertical lines
+    // Build packed buffer of (x0,y0,x1,y1) pairs and issue a single drawRawPoints
+    // call in line-segment mode.
+    int countV = 0;
     for (double x = startX; x <= size.width; x += spacing) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      countV++;
     }
-    // Horizontal lines
+    int countH = 0;
     for (double y = startY; y <= size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      countH++;
     }
+    final total = countV + countH;
+    if (total == 0) return;
+
+    final buf = Float32List(total * 4);
+    int i = 0;
+    for (double x = startX; x <= size.width; x += spacing) {
+      buf[i++] = x;
+      buf[i++] = 0;
+      buf[i++] = x;
+      buf[i++] = size.height;
+    }
+    for (double y = startY; y <= size.height; y += spacing) {
+      buf[i++] = 0;
+      buf[i++] = y;
+      buf[i++] = size.width;
+      buf[i++] = y;
+    }
+    canvas.drawRawPoints(PointMode.lines, buf, paint);
   }
 
   @override

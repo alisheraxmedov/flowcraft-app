@@ -157,7 +157,7 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
   }
 
   FlowHandle? _findTargetHandle(Offset screenPos) {
-    const hitRadiusSq = 20.0 * 20.0;
+    const hitRadiusSq = 40.0 * 40.0;
     double bestDistSq = hitRadiusSq;
     FlowHandle? best;
 
@@ -286,6 +286,11 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
                             return CustomPaint(
                               painter: EdgePainter(
                                 controller: widget.controller,
+                                viewport: viewport,
+                                edges: widget.controller.edges,
+                                selectedEdgeIds:
+                                    widget.controller.selection.selectedEdgeIds,
+                                paintGen: widget.controller.paintGen,
                                 animationValue: _animController.value,
                                 canvasSize: canvasSize,
                               ),
@@ -295,6 +300,11 @@ class _CanvasLayerStackState extends State<CanvasLayerStack>
                       : CustomPaint(
                           painter: EdgePainter(
                             controller: widget.controller,
+                            viewport: viewport,
+                            edges: widget.controller.edges,
+                            selectedEdgeIds:
+                                widget.controller.selection.selectedEdgeIds,
+                            paintGen: widget.controller.paintGen,
                             animationValue: 0,
                             canvasSize: canvasSize,
                           ),

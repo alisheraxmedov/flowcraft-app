@@ -3,9 +3,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/overlays/expandable_bottom_sheet.dart';
 
 import 'execution_test_page.dart';
 import 'node_toolkit_page.dart';
+
+import 'nodes/webhook_node.dart';
+import 'nodes/openai_node.dart';
+import 'nodes/telegram_node.dart';
+import 'nodes/gemini_node.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -23,6 +29,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late FlowController _controller;
+  late WorkflowServer _server;
+  bool _isServerRunning = false;
   String? _selectedNodeId;
   String? _selectedEdgeId;
 
@@ -30,11 +38,20 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _controller = _buildDemoController();
+    
+    _server = WorkflowServer(controller: _controller);
+    _server.events.listen((event) {
+      if (mounted) {
+        _showMessage('${event.type.name}: ${event.message}');
+      }
+    });
+
     _scheduleFitView();
   }
 
   @override
   void dispose() {
+    _server.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -58,6 +75,11 @@ class _HomePageState extends State<HomePage> {
       ..register(OpenAiNodeDef())
       ..register(GeminiNodeDef())
       ..register(TelegramNodeDef());
+
+    controller.nodeTypeRegistry.register('webhook', WebhookNode.builder);
+    controller.nodeTypeRegistry.register('openai', OpenAINode.builder);
+    controller.nodeTypeRegistry.register('gemini', GeminiNode.builder);
+    controller.nodeTypeRegistry.register('telegram', TelegramNode.builder);
 
     controller.addNode(
       type: NodeType.trigger,
@@ -429,6 +451,31 @@ class _HomePageState extends State<HomePage> {
                         ),
                         _divider(colorScheme),
                         _ToolbarButton(
+                          icon: _isServerRunning
+                              ? Icons.cloud_off
+                              : Icons.cloud_upload,
+                          tooltip: _isServerRunning
+                              ? 'Stop Webhook Server'
+                              : 'Start Webhook Server (Port 8080)',
+                          onTap: () async {
+                            if (_isServerRunning) {
+                              await _server.stop();
+                              setState(() => _isServerRunning = false);
+                            } else {
+                              try {
+                                await _server.start(port: 8080);
+                                setState(() => _isServerRunning = true);
+                              } catch (e) {
+                                if (mounted) {
+                                  _showMessage('Failed to start: $e');
+                                }
+                              }
+                            }
+                          },
+                          color: _isServerRunning ? Colors.red : Colors.green,
+                        ),
+                        _divider(colorScheme),
+                        _ToolbarButton(
                           icon: Icons.play_arrow_rounded,
                           tooltip: 'Execute Workflow',
                           onTap: _executeWorkflow,
@@ -468,8 +515,8 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // Node edit panel
-          if (selectedNode != null)
+          // Node edit panel (desktop only)
+          if (selectedNode != null && MediaQuery.of(context).size.width >= 800)
             _NodeEditPanel(
               key: ValueKey(selectedNode.id),
               node: selectedNode,
@@ -479,8 +526,8 @@ class _HomePageState extends State<HomePage> {
               onShowMessage: _showMessage,
             ),
 
-          // Edge edit panel
-          if (selectedEdge != null && selectedNode == null)
+          // Edge edit panel (desktop only)
+          if (selectedEdge != null && selectedNode == null && MediaQuery.of(context).size.width >= 800)
             _EdgeEditPanel(
               key: ValueKey(selectedEdge.id),
               edge: selectedEdge,
@@ -491,6 +538,61 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
+      bottomSheet: MediaQuery.of(context).size.width < 800
+          ? ((selectedNode != null)
+              ? BottomSheet(
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  onClosing: () {},
+                  enableDrag: false,
+                  builder: (context) {
+                    return ExpandableBottomSheet(
+                      builder: (context, scrollController) {
+                        return SizedBox(
+                          width: double.infinity,
+                          child: _NodeEditPanel(
+                            key: ValueKey(selectedNode.id),
+                            node: selectedNode,
+                            controller: _controller,
+                            darkMode: isDark,
+                            onClose: () => setState(() => _selectedNodeId = null),
+                            onShowMessage: _showMessage,
+                            isBottomSheet: true,
+                            scrollController: scrollController,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                )
+              : (selectedEdge != null
+                  ? BottomSheet(
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      onClosing: () {},
+                      enableDrag: false,
+                      builder: (context) {
+                        return ExpandableBottomSheet(
+                          builder: (context, scrollController) {
+                            return SizedBox(
+                              width: double.infinity,
+                              child: _EdgeEditPanel(
+                                key: ValueKey(selectedEdge.id),
+                                edge: selectedEdge,
+                                controller: _controller,
+                                darkMode: isDark,
+                                onClose: () => setState(() => _selectedEdgeId = null),
+                                onShowMessage: _showMessage,
+                                isBottomSheet: true,
+                                scrollController: scrollController,
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    )
+                  : null))
+          : null,
     );
   }
 
@@ -515,6 +617,8 @@ class _NodeEditPanel extends StatefulWidget {
     required this.darkMode,
     required this.onClose,
     required this.onShowMessage,
+    this.isBottomSheet = false,
+    this.scrollController,
   });
 
   final FlowNode node;
@@ -522,6 +626,8 @@ class _NodeEditPanel extends StatefulWidget {
   final bool darkMode;
   final VoidCallback onClose;
   final void Function(String message) onShowMessage;
+  final bool isBottomSheet;
+  final ScrollController? scrollController;
 
   @override
   State<_NodeEditPanel> createState() => _NodeEditPanelState();
@@ -629,15 +735,240 @@ class _NodeEditPanelState extends State<_NodeEditPanel> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    final header = _PanelHeader(
+      title: 'Edit Node',
+      icon: Icons.edit_note_rounded,
+      onClose: widget.onClose,
+    );
+
+    final fields = [
+      // Name
+      _SectionTitle(title: 'Name', icon: Icons.label_outline),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _labelController,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Node name',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              onSubmitted: (_) => _renameNode(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            onPressed: _renameNode,
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+
+      // Type
+      _SectionTitle(title: 'Type', icon: Icons.category_outlined),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: NodeType.values
+            .where((t) => t != NodeType.custom)
+            .map((type) {
+          final isSelected = widget.node.type == type;
+          return ChoiceChip(
+            label: Text(_nodeTypeLabel(type)),
+            selected: isSelected,
+            onSelected: (_) => _changeNodeType(type),
+          );
+        }).toList(),
+      ),
+      const SizedBox(height: 20),
+
+      // Fields
+      _SectionTitle(title: 'Data Fields', icon: Icons.data_object_rounded),
+      const SizedBox(height: 8),
+
+      if (widget.node.data.isEmpty)
+        Text(
+          'No fields',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontStyle: FontStyle.italic,
+          ),
+        )
+      else
+        ...widget.node.data.entries.map((entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(entry.key,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                )),
+                            Text('${entry.value}',
+                                style: theme.textTheme.bodyMedium),
+                          ],
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _editField(entry.key, '${entry.value}'),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      tooltip: 'Edit',
+                    ),
+                    IconButton(
+                      onPressed: () => _removeField(entry.key),
+                      icon: Icon(Icons.delete_outline_rounded,
+                          size: 18, color: colorScheme.error),
+                      tooltip: 'Remove',
+                    ),
+                  ],
+                ),
+              ),
+            )),
+
+      const SizedBox(height: 12),
+
+      // Add field form
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: colorScheme.primary.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Add Field',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.primary,
+                )),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _newKeyController,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Key',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _newValueController,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Value',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              onSubmitted: (_) => _addField(),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _addField,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Add Field'),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 20),
+
+      // Delete Node Button (Moved here so it's vertically last)
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            widget.controller.removeNode(widget.node.id);
+            widget.onClose();
+            widget.onShowMessage('Deleted "${widget.node.label}"');
+          },
+          icon: const Icon(Icons.delete_forever_rounded, size: 18),
+          label: const Text('Delete Node'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: colorScheme.error,
+            side: BorderSide(color: colorScheme.error),
+          ),
+        ),
+      ),
+      const SizedBox(height: 20),
+    ];
+
+    final content = widget.scrollController != null
+        ? CustomScrollView(
+            controller: widget.scrollController,
+            slivers: [
+              SliverToBoxAdapter(child: header),
+              SliverPadding(
+                padding: const EdgeInsets.all(16),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate(fields),
+                ),
+              ),
+            ],
+          )
+        : Column(
+            children: [
+              header,
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: fields,
+                ),
+              ),
+            ],
+          );
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      width: 320,
+      width: widget.isBottomSheet ? double.infinity : 320,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh,
-        border: Border(
-          left: BorderSide(color: colorScheme.outlineVariant),
-        ),
-        boxShadow: [
+        border: widget.isBottomSheet
+            ? null
+            : Border(left: BorderSide(color: colorScheme.outlineVariant)),
+        boxShadow: widget.isBottomSheet ? [] : [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 12,
@@ -645,230 +976,7 @@ class _NodeEditPanelState extends State<_NodeEditPanel> {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          // Header
-          _PanelHeader(
-            title: 'Edit Node',
-            icon: Icons.edit_note_rounded,
-            onClose: widget.onClose,
-          ),
-
-          // Content
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // Name
-                _SectionTitle(title: 'Name', icon: Icons.label_outline),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _labelController,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          hintText: 'Node name',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                        ),
-                        onSubmitted: (_) => _renameNode(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: _renameNode,
-                      child: const Text('Rename'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Type
-                _SectionTitle(
-                    title: 'Type', icon: Icons.category_outlined),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: NodeType.values
-                      .where((t) => t != NodeType.custom)
-                      .map((type) {
-                    final isSelected = widget.node.type == type;
-                    return ChoiceChip(
-                      label: Text(_nodeTypeLabel(type)),
-                      selected: isSelected,
-                      onSelected: (_) => _changeNodeType(type),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-
-                // Fields
-                _SectionTitle(
-                    title: 'Data Fields', icon: Icons.data_object_rounded),
-                const SizedBox(height: 8),
-
-                if (widget.node.data.isEmpty)
-                  Text(
-                    'No fields',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  )
-                else
-                  ...widget.node.data.entries.map((entry) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: colorScheme.outlineVariant
-                                  .withValues(alpha: 0.5),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(entry.key,
-                                        style: theme.textTheme.labelSmall
-                                            ?.copyWith(
-                                          color: colorScheme.primary,
-                                          fontWeight: FontWeight.w600,
-                                        )),
-                                    Text('${entry.value}',
-                                        style:
-                                            theme.textTheme.bodyMedium),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () => _editField(
-                                    entry.key, '${entry.value}'),
-                                icon: const Icon(Icons.edit_outlined,
-                                    size: 18),
-                                tooltip: 'Edit',
-                              ),
-                              IconButton(
-                                onPressed: () =>
-                                    _removeField(entry.key),
-                                icon: Icon(
-                                    Icons.delete_outline_rounded,
-                                    size: 18,
-                                    color: colorScheme.error),
-                                tooltip: 'Remove',
-                              ),
-                            ],
-                          ),
-                        ),
-                      )),
-
-                const SizedBox(height: 12),
-
-                // Add field
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer
-                        .withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color:
-                          colorScheme.primary.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Add Field',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.primary,
-                          )),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _newKeyController,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          hintText: 'Key',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _newValueController,
-                        decoration: InputDecoration(
-                          isDense: true,
-                          hintText: 'Value',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                        ),
-                        onSubmitted: (_) => _addField(),
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: _addField,
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('Add Field'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Delete
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      widget.controller.removeNode(widget.node.id);
-                      widget.onClose();
-                      widget.onShowMessage(
-                          'Deleted "${widget.node.label}"');
-                    },
-                    icon: const Icon(Icons.delete_forever_rounded,
-                        size: 18),
-                    label: const Text('Delete Node'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colorScheme.error,
-                      side: BorderSide(color: colorScheme.error),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: content,
     );
   }
 
@@ -900,6 +1008,8 @@ class _EdgeEditPanel extends StatelessWidget {
     required this.darkMode,
     required this.onClose,
     required this.onShowMessage,
+    this.isBottomSheet = false,
+    this.scrollController,
   });
 
   final FlowEdge edge;
@@ -907,6 +1017,8 @@ class _EdgeEditPanel extends StatelessWidget {
   final bool darkMode;
   final VoidCallback onClose;
   final void Function(String message) onShowMessage;
+  final bool isBottomSheet;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -915,13 +1027,13 @@ class _EdgeEditPanel extends StatelessWidget {
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      width: 320,
+      width: isBottomSheet ? double.infinity : 320,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHigh,
-        border: Border(
-          left: BorderSide(color: colorScheme.outlineVariant),
-        ),
-        boxShadow: [
+        border: isBottomSheet
+            ? null
+            : Border(left: BorderSide(color: colorScheme.outlineVariant)),
+        boxShadow: isBottomSheet ? [] : [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 12,

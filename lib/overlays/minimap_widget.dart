@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/controller/flow_controller.dart';
+import 'package:flowcraft/core/models/flow_node.dart';
+import 'package:flowcraft/core/models/flow_viewport.dart';
 
 /// Miniature overview of the entire graph with viewport indicator.
 ///
@@ -30,38 +32,42 @@ class MinimapWidget extends StatelessWidget {
     return Positioned(
       right: 12,
       bottom: 12,
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFFDDDDDD)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 6,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(5),
-          child: interactive
-              ? _InteractiveMinimap(
-                  controller: controller,
-                  nodeColor: nodeColor,
-                  viewportColor: viewportColor,
-                  width: width,
-                  height: height,
-                )
-              : CustomPaint(
-                  painter: _MinimapPainter(
+      child: RepaintBoundary(
+        child: Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFFDDDDDD)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 6,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: interactive
+                ? _InteractiveMinimap(
                     controller: controller,
                     nodeColor: nodeColor,
                     viewportColor: viewportColor,
+                    width: width,
+                    height: height,
+                  )
+                : CustomPaint(
+                    painter: _MinimapPainter(
+                      nodes: controller.nodes,
+                      viewport: controller.viewport,
+                      nodeColor: nodeColor,
+                      viewportColor: viewportColor,
+                      paintGen: controller.paintGen,
+                    ),
                   ),
-                ),
+          ),
         ),
       ),
     );
@@ -91,9 +97,11 @@ class _InteractiveMinimap extends StatelessWidget {
       onPanUpdate: (d) => _panTo(d.localPosition),
       child: CustomPaint(
         painter: _MinimapPainter(
-          controller: controller,
+          nodes: controller.nodes,
+          viewport: controller.viewport,
           nodeColor: nodeColor,
           viewportColor: viewportColor,
+          paintGen: controller.paintGen,
         ),
       ),
     );
@@ -144,23 +152,34 @@ class _InteractiveMinimap extends StatelessWidget {
 
 class _MinimapPainter extends CustomPainter {
   _MinimapPainter({
-    required this.controller,
+    required this.nodes,
+    required this.viewport,
     required this.nodeColor,
     required this.viewportColor,
+    required this.paintGen,
   });
 
-  final FlowController controller;
+  final List<FlowNode> nodes;
+  final FlowViewport viewport;
   final Color nodeColor;
   final Color viewportColor;
+  final int paintGen;
+
+  static final Paint _nodePaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _vpFillPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _vpStrokePaint = Paint()
+    ..color = const Color(0xFF2196F3)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.0;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (controller.nodes.isEmpty) return;
+    if (nodes.isEmpty) return;
 
     double minX = double.infinity, minY = double.infinity;
     double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
 
-    for (final node in controller.nodes) {
+    for (final node in nodes) {
       if (node.position.dx < minX) minX = node.position.dx;
       if (node.position.dy < minY) minY = node.position.dy;
       final right = node.position.dx + node.size.width;
@@ -183,49 +202,36 @@ class _MinimapPainter extends CustomPainter {
     final scaleY = size.height / graphH;
     final scale = scaleX < scaleY ? scaleX : scaleY;
 
-    // Nodes
-    final nodePaint = Paint()
-      ..color = nodeColor
-      ..style = PaintingStyle.fill;
+    _nodePaint.color = nodeColor;
+    const radius = Radius.circular(1);
 
-    for (final node in controller.nodes) {
+    for (final node in nodes) {
       final rect = Rect.fromLTWH(
         (node.position.dx - minX) * scale,
         (node.position.dy - minY) * scale,
         node.size.width * scale,
         node.size.height * scale,
       );
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(rect, const Radius.circular(1)),
-        nodePaint,
-      );
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, radius), _nodePaint);
     }
 
-    // Viewport indicator
-    final vp = controller.viewport;
-    final vpFill = Paint()
-      ..color = viewportColor
-      ..style = PaintingStyle.fill;
-    final vpStroke = Paint()
-      ..color = const Color(0xFF2196F3)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+    _vpFillPaint.color = viewportColor;
 
     final vpRect = Rect.fromLTWH(
-      (-vp.offset.dx / vp.zoom - minX) * scale,
-      (-vp.offset.dy / vp.zoom - minY) * scale,
-      (size.width / vp.zoom) * scale / 2,
-      (size.height / vp.zoom) * scale / 2,
+      (-viewport.offset.dx / viewport.zoom - minX) * scale,
+      (-viewport.offset.dy / viewport.zoom - minY) * scale,
+      (size.width / viewport.zoom) * scale / 2,
+      (size.height / viewport.zoom) * scale / 2,
     );
-    canvas.drawRect(vpRect, vpFill);
-    canvas.drawRect(vpRect, vpStroke);
+    canvas.drawRect(vpRect, _vpFillPaint);
+    canvas.drawRect(vpRect, _vpStrokePaint);
   }
 
   @override
-  bool shouldRepaint(_MinimapPainter oldDelegate) {
-    return controller != oldDelegate.controller ||
-        nodeColor != oldDelegate.nodeColor ||
-        viewportColor != oldDelegate.viewportColor;
+  bool shouldRepaint(_MinimapPainter old) {
+    return paintGen != old.paintGen ||
+        viewport != old.viewport ||
+        nodeColor != old.nodeColor ||
+        viewportColor != old.viewportColor;
   }
 }
-

@@ -29,3 +29,85 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 /build/
 /coverage/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+
+# ── Security: secrets, credentials, signing material ──────────────────────
+# Never commit these files. Use .env.example as a template.
+.env
+.env.*
+!.env.example
+!.env.template
+*.env.local
+secrets.json
+secrets.yaml
+secrets.yml
+credentials.json
+credentials.yaml
+config.local.*
+*.secret
+*.secrets
+
+# Service accounts (GCP / Firebase / generic)
+service-account*.json
+serviceAccount*.json
+*-service-account*.json
+firebase-adminsdk-*.json
+google-services.json
+GoogleService-Info.plist
+
+# Cloud provider credentials
+.aws/
+.gcp/
+.azure/
+gcp-key.json
+
+# Signing keys & certificates
+key.properties
+android/key.properties
+android/app/key.properties
+upload-keystore.jks
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
+
+# API tokens / OAuth dumps occasionally left by tooling
+.npmrc
+.netrc
+auth.json
+token.json
+.tokens
+
+# ── Editor / OS extras ────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*~
+*.bak
+*.tmp
+*.orig
+.vscode/launch.json
+.vscode/settings.json
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+
+# ── Local dev caches ──────────────────────────────────────────────────────
+.history/
+.cache/
+*.local
+
+# ── Test artifacts ────────────────────────────────────────────────────────
+test/.test_coverage.dart
+.test_runner.dart
+coverage_badge.svg
+lcov.info

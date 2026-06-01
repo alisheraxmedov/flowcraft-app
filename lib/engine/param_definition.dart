@@ -9,6 +9,7 @@ class ParamDefinition {
     this.defaultValue,
     this.description,
     this.options,
+    this.isRequired = false,
   });
 
   /// Internal parameter key.
@@ -28,6 +29,9 @@ class ParamDefinition {
 
   /// Available options for [ParamType.select].
   final List<String>? options;
+
+  /// Whether this parameter is mandatory for node execution.
+  final bool isRequired;
 
   String get label => displayName ?? name;
 }

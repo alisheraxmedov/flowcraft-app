@@ -50,12 +50,14 @@ class GeminiNodeDef extends NodeDefinition {
           displayName: 'API Key',
           type: ParamType.credential,
           description: 'Google AI API key',
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'model',
           displayName: 'Model',
           type: ParamType.string,
           description: 'Model name (e.g. gemini-2.0-flash, gemini-1.5-pro, etc.)',
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'systemInstruction',
@@ -69,6 +71,7 @@ class GeminiNodeDef extends NodeDefinition {
           displayName: 'User Message',
           type: ParamType.string,
           description: 'The prompt to send. Use {{fieldName}} for input data interpolation',
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'temperature',
@@ -159,7 +162,10 @@ class GeminiNodeDef extends NodeDefinition {
         'topP': topP,
         'topK': topK,
       },
-      'safetySettings': [
+    };
+
+    if (safetyLevel.isNotEmpty) {
+      body['safetySettings'] = [
         {
           'category': 'HARM_CATEGORY_HARASSMENT',
           'threshold': safetyLevel,
@@ -176,8 +182,8 @@ class GeminiNodeDef extends NodeDefinition {
           'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
           'threshold': safetyLevel,
         },
-      ],
-    };
+      ];
+    }
 
     // Add system instruction if provided
     if (systemInstruction.isNotEmpty) {

@@ -20,10 +20,12 @@ class NodePropertiesPanel extends StatelessWidget {
     super.key,
     required this.controller,
     this.width = 300,
+    this.scrollController,
   });
 
   final FlowController controller;
   final double width;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +54,7 @@ class NodePropertiesPanel extends StatelessWidget {
           definition: definition,
           nodeData: node.data,
           width: width,
+          scrollController: scrollController,
         );
       },
     );
@@ -104,6 +107,7 @@ class _PanelContent extends StatefulWidget {
     required this.definition,
     required this.nodeData,
     required this.width,
+    this.scrollController,
   });
 
   final FlowController controller;
@@ -112,6 +116,7 @@ class _PanelContent extends StatefulWidget {
   final NodeDefinition? definition;
   final Map<String, dynamic> nodeData;
   final double width;
+  final ScrollController? scrollController;
 
   @override
   State<_PanelContent> createState() => _PanelContentState();
@@ -158,95 +163,125 @@ class _PanelContentState extends State<_PanelContent> {
     final cs = Theme.of(context).colorScheme;
     final def = widget.definition;
 
+    final header = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.5),
+        border: Border(
+          bottom: BorderSide(
+              color: cs.outlineVariant.withValues(alpha: 0.3)),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.nodeLabel,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: cs.onPrimaryContainer,
+            ),
+          ),
+          if (def != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              '${def.category} • ${def.typeId}',
+              style: TextStyle(
+                fontSize: 10,
+                color: cs.onPrimaryContainer.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    final fields = def == null || def.params.isEmpty
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Text(
+                'No configurable parameters',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurface.withValues(alpha: 0.4)),
+              ),
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final param in def.params) ...[
+                _buildField(param, cs),
+                const SizedBox(height: 10),
+              ],
+            ],
+          );
+
+    final footer = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+              color: cs.outlineVariant.withValues(alpha: 0.2)),
+        ),
+      ),
+      child: Text(
+        'ID: ${widget.nodeId.substring(0, 8)}…',
+        style: TextStyle(
+          fontSize: 9,
+          fontFamily: 'monospace',
+          color: cs.onSurface.withValues(alpha: 0.3),
+        ),
+      ),
+    );
+
+    final content = widget.scrollController != null
+        ? CustomScrollView(
+            controller: widget.scrollController,
+            slivers: [
+              SliverToBoxAdapter(child: header),
+              SliverPadding(
+                padding: const EdgeInsets.all(12),
+                sliver: SliverToBoxAdapter(child: fields),
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: footer,
+                ),
+              ),
+            ],
+          )
+        : Column(
+            children: [
+              header,
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(12),
+                  children: [fields],
+                ),
+              ),
+              footer,
+            ],
+          );
+
     return Container(
       width: widget.width,
       decoration: BoxDecoration(
         color: cs.surfaceContainerHigh,
-        border: Border(
-          left: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)),
-        ),
-      ),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withValues(alpha: 0.5),
-              border: Border(
-                bottom: BorderSide(
+        border: widget.width == double.infinity
+            ? null
+            : Border(
+                left: BorderSide(
                     color: cs.outlineVariant.withValues(alpha: 0.3)),
               ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.nodeLabel,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: cs.onPrimaryContainer,
-                  ),
-                ),
-                if (def != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '${def.category} • ${def.typeId}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: cs.onPrimaryContainer.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // Fields
-          Expanded(
-            child: def == null || def.params.isEmpty
-                ? Center(
-                    child: Text(
-                      'No configurable parameters',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurface.withValues(alpha: 0.4)),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      for (final param in def.params) ...[
-                        _buildField(param, cs),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  ),
-          ),
-
-          // Node ID footer
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                    color: cs.outlineVariant.withValues(alpha: 0.2)),
-              ),
-            ),
-            child: Text(
-              'ID: ${widget.nodeId.substring(0, 8)}…',
-              style: TextStyle(
-                fontSize: 9,
-                fontFamily: 'monospace',
-                color: cs.onSurface.withValues(alpha: 0.3),
-              ),
-            ),
-          ),
-        ],
       ),
+      child: content,
     );
   }
 
@@ -281,12 +316,27 @@ class _PanelContentState extends State<_PanelContent> {
         Row(
           children: [
             Expanded(
-              child: Text(
-                param.label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withValues(alpha: 0.8),
+              child: RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: param.label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    if (param.isRequired)
+                      TextSpan(
+                        text: ' *',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.red.shade400,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -400,22 +450,25 @@ class _PanelContentState extends State<_PanelContent> {
     final boolVal = current is bool ? current : current.toString() == 'true';
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(
-          height: 20,
-          width: 32,
+        Transform.scale(
+          scale: 0.75,
+          alignment: Alignment.centerLeft,
           child: Switch.adaptive(
             value: boolVal,
+            activeTrackColor: cs.primary,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             onChanged: (v) {
               _updateValue(param.name, v);
               setState(() {});
             },
           ),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),
         Text(
           boolVal ? 'Yes' : 'No',
-          style: TextStyle(fontSize: 11, color: cs.onSurface),
+          style: TextStyle(fontSize: 12, color: cs.onSurface),
         ),
       ],
     );

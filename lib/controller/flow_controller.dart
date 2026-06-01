@@ -62,6 +62,18 @@ class FlowController extends ChangeNotifier {
   /// The last workflow execution result.
   WorkflowResult? lastWorkflowResult;
 
+  /// Persistent credentials (API keys, tokens) used across executions.
+  Map<String, dynamic> _credentials = {};
+
+  /// Sets persistent credentials that are automatically merged into
+  /// every [executeWorkflow] call.
+  void setCredentials(Map<String, dynamic> creds) {
+    _credentials = Map<String, dynamic>.from(creds);
+  }
+
+  /// Returns a copy of the current credentials.
+  Map<String, dynamic> get credentials => Map.unmodifiable(_credentials);
+
   /// Whether node positions snap to grid during drag.
   bool snapToGrid;
 
@@ -105,6 +117,20 @@ class FlowController extends ChangeNotifier {
   List<FlowNode>? _cachedNodes;
   List<FlowEdge>? _cachedEdges;
 
+  int _paintGen = 0;
+
+  /// Monotonically increasing version bumped whenever something visible
+  /// to canvas painters changes (node positions, sizes, edges, styles).
+  /// Used by [CustomPainter.shouldRepaint] checks to detect change in O(1).
+  int get paintGen => _paintGen;
+
+  /// Bumps the paint generation and notifies listeners.
+  /// Centralises notify+gen-bump to avoid divergence.
+  void _notifyPainters() {
+    _paintGen++;
+    notifyListeners();
+  }
+
   // ── Getters ───────────────────────────────────────────────────────────────
 
   FlowGraph get graph => _graph;
@@ -146,7 +172,7 @@ class FlowController extends ChangeNotifier {
     _graph.nodes.add(node);
     _graph.indexNode(node);
     _invalidateCache();
-    notifyListeners();
+    _notifyPainters();
     return node;
   }
 
@@ -157,14 +183,14 @@ class FlowController extends ChangeNotifier {
     _graph.unindexNode(nodeId);
     _invalidateCache();
     selection.deselectNode(nodeId);
-    notifyListeners();
+    _notifyPainters();
   }
 
   void moveNode(String nodeId, Offset newPosition) {
     final node = _graph.nodeById(nodeId);
     if (node == null) return;
     node.position = snapToGrid ? _snap(newPosition) : newPosition;
-    notifyListeners();
+    _notifyPainters();
   }
 
   void moveNodeBy(String nodeId, Offset delta) {
@@ -172,7 +198,7 @@ class FlowController extends ChangeNotifier {
     if (node == null) return;
     final raw = node.position + delta;
     node.position = (snapToGrid && !isDraggingNode) ? _snap(raw) : raw;
-    notifyListeners();
+    _notifyPainters();
   }
 
   Offset _snap(Offset pos) {
@@ -199,37 +225,37 @@ class FlowController extends ChangeNotifier {
     }
     _draggingNodeIds.clear();
     isDraggingNode = false;
-    notifyListeners();
+    _notifyPainters();
   }
 
   void renameNode(String nodeId, String newLabel) {
     _pushHistory();
     _graph.nodeById(nodeId)?.label = newLabel;
-    notifyListeners();
+    _notifyPainters();
   }
 
   void setNodeType(String nodeId, NodeType newType) {
     _pushHistory();
     _graph.nodeById(nodeId)?.type = newType;
-    notifyListeners();
+    _notifyPainters();
   }
 
   void resizeNode(String nodeId, Size newSize) {
     _pushHistory();
     _graph.nodeById(nodeId)?.size = newSize;
-    notifyListeners();
+    _notifyPainters();
   }
 
   void addNodeField(String nodeId, {required String key, dynamic value}) {
     _pushHistory();
     _graph.nodeById(nodeId)?.data[key] = value;
-    notifyListeners();
+    _notifyPainters();
   }
 
   void removeNodeField(String nodeId, String key) {
     _pushHistory();
     _graph.nodeById(nodeId)?.data.remove(key);
-    notifyListeners();
+    _notifyPainters();
   }
 
   // ── Edges ─────────────────────────────────────────────────────────────────
@@ -269,7 +295,7 @@ class FlowController extends ChangeNotifier {
     _graph.edges.add(edge);
     _graph.indexEdge(edge);
     _invalidateCache();
-    notifyListeners();
+    _notifyPainters();
     return edge;
   }
 
@@ -279,13 +305,13 @@ class FlowController extends ChangeNotifier {
     _graph.unindexEdge(edgeId);
     _invalidateCache();
     selection.deselectEdge(edgeId);
-    notifyListeners();
+    _notifyPainters();
   }
 
   void updateEdgeStyle(String edgeId, EdgeStyle newStyle) {
     _pushHistory();
     _graph.edgeById(edgeId)?.style = newStyle;
-    notifyListeners();
+    _notifyPainters();
   }
 
   // ── Viewport ──────────────────────────────────────────────────────────────
@@ -368,7 +394,7 @@ class FlowController extends ChangeNotifier {
     }
     _invalidateCache();
     selection.clearSelection();
-    notifyListeners();
+    _notifyPainters();
   }
 
   // ── History ───────────────────────────────────────────────────────────────
@@ -378,7 +404,7 @@ class FlowController extends ChangeNotifier {
     if (previous != null) {
       _graph = previous;
       _invalidateCache();
-      notifyListeners();
+      _notifyPainters();
     }
   }
 
@@ -387,7 +413,7 @@ class FlowController extends ChangeNotifier {
     if (next != null) {
       _graph = next;
       _invalidateCache();
-      notifyListeners();
+      _notifyPainters();
     }
   }
 
@@ -430,7 +456,7 @@ class FlowController extends ChangeNotifier {
     _graph = result.graph;
     _viewport = result.viewport;
     _invalidateCache();
-    notifyListeners();
+    _notifyPainters();
   }
 
   Map<String, dynamic> toMap() {
@@ -443,7 +469,7 @@ class FlowController extends ChangeNotifier {
     _graph = result.graph;
     _viewport = result.viewport;
     _invalidateCache();
-    notifyListeners();
+    _notifyPainters();
   }
 
   void clear() {
@@ -456,7 +482,7 @@ class FlowController extends ChangeNotifier {
     runtimeStates.clear();
     nodeResults.clear();
     lastWorkflowResult = null;
-    notifyListeners();
+    _notifyPainters();
   }
 
   // ── Workflow Execution ──────────────────────────────────────────────────
@@ -480,6 +506,12 @@ class FlowController extends ChangeNotifier {
     runtimeStates.clear();
     nodeResults.clear();
 
+    // Merge persistent and per-call credentials
+    final mergedCredentials = <String, dynamic>{
+      ..._credentials,
+      ...credentials,
+    };
+
     // Set all nodes to queued
     for (final node in _graph.nodes) {
       runtimeStates[node.id] = NodeStatus.queued;
@@ -489,7 +521,7 @@ class FlowController extends ChangeNotifier {
     final result = await ExecutionEngine.execute(
       graph: _graph,
       registry: nodeDefinitionRegistry,
-      credentials: credentials,
+      credentials: mergedCredentials,
       nodeTypeResolver: (node) =>
           node.data['definitionType'] as String? ?? node.type.name,
       onStatusChanged: (nodeId, status) {

@@ -40,6 +40,7 @@ class WebhookNodeDef extends NodeDefinition {
           type: ParamType.select,
           defaultValue: 'POST',
           options: ['GET', 'POST', 'PUT', 'PATCH'],
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'path',
@@ -47,6 +48,7 @@ class WebhookNodeDef extends NodeDefinition {
           type: ParamType.string,
           defaultValue: '/webhook',
           description: 'The webhook endpoint path',
+          isRequired: true,
         ),
         const ParamDefinition(
           name: 'testPayload',
@@ -81,6 +83,7 @@ class WebhookNodeDef extends NodeDefinition {
     return ExecutionResult.success(
       nodeId: context.nodeId,
       outputData: {
+        ...payload,
         'method': method,
         'path': path,
         'body': payload,
