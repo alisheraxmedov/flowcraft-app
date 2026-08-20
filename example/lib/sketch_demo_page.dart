@@ -16,10 +16,17 @@ class SketchDemoPage extends StatefulWidget {
     this.isDark = false,
     this.onToggleTheme,
     this.controller,
+    this.mcpEnabled = false,
+    this.onToggleMcp,
   });
 
   final bool isDark;
   final VoidCallback? onToggleTheme;
+
+  /// Whether the MCP control server (see `lib/control/`) is currently
+  /// running. Reflected in the toolbar's AI toggle switch.
+  final bool mcpEnabled;
+  final VoidCallback? onToggleMcp;
 
   /// Optional externally-owned controller. When provided, the caller is
   /// responsible for disposing it — used to share the canvas state with
@@ -111,6 +118,21 @@ class _SketchDemoPageState extends State<SketchDemoPage> {
             icon: Icon(widget.isDark ? Icons.light_mode : Icons.dark_mode),
             tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
             onPressed: widget.onToggleTheme,
+          ),
+          Divider(height: 1, color: scheme.outlineVariant),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Tooltip(
+              message: widget.mcpEnabled
+                  ? 'MCP server: ON — AI agents can draw here'
+                  : 'MCP server: OFF',
+              child: Switch(
+                value: widget.mcpEnabled,
+                onChanged: widget.onToggleMcp == null
+                    ? null
+                    : (_) => widget.onToggleMcp!(),
+              ),
+            ),
           ),
         ],
       ),
