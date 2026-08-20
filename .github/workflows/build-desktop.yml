@@ -21,7 +21,7 @@ jobs:
       run:
         working-directory: example
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -67,7 +67,7 @@ jobs:
             -ov -format UDZO \
             "dist/FlowCraft-macOS-${{ steps.version.outputs.version }}.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: flowcraft-macos-installer
           path: example/dist/*.dmg
@@ -80,7 +80,7 @@ jobs:
       run:
         working-directory: example
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -104,7 +104,7 @@ jobs:
           /DMyAppVersion=${{ steps.version.outputs.version }}
           windows\installer\flowcraft.iss
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: flowcraft-windows-installer
           path: example/windows/installer/Output/*.exe
@@ -117,7 +117,7 @@ jobs:
       run:
         working-directory: example
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -143,7 +143,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: bash linux/packaging/build_deb.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: flowcraft-linux-installer
           path: example/dist/*.deb
