@@ -33,6 +33,8 @@ example/macos/Podfile.lock
 /build/
 /coverage/
 **/build/
+# Packaging output from the desktop-installer CI (dmg/deb staging).
+**/dist/
 **/.flutter-plugins
 **/.flutter-plugins-dependencies
 

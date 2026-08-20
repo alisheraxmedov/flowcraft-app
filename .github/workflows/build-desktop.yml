@@ -36,6 +36,17 @@ jobs:
 
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
+
+      # The example app has no Flutter plugins, so `flutter build macos`
+      # skips its usual CocoaPods bookkeeping (see hasPlugins() check in
+      # flutter_tools' cocoapod_utils.dart) — but the Xcode project's "Check
+      # Pods Manifest.lock" script phase still runs and needs a matching
+      # Podfile.lock/Pods/Manifest.lock to exist. Run pod install explicitly
+      # so a from-scratch checkout has them.
+      - name: Install CocoaPods dependencies
+        working-directory: example/macos
+        run: pod install --repo-update
+
       - run: flutter build macos --release
 
       - name: Package .dmg
