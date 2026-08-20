@@ -109,8 +109,19 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     if (el is SketchRectangle) return el.text;
     if (el is SketchEllipse) return el.text;
     if (el is SketchDiamond) return el.text;
+    if (el is SketchTriangle) return el.text;
+    if (el is SketchSticky) return el.text;
     if (el is SketchText) return el.text;
     return null;
+  }
+
+  double _shapeFontSize(SketchElement el) {
+    if (el is SketchRectangle) return el.fontSize;
+    if (el is SketchEllipse) return el.fontSize;
+    if (el is SketchDiamond) return el.fontSize;
+    if (el is SketchTriangle) return el.fontSize;
+    if (el is SketchSticky) return el.fontSize;
+    return 16.0;
   }
 
   ({Offset screenPos, double width, double height, double fontSize})?
@@ -121,14 +132,12 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     if (el != null) {
       if (el is SketchRectangle ||
           el is SketchEllipse ||
-          el is SketchDiamond) {
+          el is SketchDiamond ||
+          el is SketchTriangle ||
+          el is SketchSticky) {
         final bounds = el.bounds;
         final tl = ViewportTransform.canvasToScreen(bounds.topLeft, viewport);
-        final fontSize = el is SketchRectangle
-            ? el.fontSize
-            : el is SketchEllipse
-                ? el.fontSize
-                : (el as SketchDiamond).fontSize;
+        final fontSize = _shapeFontSize(el);
         return (
           screenPos: tl,
           width: bounds.width * zoom,
@@ -203,7 +212,8 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
 
     final isShape = el is SketchRectangle ||
         el is SketchEllipse ||
-        el is SketchDiamond;
+        el is SketchDiamond ||
+        el is SketchTriangle;
 
     final textColor = _resolveTextColor(el);
 

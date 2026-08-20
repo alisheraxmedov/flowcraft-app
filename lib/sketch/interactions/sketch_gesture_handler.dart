@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/canvas/viewport_transform.dart';
 import 'package:flowcraft/core/models/flow_viewport.dart';
+import 'package:flowcraft/sketch/domain/sketch_hit_test.dart';
 import 'package:flowcraft/sketch/domain/stroke_simplifier.dart';
 import 'package:flowcraft/sketch/interactions/sketch_drag_session.dart';
 import 'package:flowcraft/sketch/interactions/sketch_interaction_state.dart';
@@ -46,6 +47,12 @@ class SketchGestureHandler extends StatefulWidget {
 class _SketchGestureHandlerState extends State<SketchGestureHandler> {
   bool _consumed = false;
 
+  /// Last tap bookkeeping for double-tap-to-edit text.
+  String? _lastTapElementId;
+  DateTime _lastTapTime = DateTime.fromMillisecondsSinceEpoch(0);
+
+  static const Duration _doubleTapWindow = Duration(milliseconds: 400);
+
   SketchController get _ctrl => widget.controller;
   SketchInteractionState get _interaction => widget.interaction;
   FlowViewport get _viewport => widget.viewportProvider();
@@ -66,6 +73,30 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
 
     switch (tool) {
       case SketchTool.select:
+        final textTarget = _topMostTextTarget(canvas);
+        if (textTarget != null && _isDoubleTap(textTarget.id)) {
+          _clearTapMemory();
+          _ctrl.beginTextEdit(elementId: textTarget.id);
+          _setConsumed(true);
+          return;
+        }
+        _rememberTap(textTarget?.id);
+
+        final resizeTarget = _resizeTargetAt(screen);
+        if (resizeTarget != null) {
+          _ctrl.beginDragSession();
+          _interaction.begin(SketchDragSession(
+            kind: SketchSessionKind.resize,
+            startCanvas: canvas,
+            startScreen: screen,
+            style: _ctrl.currentStyle,
+            resizeElementId: resizeTarget.id,
+            resizeStartRect: resizeTarget.bounds,
+          ));
+          _setConsumed(true);
+          return;
+        }
+
         final hit = _ctrl.elementAt(canvas, tolerance: widget.hitTolerance);
         if (hit != null) {
           if (!_ctrl.isSelected(hit.id)) {
@@ -117,8 +148,10 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
       case SketchTool.rectangle:
       case SketchTool.ellipse:
       case SketchTool.diamond:
+      case SketchTool.triangle:
       case SketchTool.line:
       case SketchTool.arrow:
+      case SketchTool.sticky:
         _ctrl.clearSelection();
         _interaction.begin(SketchDragSession(
           kind: SketchSessionKind.createBounded,
@@ -131,14 +164,11 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         return;
 
       case SketchTool.text:
-        // Text tool: tap on a bounded shape to edit its label, tap on
-        // empty space to create a new free-floating SketchText.
-        final hit = _ctrl.elementAt(canvas, tolerance: widget.hitTolerance);
-        if (hit is SketchRectangle ||
-            hit is SketchEllipse ||
-            hit is SketchDiamond ||
-            hit is SketchText) {
-          _ctrl.beginTextEdit(elementId: hit!.id);
+        // Text tool: tap on a text-bearing element to edit its label, tap
+        // on empty space to create a new free-floating SketchText.
+        final target = _topMostTextTarget(canvas);
+        if (target != null) {
+          _ctrl.beginTextEdit(elementId: target.id);
         } else {
           _ctrl.beginTextEdit(canvasPosition: canvas);
         }
@@ -178,6 +208,10 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         session.dragAnchorCanvas = canvas;
         break;
 
+      case SketchSessionKind.resize:
+        _applyResize(session, canvas);
+        break;
+
       case SketchSessionKind.marquee:
         _interaction.notifyChanged();
         break;
@@ -208,6 +242,9 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
       case SketchSessionKind.moveSelection:
         _ctrl.endDragSession();
         break;
+      case SketchSessionKind.resize:
+        _ctrl.endDragSession();
+        break;
       case SketchSessionKind.marquee:
         _ctrl.selectInRegion(session.currentRect);
         break;
@@ -224,6 +261,60 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     _interaction.end();
     _setConsumed(false);
   }
+
+  SketchElement? _topMostTextTarget(Offset canvas) =>
+      SketchHitTest.topMostTextTarget(_ctrl.elements, canvas);
+
+  bool _isDoubleTap(String id) {
+    if (_lastTapElementId != id) return false;
+    return DateTime.now().difference(_lastTapTime) < _doubleTapWindow;
+  }
+
+  void _rememberTap(String? id) {
+    _lastTapElementId = id;
+    _lastTapTime = DateTime.now();
+  }
+
+  void _clearTapMemory() {
+    _lastTapElementId = null;
+    _lastTapTime = DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  SketchElement? _resizeTargetAt(Offset screen) {
+    final selected = _ctrl.selectedIds;
+    if (selected.isEmpty) return null;
+    final viewport = _viewport;
+    for (final el in _ctrl.elements) {
+      if (!selected.contains(el.id) || !_isResizable(el)) continue;
+      final br = ViewportTransform.canvasToScreen(el.bounds.bottomRight, viewport);
+      if ((screen - br).distance <= 14.0) return el;
+    }
+    return null;
+  }
+
+  void _applyResize(SketchDragSession session, Offset canvas) {
+    final id = session.resizeElementId;
+    final start = session.resizeStartRect;
+    if (id == null || start == null) return;
+
+    final delta = canvas - session.startCanvas;
+    const minSize = 10.0;
+    var right = start.right + delta.dx;
+    var bottom = start.bottom + delta.dy;
+    if (right < start.left + minSize) right = start.left + minSize;
+    if (bottom < start.top + minSize) bottom = start.top + minSize;
+    _ctrl.resizeElement(
+      id,
+      Rect.fromLTRB(start.left, start.top, right, bottom),
+    );
+  }
+
+  static bool _isResizable(SketchElement e) =>
+      e is SketchRectangle ||
+      e is SketchEllipse ||
+      e is SketchDiamond ||
+      e is SketchTriangle ||
+      e is SketchSticky;
 
   // ── Commits ──────────────────────────────────────────────────────────────
 
@@ -246,6 +337,16 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         if (rect.width < 1 && rect.height < 1) return;
         element = SketchDiamond.create(rect: rect, style: session.style);
         break;
+      case SketchTool.triangle:
+        if (rect.width < 1 && rect.height < 1) return;
+        element = SketchTriangle.create(rect: rect, style: session.style);
+        break;
+      case SketchTool.sticky:
+        if (rect.width < 1 && rect.height < 1) return;
+        final sticky = SketchSticky.create(rect: rect);
+        _ctrl.add(sticky);
+        _ctrl.beginTextEdit(elementId: sticky.id);
+        return;
       case SketchTool.line:
         if ((session.startCanvas - session.currentCanvas).distance < 2) return;
         element = SketchLine.create(

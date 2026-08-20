@@ -9,10 +9,12 @@ enum SketchTool {
   rectangle,
   ellipse,
   diamond,
+  triangle,
   line,
   arrow,
   freedraw,
   text,
+  sticky,
   eraser;
 
   /// Whether this tool creates new elements when the user drags.
@@ -22,11 +24,13 @@ enum SketchTool {
       this != SketchTool.eraser;
 
   /// Whether this tool primarily uses pointer-down + drag to create a
-  /// bounded shape (rect/ellipse/diamond/line/arrow).
+  /// bounded shape (rect/ellipse/diamond/triangle/line/arrow/sticky).
   bool get isBounded =>
       this == SketchTool.rectangle ||
       this == SketchTool.ellipse ||
       this == SketchTool.diamond ||
+      this == SketchTool.triangle ||
       this == SketchTool.line ||
-      this == SketchTool.arrow;
+      this == SketchTool.arrow ||
+      this == SketchTool.sticky;
 }

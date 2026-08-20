@@ -40,6 +40,10 @@ sealed class SketchElement {
         return SketchEllipse.fromJson(json);
       case 'diamond':
         return SketchDiamond.fromJson(json);
+      case 'triangle':
+        return SketchTriangle.fromJson(json);
+      case 'sticky':
+        return SketchSticky.fromJson(json);
       case 'line':
         return SketchLine.fromJson(json);
       case 'arrow':
@@ -304,6 +308,168 @@ class SketchDiamond extends _SketchBoundedShape {
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
       text: json['text'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+    );
+  }
+}
+
+class SketchTriangle extends _SketchBoundedShape {
+  const SketchTriangle({
+    required super.id,
+    required super.style,
+    required super.rect,
+    super.text,
+    super.fontSize,
+    super.angle,
+  });
+
+  SketchTriangle copyWith({
+    Rect? rect,
+    SketchStyle? style,
+    double? angle,
+    Object? text = _textSentinel,
+    double? fontSize,
+  }) {
+    return SketchTriangle(
+      id: id,
+      style: style ?? this.style,
+      rect: rect ?? this.rect,
+      angle: angle ?? this.angle,
+      text: identical(text, _textSentinel) ? this.text : text as String?,
+      fontSize: fontSize ?? this.fontSize,
+    );
+  }
+
+  @override
+  SketchTriangle copyWithStyle(SketchStyle newStyle) =>
+      copyWith(style: newStyle);
+
+  @override
+  SketchTriangle translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  factory SketchTriangle.create({
+    String? id,
+    required Rect rect,
+    SketchStyle style = const SketchStyle(),
+    String? text,
+    double fontSize = 16.0,
+  }) {
+    return SketchTriangle(
+      id: id ?? IdGenerator.generate('sketch'),
+      style: style,
+      rect: rect,
+      text: text,
+      fontSize: fontSize,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'triangle',
+        'id': id,
+        'style': style.toJson(),
+        'rect': _rectToJson(rect),
+        'angle': angle,
+        if (text != null) 'text': text,
+        'fontSize': fontSize,
+      };
+
+  factory SketchTriangle.fromJson(Map<String, dynamic> json) {
+    return SketchTriangle(
+      id: json['id'] as String,
+      style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
+      rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
+      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      text: json['text'] as String?,
+      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+    );
+  }
+}
+
+class SketchSticky extends _SketchBoundedShape {
+  const SketchSticky({
+    required super.id,
+    required super.style,
+    required super.rect,
+    super.text,
+    super.fontSize,
+    super.angle,
+    this.cornerRadius = 4.0,
+  });
+
+  /// Default sticky-note background colour (Excalidraw-style yellow).
+  static const Color defaultColor = Color(0xFFFFEC99);
+
+  final double cornerRadius;
+
+  SketchSticky copyWith({
+    Rect? rect,
+    SketchStyle? style,
+    double? angle,
+    double? cornerRadius,
+    Object? text = _textSentinel,
+    double? fontSize,
+  }) {
+    return SketchSticky(
+      id: id,
+      style: style ?? this.style,
+      rect: rect ?? this.rect,
+      angle: angle ?? this.angle,
+      cornerRadius: cornerRadius ?? this.cornerRadius,
+      text: identical(text, _textSentinel) ? this.text : text as String?,
+      fontSize: fontSize ?? this.fontSize,
+    );
+  }
+
+  @override
+  SketchSticky copyWithStyle(SketchStyle newStyle) => copyWith(style: newStyle);
+
+  @override
+  SketchSticky translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  factory SketchSticky.create({
+    String? id,
+    required Rect rect,
+    SketchStyle? style,
+    String? text,
+    double fontSize = 20.0,
+    double cornerRadius = 4.0,
+  }) {
+    return SketchSticky(
+      id: id ?? IdGenerator.generate('sketch'),
+      style: style ??
+          const SketchStyle(
+            strokeColor: defaultColor,
+            fillColor: defaultColor,
+            fillStyle: FillStyle.solid,
+          ),
+      rect: rect,
+      text: text,
+      fontSize: fontSize,
+      cornerRadius: cornerRadius,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'sticky',
+        'id': id,
+        'style': style.toJson(),
+        'rect': _rectToJson(rect),
+        'angle': angle,
+        'cornerRadius': cornerRadius,
+        if (text != null) 'text': text,
+        'fontSize': fontSize,
+      };
+
+  factory SketchSticky.fromJson(Map<String, dynamic> json) {
+    return SketchSticky(
+      id: json['id'] as String,
+      style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
+      rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
+      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 4.0,
+      text: json['text'] as String?,
+      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 20.0,
     );
   }
 }

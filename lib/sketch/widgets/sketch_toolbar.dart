@@ -25,10 +25,12 @@ class SketchToolbar extends StatelessWidget {
       SketchTool.rectangle,
       SketchTool.ellipse,
       SketchTool.diamond,
+      SketchTool.triangle,
       SketchTool.line,
       SketchTool.arrow,
       SketchTool.freedraw,
       SketchTool.text,
+      SketchTool.sticky,
       SketchTool.eraser,
     ],
   });
@@ -185,6 +187,21 @@ class _ToolIconPainter extends CustomPainter {
           ..lineTo(2, size.height / 2)
           ..close();
         canvas.drawPath(p, paint);
+        break;
+      case SketchTool.triangle:
+        final p = Path()
+          ..moveTo(size.width / 2, 2)
+          ..lineTo(size.width - 2, size.height - 2)
+          ..lineTo(2, size.height - 2)
+          ..close();
+        canvas.drawPath(p, paint);
+        break;
+      case SketchTool.sticky:
+        final box = Rect.fromLTRB(3, 3, size.width - 3, size.height - 3);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(box, const Radius.circular(1.5)),
+          fill,
+        );
         break;
       case SketchTool.line:
         canvas.drawLine(Offset(2, size.height - 2), Offset(size.width - 2, 2), paint);

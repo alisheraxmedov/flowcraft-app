@@ -31,6 +31,13 @@ class SketchHitTest {
           return SketchGeometry.pointInDiamond(point, d.rect, d.angle);
         }
         return _hitStrokeDiamond(point, d.rect, d.angle, tolerance);
+      case SketchTriangle tri:
+        if (tri.style.fillStyle != FillStyle.none) {
+          return SketchGeometry.pointInTriangle(point, tri.rect, tri.angle);
+        }
+        return _hitStrokeTriangle(point, tri.rect, tri.angle, tolerance);
+      case SketchSticky s:
+        return SketchGeometry.pointInRotatedRect(point, s.rect, s.angle);
       case SketchLine l:
         return SketchGeometry.distanceToSegment(point, l.start, l.end) <=
             tolerance;
@@ -67,6 +74,28 @@ class SketchHitTest {
       for (final e in elements)
         if (e.bounds.overlaps(region)) e,
     ];
+  }
+
+  /// Topmost element whose text can be edited (a [SketchText], or a shape /
+  /// sticky that carries a label) and whose interior bounds contain [point].
+  ///
+  /// Unlike [topMost], this hits the *interior* of text-bearing shapes so a
+  /// user can tap the label (not just the stroke) to start editing.
+  static SketchElement? topMostTextTarget(
+    List<SketchElement> elements,
+    Offset point,
+  ) {
+    for (var i = elements.length - 1; i >= 0; i--) {
+      final e = elements[i];
+      final hasText = e is SketchText ||
+          e is SketchSticky ||
+          (e is SketchRectangle && e.text != null) ||
+          (e is SketchEllipse && e.text != null) ||
+          (e is SketchDiamond && e.text != null) ||
+          (e is SketchTriangle && e.text != null);
+      if (hasText && e.bounds.contains(point)) return e;
+    }
+    return null;
   }
 
   // ─── internal ───────────────────────────────────────────────────────────
@@ -113,6 +142,21 @@ class SketchHitTest {
     final hitInner = inner.width <= 0 || inner.height <= 0
         ? false
         : SketchGeometry.pointInDiamond(point, inner, angle);
+    return hitOuter && !hitInner;
+  }
+
+  static bool _hitStrokeTriangle(
+    Offset point,
+    Rect rect,
+    double angle,
+    double tolerance,
+  ) {
+    final outer = SketchGeometry.inflate(rect, tolerance);
+    final inner = SketchGeometry.inflate(rect, -tolerance);
+    final hitOuter = SketchGeometry.pointInTriangle(point, outer, angle);
+    final hitInner = inner.width <= 0 || inner.height <= 0
+        ? false
+        : SketchGeometry.pointInTriangle(point, inner, angle);
     return hitOuter && !hitInner;
   }
 }

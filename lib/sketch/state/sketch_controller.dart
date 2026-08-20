@@ -11,8 +11,8 @@ import 'package:flowcraft/sketch/state/sketch_history.dart';
 /// Central state for the sketch (drawing) layer.
 ///
 /// Holds the element list, current tool, current default style, and
-/// selection. Decoupled from the flow-graph [FlowController] so the two
-/// layers can be used independently.
+/// selection. Fully self-contained — the whiteboard canvas only reads the
+/// viewport through a provider, so the two layers stay independent.
 class SketchController extends ChangeNotifier {
   SketchController({
     List<SketchElement>? initialElements,
@@ -162,6 +162,26 @@ class SketchController extends ChangeNotifier {
   }
 
   bool _dragInProgress = false;
+
+  /// Resizes a bounded element (rectangle/ellipse/diamond/triangle/sticky)
+  /// by replacing its rect. No-op for non-bounded elements. History is NOT
+  /// pushed here — call [beginDragSession] / [endDragSession] around a
+  /// continuous resize drag.
+  void resizeElement(String id, Rect newRect) {
+    final idx = _indexOf(id);
+    if (idx < 0) return;
+    final el = _elements[idx];
+    SketchElement? updated;
+    if (el is SketchRectangle) updated = el.copyWith(rect: newRect);
+    if (el is SketchEllipse) updated = el.copyWith(rect: newRect);
+    if (el is SketchDiamond) updated = el.copyWith(rect: newRect);
+    if (el is SketchTriangle) updated = el.copyWith(rect: newRect);
+    if (el is SketchSticky) updated = el.copyWith(rect: newRect);
+    if (updated == null) return;
+    _elements[idx] = updated;
+    _invalidateCache();
+    _bumpPaint();
+  }
 
   /// Pushes a single history snapshot at the start of a drag/resize.
   void beginDragSession() {
@@ -317,6 +337,10 @@ class SketchController extends ChangeNotifier {
         return e.copyWith(text: text);
       case SketchDiamond d:
         return d.copyWith(text: text);
+      case SketchTriangle tri:
+        return tri.copyWith(text: text);
+      case SketchSticky s:
+        return s.copyWith(text: text);
       case SketchText t:
         if (text == null || text.isEmpty) {
           // Empty text on a SketchText → remove it.

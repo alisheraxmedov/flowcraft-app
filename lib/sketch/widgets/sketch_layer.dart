@@ -81,6 +81,7 @@ class _SketchLayerState extends State<SketchLayer> {
                     paintGen: widget.controller.paintGen,
                     cache: _cache,
                     selectionColor: widget.selectionColor,
+                    editingElementId: widget.controller.editingElementId,
                     scaleStrokeWithZoom: widget.scaleStrokeWithZoom,
                   ),
                 );
@@ -94,6 +95,7 @@ class _SketchLayerState extends State<SketchLayer> {
                 return CustomPaint(
                   painter: SketchPreviewPainter(
                     session: _interaction.session,
+                    revision: _interaction.revision,
                     viewport: widget.viewportProvider(),
                     marqueeColor: widget.marqueeColor,
                     previewColor: widget.previewColor,

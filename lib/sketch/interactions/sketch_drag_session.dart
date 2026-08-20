@@ -15,6 +15,9 @@ enum SketchSessionKind {
   /// Translating selected elements.
   moveSelection,
 
+  /// Resizing a single bounded element from its bottom-right handle.
+  resize,
+
   /// Rubber-band selection.
   marquee,
 
@@ -36,6 +39,8 @@ class SketchDragSession {
     required this.startScreen,
     required this.style,
     this.tool,
+    this.resizeElementId,
+    this.resizeStartRect,
   })  : currentCanvas = startCanvas,
         currentScreen = startScreen,
         dragAnchorCanvas = startCanvas,
@@ -48,6 +53,12 @@ class SketchDragSession {
   final Offset startScreen;
   final SketchStyle style;
   final SketchTool? tool;
+
+  /// Element being resized (for [SketchSessionKind.resize]).
+  final String? resizeElementId;
+
+  /// The element's original rect at the start of a resize session.
+  final Rect? resizeStartRect;
 
   Offset currentCanvas;
   Offset currentScreen;

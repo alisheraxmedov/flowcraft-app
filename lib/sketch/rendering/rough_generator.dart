@@ -86,6 +86,29 @@ class RoughGenerator {
     return path;
   }
 
+  /// Builds a sketchy isosceles triangle inscribed in [rect] (apex at
+  /// top-centre, base along the bottom edge).
+  static Path triangle(
+    Rect rect, {
+    double roughness = 1.0,
+    int seed = 1,
+    bool doubleStroke = true,
+    double bowing = 1.0,
+  }) {
+    final path = Path();
+    final rng = _Rng(seed);
+    final a = Offset(rect.center.dx, rect.top);
+    final b = Offset(rect.left, rect.bottom);
+    final c = Offset(rect.right, rect.bottom);
+
+    for (var pass = 0; pass < (doubleStroke ? 2 : 1); pass++) {
+      _line(path, a, b, roughness, rng, bowing, move: true);
+      _line(path, b, c, roughness, rng, bowing, move: false);
+      _line(path, c, a, roughness, rng, bowing, move: false);
+    }
+    return path;
+  }
+
   /// Builds a sketchy ellipse inscribed in [rect].
   static Path ellipse(
     Rect rect, {
@@ -101,9 +124,10 @@ class RoughGenerator {
     final rx = rect.width / 2;
     final ry = rect.height / 2;
 
-    // Step count scales with size: bigger ellipse → more vertices, but
-    // bounded to keep the cost manageable on large shapes.
-    final steps = (math.max(rx, ry) / 6.0).clamp(8, 36).toInt();
+    // Step count scales with circumference so circles stay visually round
+    // (a low step count reads as a polygon). Bounded to keep the cost
+    // manageable on large shapes.
+    final steps = (math.pi * (rx + ry) / 4.0).clamp(32.0, 96.0).round();
     final jitter = roughness * 1.2;
     final startAngle = rng.next() * math.pi * 2;
 

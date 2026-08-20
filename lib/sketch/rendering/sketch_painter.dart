@@ -23,6 +23,7 @@ class SketchPainter extends CustomPainter {
     required this.paintGen,
     required this.cache,
     required this.selectionColor,
+    this.editingElementId,
     this.scaleStrokeWithZoom = true,
     this.canvasSize,
   });
@@ -33,6 +34,11 @@ class SketchPainter extends CustomPainter {
   final int paintGen;
   final SketchRenderCache cache;
   final Color selectionColor;
+
+  /// Element currently being edited in the inline text editor. Its text is
+  /// skipped here so it doesn't double up under the editor overlay.
+  final String? editingElementId;
+
   final bool scaleStrokeWithZoom;
   final Size? canvasSize;
 
@@ -46,6 +52,10 @@ class SketchPainter extends CustomPainter {
     ..style = PaintingStyle.stroke
     ..strokeCap = StrokeCap.round;
   static final Paint _selectionPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.0;
+  static final Paint _handleFillPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _handleBorderPaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1.0;
 
@@ -122,22 +132,31 @@ class SketchPainter extends CustomPainter {
     }
 
     // ─── per-type extras ─────────────────────────────────────────────────
-    if (element is SketchArrow) {
+    final editing = element.id == editingElementId;
+    if (!editing && element is SketchArrow) {
       _drawArrowHead(canvas, element);
     }
-    if (element is SketchText) {
+    if (!editing && element is SketchText) {
       _drawText(canvas, element);
     }
-    if (element is SketchRectangle && element.text != null) {
+    if (!editing && element is SketchRectangle && element.text != null) {
       _drawCenteredText(canvas, element.bounds, element.text!,
           element.fontSize, style.strokeColor, style.opacity);
     }
-    if (element is SketchEllipse && element.text != null) {
+    if (!editing && element is SketchEllipse && element.text != null) {
       _drawCenteredText(canvas, element.bounds, element.text!,
           element.fontSize, style.strokeColor, style.opacity);
     }
-    if (element is SketchDiamond && element.text != null) {
+    if (!editing && element is SketchDiamond && element.text != null) {
       _drawCenteredText(canvas, element.bounds, element.text!,
+          element.fontSize, style.strokeColor, style.opacity);
+    }
+    if (!editing && element is SketchTriangle && element.text != null) {
+      _drawCenteredText(canvas, element.bounds, element.text!,
+          element.fontSize, style.strokeColor, style.opacity);
+    }
+    if (!editing && element is SketchSticky && element.text != null) {
+      _drawTopLeftText(canvas, element.bounds, element.text!,
           element.fontSize, style.strokeColor, style.opacity);
     }
   }
@@ -168,11 +187,36 @@ class SketchPainter extends CustomPainter {
     tp.paint(canvas, Offset(dx, dy));
   }
 
+  void _drawTopLeftText(
+    Canvas canvas,
+    Rect bounds,
+    String text,
+    double fontSize,
+    Color color,
+    double opacity,
+  ) {
+    final span = TextSpan(
+      text: text,
+      style: TextStyle(
+        color: color.withValues(alpha: opacity),
+        fontSize: fontSize,
+      ),
+    );
+    final tp = TextPainter(
+      text: span,
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+      maxLines: null,
+    )..layout(maxWidth: (bounds.width - 16).clamp(0.0, double.infinity));
+    tp.paint(canvas, Offset(bounds.left + 8, bounds.top + 8));
+  }
+
   void _drawArrowHead(Canvas canvas, SketchArrow arrow) {
     final dx = arrow.end.dx - arrow.start.dx;
     final dy = arrow.end.dy - arrow.start.dy;
     final angle = math.atan2(dy, dx);
-    final size = arrow.arrowSize;
+    // Scale the head with the stroke so thick arrows keep proportion.
+    final size = math.max(arrow.arrowSize, arrow.style.strokeWidth * 6.0);
     final tip = arrow.end;
 
     final left = Offset(
@@ -187,9 +231,11 @@ class SketchPainter extends CustomPainter {
     final path = Path()
       ..moveTo(tip.dx, tip.dy)
       ..lineTo(left.dx, left.dy)
-      ..moveTo(tip.dx, tip.dy)
-      ..lineTo(right.dx, right.dy);
-    canvas.drawPath(path, _strokePaint);
+      ..lineTo(right.dx, right.dy)
+      ..close();
+    _fillPaint.color =
+        arrow.style.strokeColor.withValues(alpha: arrow.style.opacity);
+    canvas.drawPath(path, _fillPaint);
   }
 
   void _drawText(Canvas canvas, SketchText text) {
@@ -248,8 +294,28 @@ class SketchPainter extends CustomPainter {
         RRect.fromRectAndRadius(screenRect, const Radius.circular(2)),
         _selectionPaint,
       );
+
+      // Resize handle (bottom-right corner) for bounded shapes.
+      if (_isResizable(element)) {
+        final handleRect = Rect.fromCenter(
+          center: screenRect.bottomRight,
+          width: 8.0,
+          height: 8.0,
+        );
+        _handleFillPaint.color = const Color(0xFFFFFFFF);
+        canvas.drawRect(handleRect, _handleFillPaint);
+        _handleBorderPaint.color = selectionColor;
+        canvas.drawRect(handleRect, _handleBorderPaint);
+      }
     }
   }
+
+  static bool _isResizable(SketchElement e) =>
+      e is SketchRectangle ||
+      e is SketchEllipse ||
+      e is SketchDiamond ||
+      e is SketchTriangle ||
+      e is SketchSticky;
 
   double _scaleStroke(double base) =>
       scaleStrokeWithZoom ? base : base / viewport.zoom;
@@ -270,6 +336,7 @@ class SketchPainter extends CustomPainter {
   bool shouldRepaint(SketchPainter old) {
     return paintGen != old.paintGen ||
         viewport != old.viewport ||
+        editingElementId != old.editingElementId ||
         !_setEquals(selectedIds, old.selectedIds) ||
         selectionColor != old.selectionColor ||
         scaleStrokeWithZoom != old.scaleStrokeWithZoom;

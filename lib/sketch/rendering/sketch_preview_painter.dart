@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flowcraft/canvas/viewport_transform.dart';
 import 'package:flowcraft/core/models/flow_viewport.dart';
 import 'package:flowcraft/sketch/interactions/sketch_drag_session.dart';
+import 'package:flowcraft/sketch/models/sketch_element.dart';
 import 'package:flowcraft/sketch/models/sketch_style.dart';
 import 'package:flowcraft/sketch/models/sketch_tool.dart';
 import 'package:flowcraft/sketch/rendering/rough_generator.dart';
@@ -17,12 +18,14 @@ import 'package:flowcraft/sketch/rendering/rough_generator.dart';
 class SketchPreviewPainter extends CustomPainter {
   SketchPreviewPainter({
     required this.session,
+    required this.revision,
     required this.viewport,
     required this.marqueeColor,
     required this.previewColor,
   });
 
   final SketchDragSession? session;
+  final int revision;
   final FlowViewport viewport;
   final Color marqueeColor;
   final Color previewColor;
@@ -117,6 +120,20 @@ class SketchPreviewPainter extends CustomPainter {
           _strokePaint,
         );
         break;
+      case SketchTool.triangle:
+        canvas.drawPath(
+          RoughGenerator.triangle(
+            rect,
+            roughness: style.roughness,
+            seed: style.seed,
+            doubleStroke: false,
+          ),
+          _strokePaint,
+        );
+        break;
+      case SketchTool.sticky:
+        _paintStickyPreview(canvas, rect);
+        break;
       case SketchTool.line:
         canvas.drawPath(
           RoughGenerator.line(
@@ -140,17 +157,28 @@ class SketchPreviewPainter extends CustomPainter {
           ),
           _strokePaint,
         );
-        _paintArrowHead(canvas, s.startCanvas, s.currentCanvas, 10.0);
+        _paintArrowHead(canvas, s.startCanvas, s.currentCanvas, style.strokeWidth);
         break;
       default:
         break;
     }
   }
 
-  void _paintArrowHead(Canvas canvas, Offset start, Offset end, double size) {
+  void _paintStickyPreview(Canvas canvas, Rect rect) {
+    final rr = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    _marqueeFill.color = SketchSticky.defaultColor.withValues(alpha: 0.9);
+    canvas.drawRRect(rr, _marqueeFill);
+    _strokePaint
+      ..color = previewColor.withValues(alpha: 0.5)
+      ..strokeWidth = 1.0;
+    canvas.drawRRect(rr, _strokePaint);
+  }
+
+  void _paintArrowHead(Canvas canvas, Offset start, Offset end, double strokeWidth) {
     final dx = end.dx - start.dx;
     final dy = end.dy - start.dy;
     final angle = math.atan2(dy, dx);
+    final size = math.max(10.0, strokeWidth * 6.0);
     final left = Offset(
       end.dx - size * math.cos(angle - 0.5),
       end.dy - size * math.sin(angle - 0.5),
@@ -162,9 +190,10 @@ class SketchPreviewPainter extends CustomPainter {
     final path = Path()
       ..moveTo(end.dx, end.dy)
       ..lineTo(left.dx, left.dy)
-      ..moveTo(end.dx, end.dy)
-      ..lineTo(right.dx, right.dy);
-    canvas.drawPath(path, _strokePaint);
+      ..lineTo(right.dx, right.dy)
+      ..close();
+    _marqueeFill.color = previewColor.withValues(alpha: 0.85);
+    canvas.drawPath(path, _marqueeFill);
   }
 
   void _paintMarquee(Canvas canvas, SketchDragSession s) {
@@ -179,20 +208,8 @@ class SketchPreviewPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(SketchPreviewPainter old) =>
-      !identical(session, old.session) ||
+      revision != old.revision ||
       viewport != old.viewport ||
       marqueeColor != old.marqueeColor ||
-      previewColor != old.previewColor ||
-      _sessionStateChanged(old);
-
-  bool _sessionStateChanged(SketchPreviewPainter old) {
-    final a = session;
-    final b = old.session;
-    if (a == null && b == null) return false;
-    if (a == null || b == null) return true;
-    return a.currentCanvas != b.currentCanvas ||
-        a.startCanvas != b.startCanvas ||
-        (a.freedrawPoints?.length ?? 0) !=
-            (b.freedrawPoints?.length ?? 0);
-  }
+      previewColor != old.previewColor;
 }

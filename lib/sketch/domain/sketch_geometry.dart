@@ -78,6 +78,32 @@ class SketchGeometry {
     return (localX / (rect.width / 2)) + (localY / (rect.height / 2)) <= 1.0;
   }
 
+  /// True iff [point] lies inside the isosceles triangle inscribed in
+  /// [rect] (apex at top-centre, base along the bottom edge).
+  static bool pointInTriangle(Offset point, Rect rect, double angle) {
+    if (rect.width == 0 || rect.height == 0) return false;
+    final centre = rect.center;
+    double px = point.dx, py = point.dy;
+    if (angle != 0.0) {
+      final cos = math.cos(-angle);
+      final sin = math.sin(-angle);
+      final dx = point.dx - centre.dx;
+      final dy = point.dy - centre.dy;
+      px = dx * cos - dy * sin + centre.dx;
+      py = dx * sin + dy * cos + centre.dy;
+    }
+    final p = Offset(px, py);
+    final a = Offset(centre.dx, rect.top);
+    final b = Offset(rect.left, rect.bottom);
+    final c = Offset(rect.right, rect.bottom);
+    return _cross(p, a, b) >= 0 && _cross(p, b, c) >= 0 && _cross(p, c, a) >= 0;
+  }
+
+  /// Signed cross product used by [pointInTriangle]. Positive when [p] is
+  /// to the left of the directed edge [a]→[b].
+  static double _cross(Offset p, Offset a, Offset b) =>
+      (p.dx - b.dx) * (a.dy - b.dy) - (a.dx - b.dx) * (p.dy - b.dy);
+
   /// True iff [point] is within [tolerance] pixels of any segment in the
   /// polyline defined by [points].
   static bool pointNearPolyline(

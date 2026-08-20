@@ -61,6 +61,10 @@ class SketchRenderCache {
         return '$base|${el.rect.left},${el.rect.top},${el.rect.width},${el.rect.height}';
       case SketchDiamond d:
         return '$base|${d.rect.left},${d.rect.top},${d.rect.width},${d.rect.height}';
+      case SketchTriangle t:
+        return '$base|${t.rect.left},${t.rect.top},${t.rect.width},${t.rect.height}';
+      case SketchSticky s:
+        return '$base|${s.rect.left},${s.rect.top},${s.rect.width},${s.rect.height}|${s.cornerRadius}';
       case SketchLine l:
         return '$base|${l.start.dx},${l.start.dy},${l.end.dx},${l.end.dy}';
       case SketchArrow a:
@@ -83,6 +87,10 @@ class SketchRenderCache {
         return '$base|${el.rect.left},${el.rect.top},${el.rect.width},${el.rect.height}';
       case SketchDiamond d:
         return '$base|${d.rect.left},${d.rect.top},${d.rect.width},${d.rect.height}';
+      case SketchTriangle t:
+        return '$base|${t.rect.left},${t.rect.top},${t.rect.width},${t.rect.height}';
+      case SketchSticky s:
+        return '$base|${s.rect.left},${s.rect.top},${s.rect.width},${s.rect.height}';
       default:
         return base;
     }
@@ -111,6 +119,20 @@ class SketchRenderCache {
           d.rect,
           roughness: r,
           seed: seed,
+        );
+      case SketchTriangle t:
+        return RoughGenerator.triangle(
+          t.rect,
+          roughness: r,
+          seed: seed,
+        );
+      case SketchSticky s:
+        return RoughGenerator.rectangle(
+          s.rect,
+          roughness: r,
+          seed: seed,
+          cornerRadius: s.cornerRadius,
+          doubleStroke: false,
         );
       case SketchLine l:
         return RoughGenerator.line(
@@ -159,6 +181,18 @@ class SketchRenderCache {
             path.lineTo(d.rect.center.dx, d.rect.bottom);
             path.lineTo(d.rect.left, d.rect.center.dy);
             path.close();
+            return path;
+          case SketchTriangle t:
+            path.moveTo(t.rect.center.dx, t.rect.top);
+            path.lineTo(t.rect.right, t.rect.bottom);
+            path.lineTo(t.rect.left, t.rect.bottom);
+            path.close();
+            return path;
+          case SketchSticky s:
+            path.addRRect(RRect.fromRectAndRadius(
+              s.rect,
+              Radius.circular(s.cornerRadius),
+            ));
             return path;
           default:
             return path;

@@ -27,16 +27,19 @@ class SketchToolbarRich extends StatefulWidget {
     this.backgroundColor,
     this.activeColor = const Color(0xFF2196F3),
     this.iconColor = const Color(0xFF424242),
+    this.orientation = Axis.horizontal,
     this.tools = const [
       SketchTool.select,
       SketchTool.hand,
       SketchTool.rectangle,
       SketchTool.ellipse,
       SketchTool.diamond,
+      SketchTool.triangle,
       SketchTool.line,
       SketchTool.arrow,
       SketchTool.freedraw,
       SketchTool.text,
+      SketchTool.sticky,
       SketchTool.eraser,
     ],
   });
@@ -47,6 +50,11 @@ class SketchToolbarRich extends StatefulWidget {
   final Color? backgroundColor;
   final Color activeColor;
   final Color iconColor;
+
+  /// Layout direction. Use [Axis.vertical] for a left/right side panel
+  /// (like Paint); popovers open to the side in that mode.
+  final Axis orientation;
+
   final List<SketchTool> tools;
 
   /// Default stroke / text palette (Excalidraw-ish).
@@ -140,6 +148,7 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
     final bg = widget.backgroundColor ??
         scheme.surfaceContainerHigh.withValues(alpha: 0.97);
     final style = _ctrl.currentStyle;
+    final vertical = widget.orientation == Axis.vertical;
 
     return Container(
       decoration: BoxDecoration(
@@ -156,192 +165,285 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // ── Tools ────────────────────────────────────────────────────
-            for (final tool in widget.tools)
-              _ToolButton(
-                tool: tool,
-                selected: _ctrl.currentTool == tool,
-                activeColor: widget.activeColor,
-                iconColor: widget.iconColor,
-                onTap: () => _ctrl.currentTool = tool,
-              ),
-
-            _divider(scheme),
-
-            // ── Stroke color ─────────────────────────────────────────────
-            _PopoverButton(
-              tooltip: 'Stroke color',
-              activeColor: widget.activeColor,
-              builder: (context, controller) {
-                return _SwatchCircle(
-                  color: style.strokeColor,
-                  border: scheme.outline,
-                );
-              },
-              popoverBuilder: (context, close) {
-                return _PalettePopover(
-                  palette: widget.palette,
-                  selected: style.strokeColor,
-                  onPick: (c) {
-                    _updateStyle(strokeColor: c);
-                    close();
-                  },
-                );
-              },
-            ),
-
-            // ── Fill color ───────────────────────────────────────────────
-            _PopoverButton(
-              tooltip: 'Fill color',
-              activeColor: widget.activeColor,
-              builder: (context, controller) {
-                return _SwatchCircle(
-                  color: style.fillColor,
-                  border: scheme.outline,
-                  showNone: style.fillColor == null,
-                );
-              },
-              popoverBuilder: (context, close) {
-                return _FillPalettePopover(
-                  palette: widget.fillPalette,
-                  selected: style.fillColor,
-                  onPick: (c) {
-                    _updateStyle(fillColor: c);
-                    close();
-                  },
-                );
-              },
-            ),
-
-            _divider(scheme),
-
-            // ── Stroke width ────────────────────────────────────────────
-            _PopoverButton(
-              tooltip: 'Stroke width',
-              activeColor: widget.activeColor,
-              builder: (context, controller) => _StrokeWidthGlyph(
-                color: widget.iconColor,
-                width: style.strokeWidth,
-              ),
-              popoverBuilder: (context, close) {
-                return _SliderPopover(
-                  label: 'Stroke width',
-                  value: style.strokeWidth,
-                  min: 1.0,
-                  max: 12.0,
-                  divisions: 22,
-                  format: (v) => v.toStringAsFixed(1),
-                  onChanged: (v) => _updateStyle(strokeWidth: v),
-                );
-              },
-            ),
-
-            // ── Roughness ───────────────────────────────────────────────
-            _PopoverButton(
-              tooltip: 'Roughness',
-              activeColor: widget.activeColor,
-              builder: (context, controller) => Icon(
-                Icons.gesture_rounded,
-                size: 18,
-                color: widget.iconColor,
-              ),
-              popoverBuilder: (context, close) {
-                return _SliderPopover(
-                  label: 'Roughness',
-                  value: style.roughness,
-                  min: 0.0,
-                  max: 2.5,
-                  divisions: 25,
-                  format: (v) => v.toStringAsFixed(1),
-                  onChanged: (v) => _updateStyle(roughness: v),
-                );
-              },
-            ),
-
-            // ── Stroke style ────────────────────────────────────────────
-            _PopoverButton(
-              tooltip: 'Stroke style',
-              activeColor: widget.activeColor,
-              builder: (context, controller) => _StrokeStyleGlyph(
-                color: widget.iconColor,
-                style: style.strokeStyle,
-              ),
-              popoverBuilder: (context, close) {
-                return _ChoicePopover<StrokeStyle>(
-                  label: 'Stroke style',
-                  options: StrokeStyle.values,
-                  selected: style.strokeStyle,
-                  labelOf: (s) => s.name,
-                  onPick: (s) {
-                    _updateStyle(strokeStyle: s);
-                    close();
-                  },
-                );
-              },
-            ),
-
-            // ── Fill style ──────────────────────────────────────────────
-            _PopoverButton(
-              tooltip: 'Fill style',
-              activeColor: widget.activeColor,
-              builder: (context, controller) => Icon(
-                Icons.format_color_fill_rounded,
-                size: 18,
-                color: widget.iconColor,
-              ),
-              popoverBuilder: (context, close) {
-                return _ChoicePopover<FillStyle>(
-                  label: 'Fill style',
-                  options: FillStyle.values,
-                  selected: style.fillStyle,
-                  labelOf: (s) => s.name,
-                  onPick: (s) {
-                    _updateStyle(fillStyle: s);
-                    close();
-                  },
-                );
-              },
-            ),
-
-            _divider(scheme),
-
-            // ── Undo / redo / clear ─────────────────────────────────────
-            _ActionButton(
-              icon: Icons.undo_rounded,
-              tooltip: 'Undo',
-              color: widget.iconColor,
-              enabled: _ctrl.canUndo,
-              onTap: _ctrl.undo,
-            ),
-            _ActionButton(
-              icon: Icons.redo_rounded,
-              tooltip: 'Redo',
-              color: widget.iconColor,
-              enabled: _ctrl.canRedo,
-              onTap: _ctrl.redo,
-            ),
-            _ActionButton(
-              icon: Icons.delete_sweep_rounded,
-              tooltip: 'Clear sketches',
-              color: widget.iconColor,
-              enabled: _ctrl.elements.isNotEmpty,
-              onTap: _ctrl.clear,
-            ),
-          ],
-        ),
+        scrollDirection: vertical ? Axis.vertical : Axis.horizontal,
+        child: vertical
+            ? _buildVertical(scheme, style)
+            : _buildHorizontal(scheme, style),
       ),
     );
   }
 
+  Widget _buildHorizontal(ColorScheme scheme, SketchStyle style) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final tool in widget.tools) _toolButton(tool),
+        _divider(scheme),
+        _strokeColorButton(scheme, style),
+        _fillColorButton(scheme, style),
+        _divider(scheme),
+        _strokeWidthButton(style),
+        _roughnessButton(style),
+        _strokeStyleButton(style),
+        _fillStyleButton(style),
+        _divider(scheme),
+        _undoButton(),
+        _redoButton(),
+        _clearButton(),
+      ],
+    );
+  }
+
+  Widget _buildVertical(ColorScheme scheme, SketchStyle style) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _toolGrid(),
+        _divider(scheme),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _strokeColorButton(scheme, style),
+            _fillColorButton(scheme, style),
+          ],
+        ),
+        _divider(scheme),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _strokeWidthButton(style),
+            _roughnessButton(style),
+          ],
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _strokeStyleButton(style),
+            _fillStyleButton(style),
+          ],
+        ),
+        _divider(scheme),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _undoButton(),
+            _redoButton(),
+          ],
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _clearButton(),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _toolGrid() {
+    final rows = <Widget>[];
+    for (var i = 0; i < widget.tools.length; i += 2) {
+      rows.add(Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _toolButton(widget.tools[i]),
+          if (i + 1 < widget.tools.length) _toolButton(widget.tools[i + 1]),
+        ],
+      ));
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: rows);
+  }
+
+  Widget _toolButton(SketchTool tool) {
+    return _ToolButton(
+      tool: tool,
+      selected: _ctrl.currentTool == tool,
+      activeColor: widget.activeColor,
+      iconColor: widget.iconColor,
+      onTap: () => _ctrl.currentTool = tool,
+    );
+  }
+
+  Widget _strokeColorButton(ColorScheme scheme, SketchStyle style) {
+    return _PopoverButton(
+      tooltip: 'Stroke color',
+      activeColor: widget.activeColor,
+      vertical: widget.orientation == Axis.vertical,
+      builder: (context, controller) {
+        return _SwatchCircle(color: style.strokeColor, border: scheme.outline);
+      },
+      popoverBuilder: (context, close) {
+        return _PalettePopover(
+          palette: widget.palette,
+          selected: style.strokeColor,
+          onPick: (c) {
+            _updateStyle(strokeColor: c);
+            close();
+          },
+        );
+      },
+    );
+  }
+
+  Widget _fillColorButton(ColorScheme scheme, SketchStyle style) {
+    return _PopoverButton(
+      tooltip: 'Fill color',
+      activeColor: widget.activeColor,
+      vertical: widget.orientation == Axis.vertical,
+      builder: (context, controller) {
+        return _SwatchCircle(
+          color: style.fillColor,
+          border: scheme.outline,
+          showNone: style.fillColor == null,
+        );
+      },
+      popoverBuilder: (context, close) {
+        return _FillPalettePopover(
+          palette: widget.fillPalette,
+          selected: style.fillColor,
+          onPick: (c) {
+            _updateStyle(fillColor: c);
+            close();
+          },
+        );
+      },
+    );
+  }
+
+  Widget _strokeWidthButton(SketchStyle style) {
+    return _PopoverButton(
+      tooltip: 'Stroke width',
+      activeColor: widget.activeColor,
+      vertical: widget.orientation == Axis.vertical,
+      builder: (context, controller) => _StrokeWidthGlyph(
+        color: widget.iconColor,
+        width: style.strokeWidth,
+      ),
+      popoverBuilder: (context, close) {
+        return _SliderPopover(
+          label: 'Stroke width',
+          value: style.strokeWidth,
+          min: 1.0,
+          max: 12.0,
+          divisions: 22,
+          format: (v) => v.toStringAsFixed(1),
+          onChanged: (v) => _updateStyle(strokeWidth: v),
+        );
+      },
+    );
+  }
+
+  Widget _roughnessButton(SketchStyle style) {
+    return _PopoverButton(
+      tooltip: 'Roughness',
+      activeColor: widget.activeColor,
+      vertical: widget.orientation == Axis.vertical,
+      builder: (context, controller) => Icon(
+        Icons.gesture_rounded,
+        size: 18,
+        color: widget.iconColor,
+      ),
+      popoverBuilder: (context, close) {
+        return _SliderPopover(
+          label: 'Roughness',
+          value: style.roughness,
+          min: 0.0,
+          max: 2.5,
+          divisions: 25,
+          format: (v) => v.toStringAsFixed(1),
+          onChanged: (v) => _updateStyle(roughness: v),
+        );
+      },
+    );
+  }
+
+  Widget _strokeStyleButton(SketchStyle style) {
+    return _PopoverButton(
+      tooltip: 'Stroke style',
+      activeColor: widget.activeColor,
+      vertical: widget.orientation == Axis.vertical,
+      builder: (context, controller) => _StrokeStyleGlyph(
+        color: widget.iconColor,
+        style: style.strokeStyle,
+      ),
+      popoverBuilder: (context, close) {
+        return _ChoicePopover<StrokeStyle>(
+          label: 'Stroke style',
+          options: StrokeStyle.values,
+          selected: style.strokeStyle,
+          labelOf: (s) => s.name,
+          onPick: (s) {
+            _updateStyle(strokeStyle: s);
+            close();
+          },
+        );
+      },
+    );
+  }
+
+  Widget _fillStyleButton(SketchStyle style) {
+    return _PopoverButton(
+      tooltip: 'Fill style',
+      activeColor: widget.activeColor,
+      vertical: widget.orientation == Axis.vertical,
+      builder: (context, controller) => Icon(
+        Icons.format_color_fill_rounded,
+        size: 18,
+        color: widget.iconColor,
+      ),
+      popoverBuilder: (context, close) {
+        return _ChoicePopover<FillStyle>(
+          label: 'Fill style',
+          options: FillStyle.values,
+          selected: style.fillStyle,
+          labelOf: (s) => s.name,
+          onPick: (s) {
+            _updateStyle(fillStyle: s);
+            close();
+          },
+        );
+      },
+    );
+  }
+
+  Widget _undoButton() {
+    return _ActionButton(
+      icon: Icons.undo_rounded,
+      tooltip: 'Undo',
+      color: widget.iconColor,
+      enabled: _ctrl.canUndo,
+      onTap: _ctrl.undo,
+    );
+  }
+
+  Widget _redoButton() {
+    return _ActionButton(
+      icon: Icons.redo_rounded,
+      tooltip: 'Redo',
+      color: widget.iconColor,
+      enabled: _ctrl.canRedo,
+      onTap: _ctrl.redo,
+    );
+  }
+
+  Widget _clearButton() {
+    return _ActionButton(
+      icon: Icons.delete_sweep_rounded,
+      tooltip: 'Clear sketches',
+      color: widget.iconColor,
+      enabled: _ctrl.elements.isNotEmpty,
+      onTap: _ctrl.clear,
+    );
+  }
+
   Widget _divider(ColorScheme scheme) {
+    final vertical = widget.orientation == Axis.vertical;
     return Container(
-      width: 1,
-      height: 22,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
+      width: vertical ? 22 : 1,
+      height: vertical ? 1 : 22,
+      margin: vertical
+          ? const EdgeInsets.symmetric(vertical: 4)
+          : const EdgeInsets.symmetric(horizontal: 4),
       color: scheme.outlineVariant,
     );
   }
@@ -439,12 +541,14 @@ class _PopoverButton extends StatefulWidget {
     required this.popoverBuilder,
     required this.tooltip,
     required this.activeColor,
+    this.vertical = false,
   });
 
   final Widget Function(BuildContext, _PopoverController) builder;
   final Widget Function(BuildContext, VoidCallback close) popoverBuilder;
   final String tooltip;
   final Color activeColor;
+  final bool vertical;
 
   @override
   State<_PopoverButton> createState() => _PopoverButtonState();
@@ -497,13 +601,19 @@ class _PopoverButtonState extends State<_PopoverButton> {
               Positioned(
                 left: 0,
                 top: 0,
-                child: CompositedTransformFollower(
-                  link: _link,
-                  showWhenUnlinked: false,
-                  targetAnchor: Alignment.bottomLeft,
-                  followerAnchor: Alignment.topLeft,
-                  offset: const Offset(0, 6),
-                  child: Material(
+                  child: CompositedTransformFollower(
+                    link: _link,
+                    showWhenUnlinked: false,
+                    targetAnchor: widget.vertical
+                        ? Alignment.centerRight
+                        : Alignment.bottomLeft,
+                    followerAnchor: widget.vertical
+                        ? Alignment.centerLeft
+                        : Alignment.topLeft,
+                    offset: widget.vertical
+                        ? const Offset(6, 0)
+                        : const Offset(0, 6),
+                    child: Material(
                     elevation: 6,
                     borderRadius: BorderRadius.circular(10),
                     clipBehavior: Clip.antiAlias,
@@ -866,6 +976,10 @@ class _ToolGlyph extends StatelessWidget {
         return Icons.circle_outlined;
       case SketchTool.diamond:
         return Icons.change_history_rounded; // closest fit
+      case SketchTool.triangle:
+        return Icons.auto_awesome_motion_rounded;
+      case SketchTool.sticky:
+        return Icons.sticky_note_2_outlined;
       case SketchTool.line:
         return Icons.show_chart_rounded;
       case SketchTool.arrow:
