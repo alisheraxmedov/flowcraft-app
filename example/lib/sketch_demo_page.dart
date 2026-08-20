@@ -15,10 +15,17 @@ class SketchDemoPage extends StatefulWidget {
     super.key,
     this.isDark = false,
     this.onToggleTheme,
+    this.controller,
   });
 
   final bool isDark;
   final VoidCallback? onToggleTheme;
+
+  /// Optional externally-owned controller. When provided, the caller is
+  /// responsible for disposing it — used to share the canvas state with
+  /// the MCP control server (see `lib/control/`). Falls back to an
+  /// internal controller when omitted.
+  final SketchController? controller;
 
   @override
   State<SketchDemoPage> createState() => _SketchDemoPageState();
@@ -26,17 +33,19 @@ class SketchDemoPage extends StatefulWidget {
 
 class _SketchDemoPageState extends State<SketchDemoPage> {
   late final SketchController _sketch;
+  late final bool _ownsController;
   bool _showGrid = true;
 
   @override
   void initState() {
     super.initState();
-    _sketch = SketchController(currentTool: SketchTool.select);
+    _ownsController = widget.controller == null;
+    _sketch = widget.controller ?? SketchController(currentTool: SketchTool.select);
   }
 
   @override
   void dispose() {
-    _sketch.dispose();
+    if (_ownsController) _sketch.dispose();
     super.dispose();
   }
 

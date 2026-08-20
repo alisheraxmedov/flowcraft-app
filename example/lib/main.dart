@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flowcraft/flowcraft.dart';
 
+import 'control/app_control.dart';
 import 'sketch_demo_page.dart';
 
 void main() {
@@ -15,6 +17,26 @@ class FlowCraftWhiteboardApp extends StatefulWidget {
 
 class _FlowCraftWhiteboardAppState extends State<FlowCraftWhiteboardApp> {
   bool _dark = false;
+
+  late final SketchController _sketch =
+      SketchController(currentTool: SketchTool.select);
+  late final AppControlServer _controlServer =
+      AppControlServer(controller: _sketch);
+
+  @override
+  void initState() {
+    super.initState();
+    _controlServer.start().catchError((Object e) {
+      debugPrint('FlowCraft control server failed to start: $e');
+    });
+  }
+
+  @override
+  void dispose() {
+    _controlServer.stop();
+    _sketch.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +57,7 @@ class _FlowCraftWhiteboardAppState extends State<FlowCraftWhiteboardApp> {
       ),
       themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
       home: SketchDemoPage(
+        controller: _sketch,
         isDark: _dark,
         onToggleTheme: () => setState(() => _dark = !_dark),
       ),
