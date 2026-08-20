@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=FlowCraft
+GenericName=Whiteboard
+Comment=Miro / Excalidraw-style interactive whiteboard
+Exec=flowcraft
+Icon=flowcraft
+Terminal=false
+Categories=Graphics;Office;
+StartupWMClass=flowcraft_example
