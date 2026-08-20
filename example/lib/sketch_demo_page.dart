@@ -1,76 +1,107 @@
 import 'package:flutter/material.dart';
 import 'package:flowcraft/flowcraft.dart';
 
-/// Live demo of the Excalidraw-style sketch layer composed on top of the
-/// FlowCraft canvas.
+/// Live demo of the Excalidraw-style sketch layer as a self-contained
+/// Miro-like whiteboard.
 ///
-/// Run via the brush icon in the main app, or as a standalone entry:
+/// Run via the main app, or as a standalone entry:
 ///
 /// ```
 /// cd example
 /// flutter run -t lib/sketch_demo_page.dart
 /// ```
 class SketchDemoPage extends StatefulWidget {
-  const SketchDemoPage({super.key});
+  const SketchDemoPage({
+    super.key,
+    this.isDark = false,
+    this.onToggleTheme,
+  });
+
+  final bool isDark;
+  final VoidCallback? onToggleTheme;
 
   @override
   State<SketchDemoPage> createState() => _SketchDemoPageState();
 }
 
 class _SketchDemoPageState extends State<SketchDemoPage> {
-  late final FlowController _flow;
   late final SketchController _sketch;
+  bool _showGrid = true;
 
   @override
   void initState() {
     super.initState();
-    _flow = FlowController();
-    _sketch = SketchController(currentTool: SketchTool.freedraw);
-
-    // Seed a couple of demo nodes so users see sketches coexisting with
-    // a flow graph.
-    _flow.addNode(
-      label: 'Trigger',
-      type: NodeType.trigger,
-      position: const Offset(80, 80),
-      size: const Size(140, 70),
-    );
-    _flow.addNode(
-      label: 'Process',
-      position: const Offset(360, 120),
-    );
+    _sketch = SketchController(currentTool: SketchTool.select);
   }
 
   @override
   void dispose() {
     _sketch.dispose();
-    _flow.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final dark = widget.isDark;
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sketch + Flow demo'),
+        title: const Text('FlowCraft Whiteboard'),
       ),
-      body: Stack(
+      body: Row(
         children: [
-          FlowCanvas(
-            controller: _flow,
-            sketchController: _sketch,
-            showControls: true,
-            theme: Theme.of(context).brightness == Brightness.dark
-                ? FlowTheme.dark()
-                : FlowTheme.light(),
-          ),
-          Positioned(
-            top: 12,
-            left: 12,
-            right: 12,
-            child: Center(
-              child: SketchToolbarRich(controller: _sketch),
+          _buildToolPanel(scheme),
+          Expanded(
+            child: WhiteboardCanvas(
+              sketchController: _sketch,
+              backgroundColor: dark
+                  ? const Color(0xFF1E1E1E)
+                  : const Color(0xFFFFFFFF),
+              gridColor: dark
+                  ? const Color(0x22FFFFFF)
+                  : const Color(0x22888888),
+              gridType: _showGrid ? GridType.dots : GridType.none,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolPanel(ColorScheme scheme) {
+    return Container(
+      width: 112,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(right: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: SketchToolbarRich(
+                    controller: _sketch,
+                    orientation: Axis.vertical,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Divider(height: 1, color: scheme.outlineVariant),
+          IconButton(
+            icon: Icon(_showGrid ? Icons.grid_4x4 : Icons.grid_off),
+            tooltip: _showGrid ? 'Hide grid' : 'Show grid',
+            onPressed: () => setState(() => _showGrid = !_showGrid),
+          ),
+          IconButton(
+            icon: Icon(widget.isDark ? Icons.light_mode : Icons.dark_mode),
+            tooltip: widget.isDark ? 'Light mode' : 'Dark mode',
+            onPressed: widget.onToggleTheme,
           ),
         ],
       ),
@@ -81,13 +112,42 @@ class _SketchDemoPageState extends State<SketchDemoPage> {
 // ─── Standalone entry point ──────────────────────────────────────────────
 // Run with: flutter run -t lib/sketch_demo_page.dart
 void main() {
-  runApp(MaterialApp(
-    title: 'FlowCraft Sketch Demo',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-      useMaterial3: true,
-    ),
-    home: const SketchDemoPage(),
-  ));
+  runApp(const _StandaloneWhiteboardApp());
+}
+
+class _StandaloneWhiteboardApp extends StatefulWidget {
+  const _StandaloneWhiteboardApp();
+
+  @override
+  State<_StandaloneWhiteboardApp> createState() =>
+      _StandaloneWhiteboardAppState();
+}
+
+class _StandaloneWhiteboardAppState extends State<_StandaloneWhiteboardApp> {
+  bool _dark = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'FlowCraft Whiteboard Demo',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
+      home: SketchDemoPage(
+        isDark: _dark,
+        onToggleTheme: () => setState(() => _dark = !_dark),
+      ),
+    );
+  }
 }
