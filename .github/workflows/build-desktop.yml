@@ -37,12 +37,21 @@ jobs:
       - run: flutter config --enable-macos-desktop
       - run: flutter pub get
 
-      # The example app has no Flutter plugins, so `flutter build macos`
-      # skips its usual CocoaPods bookkeeping (see hasPlugins() check in
-      # flutter_tools' cocoapod_utils.dart) — but the Xcode project's "Check
-      # Pods Manifest.lock" script phase still runs and needs a matching
-      # Podfile.lock/Pods/Manifest.lock to exist. Run pod install explicitly
-      # so a from-scratch checkout has them.
+      # This app has no Flutter plugins, so `flutter build macos` skips its
+      # usual CocoaPods bookkeeping (see hasPlugins() in flutter_tools'
+      # cocoapod_utils.dart) — but the Xcode project's "Check Pods
+      # Manifest.lock" script phase still runs and fails on a fresh
+      # checkout because there's no Podfile.lock yet. That first build
+      # attempt also applies Podfile/Xcode-project migrations (e.g. bumping
+      # the minimum deployment target to match this runner's Flutter SDK),
+      # which `pod install` needs to have already happened, or CocoaPods
+      # rejects FlutterMacOS.podspec as requiring a higher deployment
+      # target. So: let the first attempt run and fail (migrations still
+      # apply), pod install against the now-migrated Podfile, then build
+      # again for real.
+      - name: Prime CocoaPods (expected to fail once)
+        run: flutter build macos --release || true
+
       - name: Install CocoaPods dependencies
         working-directory: example/macos
         run: pod install --repo-update
