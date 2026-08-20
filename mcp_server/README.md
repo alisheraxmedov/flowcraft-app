@@ -30,7 +30,18 @@ SketchController  →  repaints the canvas
 The `flowcraft` package itself (`lib/`) is untouched and stays a
 dependency-free widget library — it doesn't know MCP exists.
 
-## Build
+## Get the binary
+
+Most people don't need to build this at all: `.github/workflows/build-desktop.yml`
+already compiles a native executable for macOS, Windows, and Linux on every
+push and uploads it as a workflow artifact —
+`flowcraft-mcp-server-{macos,windows,linux}` — right next to the app
+installer. Download it, `chmod +x` on macOS/Linux, and skip straight to
+[Register with an AI CLI](#register-with-an-ai-cli). No Dart SDK required.
+
+### Build from source
+
+Only needed if you're changing this package's code.
 
 ```bash
 cd mcp_server
