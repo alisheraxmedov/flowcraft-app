@@ -1,4 +1,14 @@
 include: package:flutter_lints/flutter.yaml
 
+# `mcp_server/` is a separate, isolated Dart package with its own pubspec.yaml
+# (see CLAUDE.md) — it's analyzed on its own via `dart analyze` inside that
+# directory, not swept into this app's `flutter analyze`. Without this,
+# `flutter analyze` (run from repo root) recurses into it and fails on
+# unresolved `package:dart_mcp/...` imports, since this job never runs
+# `dart pub get` inside mcp_server/.
+analyzer:
+  exclude:
+    - mcp_server/**
+
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
