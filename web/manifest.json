@@ -1,11 +1,11 @@
 {
-    "name": "flowcraft_example",
-    "short_name": "flowcraft_example",
+    "name": "FlowCraft",
+    "short_name": "FlowCraft",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "FlowCraft — an interactive whiteboard with AI-drivable diagrams.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
