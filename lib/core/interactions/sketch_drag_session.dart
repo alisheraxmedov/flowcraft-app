@@ -1,8 +1,8 @@
 import 'dart:ui';
 
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
-import 'package:flowcraft/sketch/models/sketch_tool.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
+import 'package:flowcraft/models/sketch_tool.dart';
 
 /// What kind of work the pointer is currently doing.
 enum SketchSessionKind {

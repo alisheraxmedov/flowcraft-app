@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'package:flowcraft/sketch/interactions/sketch_drag_session.dart';
+import 'package:flowcraft/core/interactions/sketch_drag_session.dart';
 
 /// Holds the currently-active [SketchDragSession] (if any) and notifies
 /// listeners on every change, so the preview layer can repaint in real

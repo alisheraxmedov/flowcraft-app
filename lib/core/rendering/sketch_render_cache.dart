@@ -1,8 +1,8 @@
 import 'dart:ui';
 
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
-import 'package:flowcraft/sketch/rendering/rough_generator.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
+import 'package:flowcraft/core/rendering/rough_generator.dart';
 
 /// LRU-ish cache of rough/sketchy paths keyed by element identity.
 ///

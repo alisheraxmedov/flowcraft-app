@@ -21,14 +21,15 @@ flowcraft_mcp_server  (this package)
    │  plain HTTP, loopback only, token-authenticated
    ▼
 FlowCraft desktop app's embedded control server
-   (example/lib/control/flowcraft_control_server.dart)
+   (lib/services/flowcraft_control_server.dart)
    │  direct method calls, no IPC
    ▼
 SketchController  →  repaints the canvas
 ```
 
-The `flowcraft` package itself (`lib/`) is untouched and stays a
-dependency-free widget library — it doesn't know MCP exists.
+The FlowCraft app itself has no `dart_mcp` dependency and knows nothing
+about MCP — it only exposes a plain HTTP control endpoint. All MCP-specific
+code lives here, in this isolated package.
 
 ## Get the binary
 
@@ -130,5 +131,6 @@ dart analyze
 ```
 
 (No unit tests here yet — the HTTP/parsing logic it drives is covered by
-`example/test/control/flowcraft_control_server_test.dart`, which exercises
-the same wire format this bridge sends.)
+`test/services/flowcraft_control_server_test.dart` and
+`test/services/diagram_spec_test.dart`, which exercise the same wire format
+this bridge sends.)

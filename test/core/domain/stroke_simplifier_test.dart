@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flowcraft/sketch/domain/stroke_simplifier.dart';
+import 'package:flowcraft/core/domain/stroke_simplifier.dart';
 
 void main() {
   group('StrokeSimplifier.simplify', () {

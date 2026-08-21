@@ -2,11 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show Rect;
 import 'dart:ui' show Offset;
 
-import 'package:flowcraft/sketch/domain/sketch_hit_test.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
-import 'package:flowcraft/sketch/models/sketch_tool.dart';
-import 'package:flowcraft/sketch/state/sketch_history.dart';
+import 'package:flowcraft/core/domain/sketch_hit_test.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
+import 'package:flowcraft/models/sketch_tool.dart';
+import 'package:flowcraft/viewmodels/sketch_history.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Central state for the sketch (drawing) layer.
 ///
@@ -413,3 +414,15 @@ class SketchController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// App-wide [SketchController] instance, for dependency injection only —
+/// this provider is NOT reactive (Riverpod 3 dropped `ChangeNotifierProvider`
+/// from its public API). Widgets that need to rebuild on canvas changes
+/// keep using `SketchController`'s own `ChangeNotifier`/`addListener`
+/// mechanism directly, exactly as `WhiteboardCanvas` and
+/// `SketchToolbarRich` already do.
+final sketchControllerProvider = Provider<SketchController>((ref) {
+  final controller = SketchController(currentTool: SketchTool.select);
+  ref.onDispose(controller.dispose);
+  return controller;
+});

@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flowcraft/core/utils/id_generator.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
+import 'package:flowcraft/models/sketch_style.dart';
 
 /// Base for any drawable element on the sketch layer.
 ///

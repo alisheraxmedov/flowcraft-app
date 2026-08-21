@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flowcraft/sketch/rendering/rough_generator.dart';
+import 'package:flowcraft/core/rendering/rough_generator.dart';
 
 PathMetric? _firstMetric(Path path) {
   for (final m in path.computeMetrics()) {

@@ -2,9 +2,9 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flowcraft/sketch/domain/sketch_hit_test.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
+import 'package:flowcraft/core/domain/sketch_hit_test.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
 
 void main() {
   group('SketchHitTest.hit', () {

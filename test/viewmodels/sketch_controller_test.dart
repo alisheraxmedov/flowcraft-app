@@ -2,10 +2,10 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
-import 'package:flowcraft/sketch/models/sketch_tool.dart';
-import 'package:flowcraft/sketch/state/sketch_controller.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
+import 'package:flowcraft/models/sketch_tool.dart';
+import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 SketchRectangle _rect({String? id, Rect? rect}) => SketchRectangle.create(
       id: id,

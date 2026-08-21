@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flowcraft/core/models/flow_viewport.dart';
+import 'package:flowcraft/models/flow_viewport.dart';
 
 /// Converts the [FlowViewport] state into a [Matrix4] transformation
 /// that applies pan and zoom to the canvas.

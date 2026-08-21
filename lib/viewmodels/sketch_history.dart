@@ -1,4 +1,4 @@
-import 'package:flowcraft/sketch/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_element.dart';
 
 /// Immutable snapshot of the sketch scene used for undo/redo.
 class SketchSnapshot {

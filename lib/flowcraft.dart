@@ -7,33 +7,50 @@
 /// ```
 library;
 
-// Canvas
-export 'canvas/grid_painter.dart';
-export 'canvas/viewport_transform.dart';
-export 'canvas/whiteboard_canvas.dart';
+// Models — immutable data
+export 'models/flow_viewport.dart';
+export 'models/sketch_element.dart';
+export 'models/sketch_style.dart';
+export 'models/sketch_tool.dart';
 
-// Core
-export 'core/models/flow_viewport.dart';
+// ViewModels — app state + Riverpod providers
+export 'viewmodels/sketch_controller.dart';
+export 'viewmodels/sketch_history.dart';
+export 'viewmodels/theme_view_model.dart';
+export 'viewmodels/mcp_view_model.dart';
+
+// Views — screens and reusable widgets
+export 'views/splash_view.dart';
+export 'views/whiteboard_view.dart';
+export 'views/widgets/properties_panel.dart';
+export 'views/widgets/sketch_layer.dart';
+export 'views/widgets/sketch_text_editor.dart';
+export 'views/widgets/toolbar/toolbar.dart';
+
+// Services — external I/O boundary (MCP control server)
+export 'services/app_control.dart';
+export 'services/diagram_spec.dart';
+export 'services/flowcraft_control_server.dart';
+
+// Core — framework-agnostic infrastructure
+export 'core/canvas/grid_painter.dart';
+export 'core/canvas/viewport_transform.dart';
+export 'core/canvas/whiteboard_canvas.dart';
+export 'core/domain/sketch_geometry.dart';
+export 'core/domain/sketch_hit_test.dart';
+export 'core/domain/stroke_simplifier.dart';
+export 'core/interactions/sketch_drag_session.dart';
+export 'core/interactions/sketch_gesture_handler.dart';
+export 'core/interactions/sketch_interaction_state.dart';
+export 'core/rendering/arrow_head.dart';
+export 'core/rendering/rough_generator.dart';
+export 'core/rendering/sketch_painter.dart';
+export 'core/rendering/sketch_preview_painter.dart';
+export 'core/rendering/sketch_render_cache.dart';
+export 'core/serialization/sketch_serializer.dart';
+export 'core/theme/app_colors.dart';
+export 'core/theme/app_radius.dart';
+export 'core/theme/app_spacing.dart';
+export 'core/theme/app_theme.dart';
+export 'core/theme/app_typography.dart';
 export 'core/utils/id_generator.dart';
-
-// Sketch — drawing layer (Excalidraw-style)
-export 'sketch/models/sketch_element.dart';
-export 'sketch/models/sketch_style.dart';
-export 'sketch/models/sketch_tool.dart';
-export 'sketch/domain/sketch_geometry.dart';
-export 'sketch/domain/sketch_hit_test.dart';
-export 'sketch/domain/stroke_simplifier.dart';
-export 'sketch/state/sketch_controller.dart';
-export 'sketch/state/sketch_history.dart';
-export 'sketch/rendering/rough_generator.dart';
-export 'sketch/rendering/sketch_painter.dart';
-export 'sketch/rendering/sketch_preview_painter.dart';
-export 'sketch/rendering/sketch_render_cache.dart';
-export 'sketch/interactions/sketch_drag_session.dart';
-export 'sketch/interactions/sketch_gesture_handler.dart';
-export 'sketch/interactions/sketch_interaction_state.dart';
-export 'sketch/widgets/sketch_layer.dart';
-export 'sketch/widgets/sketch_text_editor.dart';
-export 'sketch/widgets/sketch_toolbar.dart';
-export 'sketch/widgets/sketch_toolbar_rich.dart';
-export 'sketch/serialization/sketch_serializer.dart';

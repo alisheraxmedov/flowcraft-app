@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-import 'package:flowcraft/sketch/domain/sketch_geometry.dart';
+import 'package:flowcraft/core/domain/sketch_geometry.dart';
 
 /// Polyline simplification utilities.
 ///

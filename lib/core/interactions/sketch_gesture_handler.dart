@@ -1,14 +1,14 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flowcraft/canvas/viewport_transform.dart';
-import 'package:flowcraft/core/models/flow_viewport.dart';
-import 'package:flowcraft/sketch/domain/sketch_hit_test.dart';
-import 'package:flowcraft/sketch/domain/stroke_simplifier.dart';
-import 'package:flowcraft/sketch/interactions/sketch_drag_session.dart';
-import 'package:flowcraft/sketch/interactions/sketch_interaction_state.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_tool.dart';
-import 'package:flowcraft/sketch/state/sketch_controller.dart';
+import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/models/flow_viewport.dart';
+import 'package:flowcraft/core/domain/sketch_hit_test.dart';
+import 'package:flowcraft/core/domain/stroke_simplifier.dart';
+import 'package:flowcraft/core/interactions/sketch_drag_session.dart';
+import 'package:flowcraft/core/interactions/sketch_interaction_state.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_tool.dart';
+import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 /// Returns the current viewport state. Called fresh on each pointer event
 /// so the handler always works with up-to-date pan/zoom.

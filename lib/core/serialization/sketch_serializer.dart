@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:flowcraft/sketch/domain/stroke_simplifier.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
+import 'package:flowcraft/core/domain/stroke_simplifier.dart';
+import 'package:flowcraft/models/sketch_element.dart';
 
 /// Versioned JSON serialization for the sketch scene.
 ///
