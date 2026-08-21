@@ -29,17 +29,15 @@ class FlowcraftLauncher {
     if (Platform.isMacOS) {
       return const [
         '/Applications/FlowCraft.app',
-        '/Applications/flowcraft_example.app',
+        '/Applications/flowcraft.app',
       ];
     }
     if (Platform.isWindows) {
       final localAppData = Platform.environment['LOCALAPPDATA'];
       final programFiles = Platform.environment['ProgramFiles'];
       return [
-        if (localAppData != null)
-          '$localAppData\\FlowCraft\\flowcraft_example.exe',
-        if (programFiles != null)
-          '$programFiles\\FlowCraft\\flowcraft_example.exe',
+        if (localAppData != null) '$localAppData\\FlowCraft\\flowcraft.exe',
+        if (programFiles != null) '$programFiles\\FlowCraft\\flowcraft.exe',
       ];
     }
     if (Platform.isLinux) {
