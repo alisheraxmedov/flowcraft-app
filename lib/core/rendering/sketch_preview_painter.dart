@@ -2,13 +2,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 
-import 'package:flowcraft/canvas/viewport_transform.dart';
-import 'package:flowcraft/core/models/flow_viewport.dart';
-import 'package:flowcraft/sketch/interactions/sketch_drag_session.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
-import 'package:flowcraft/sketch/models/sketch_tool.dart';
-import 'package:flowcraft/sketch/rendering/rough_generator.dart';
+import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/models/flow_viewport.dart';
+import 'package:flowcraft/core/interactions/sketch_drag_session.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
+import 'package:flowcraft/models/sketch_tool.dart';
+import 'package:flowcraft/core/rendering/arrow_head.dart';
+import 'package:flowcraft/core/rendering/rough_generator.dart';
 
 /// Paints the in-progress shape preview, freedraw stroke, or marquee
 /// rectangle for the currently-active [SketchDragSession].
@@ -175,23 +176,8 @@ class SketchPreviewPainter extends CustomPainter {
   }
 
   void _paintArrowHead(Canvas canvas, Offset start, Offset end, double strokeWidth) {
-    final dx = end.dx - start.dx;
-    final dy = end.dy - start.dy;
-    final angle = math.atan2(dy, dx);
     final size = math.max(10.0, strokeWidth * 6.0);
-    final left = Offset(
-      end.dx - size * math.cos(angle - 0.5),
-      end.dy - size * math.sin(angle - 0.5),
-    );
-    final right = Offset(
-      end.dx - size * math.cos(angle + 0.5),
-      end.dy - size * math.sin(angle + 0.5),
-    );
-    final path = Path()
-      ..moveTo(end.dx, end.dy)
-      ..lineTo(left.dx, left.dy)
-      ..lineTo(right.dx, right.dy)
-      ..close();
+    final path = ArrowHead.path(start, end, size);
     _marqueeFill.color = previewColor.withValues(alpha: 0.85);
     canvas.drawPath(path, _marqueeFill);
   }

@@ -20,18 +20,27 @@ class SketchGeometry {
     return (point - proj).distance;
   }
 
-  /// True iff [point] lies inside the rotated rectangle [rect] (rotated by
-  /// [angle] radians around its centre).
-  static bool pointInRotatedRect(Offset point, Rect rect, double angle) {
-    if (angle == 0.0) return rect.contains(point);
-    final centre = rect.center;
+  /// Rotates [point] by `-angle` radians around [centre] and returns the
+  /// offset of the result *relative to* [centre] (i.e. `rotated - centre`).
+  ///
+  /// This is the shared "unrotate into local space" step behind every
+  /// `pointInX` test below — each just interprets the resulting delta
+  /// differently (added back to `centre` for absolute-space tests,
+  /// normalised by radius for ellipse/diamond tests, etc).
+  static Offset _rotatedDelta(Offset point, Offset centre, double angle) {
     final cos = math.cos(-angle);
     final sin = math.sin(-angle);
     final dx = point.dx - centre.dx;
     final dy = point.dy - centre.dy;
-    final localX = dx * cos - dy * sin + centre.dx;
-    final localY = dx * sin + dy * cos + centre.dy;
-    return rect.contains(Offset(localX, localY));
+    return Offset(dx * cos - dy * sin, dx * sin + dy * cos);
+  }
+
+  /// True iff [point] lies inside the rotated rectangle [rect] (rotated by
+  /// [angle] radians around its centre).
+  static bool pointInRotatedRect(Offset point, Rect rect, double angle) {
+    if (angle == 0.0) return rect.contains(point);
+    final local = _rotatedDelta(point, rect.center, angle) + rect.center;
+    return rect.contains(local);
   }
 
   /// True iff [point] lies inside the axis-aligned ellipse inscribed in
@@ -42,20 +51,11 @@ class SketchGeometry {
     final rx = rect.width / 2;
     final ry = rect.height / 2;
 
-    double localX, localY;
-    if (angle == 0.0) {
-      localX = point.dx - centre.dx;
-      localY = point.dy - centre.dy;
-    } else {
-      final cos = math.cos(-angle);
-      final sin = math.sin(-angle);
-      final dx = point.dx - centre.dx;
-      final dy = point.dy - centre.dy;
-      localX = dx * cos - dy * sin;
-      localY = dx * sin + dy * cos;
-    }
-    final nx = localX / rx;
-    final ny = localY / ry;
+    final local = angle == 0.0
+        ? point - centre
+        : _rotatedDelta(point, centre, angle);
+    final nx = local.dx / rx;
+    final ny = local.dy / ry;
     return nx * nx + ny * ny <= 1.0;
   }
 
@@ -63,18 +63,11 @@ class SketchGeometry {
   static bool pointInDiamond(Offset point, Rect rect, double angle) {
     if (rect.width == 0 || rect.height == 0) return false;
     final centre = rect.center;
-    double localX, localY;
-    if (angle == 0.0) {
-      localX = (point.dx - centre.dx).abs();
-      localY = (point.dy - centre.dy).abs();
-    } else {
-      final cos = math.cos(-angle);
-      final sin = math.sin(-angle);
-      final dx = point.dx - centre.dx;
-      final dy = point.dy - centre.dy;
-      localX = (dx * cos - dy * sin).abs();
-      localY = (dx * sin + dy * cos).abs();
-    }
+    final local = angle == 0.0
+        ? point - centre
+        : _rotatedDelta(point, centre, angle);
+    final localX = local.dx.abs();
+    final localY = local.dy.abs();
     return (localX / (rect.width / 2)) + (localY / (rect.height / 2)) <= 1.0;
   }
 
@@ -83,16 +76,9 @@ class SketchGeometry {
   static bool pointInTriangle(Offset point, Rect rect, double angle) {
     if (rect.width == 0 || rect.height == 0) return false;
     final centre = rect.center;
-    double px = point.dx, py = point.dy;
-    if (angle != 0.0) {
-      final cos = math.cos(-angle);
-      final sin = math.sin(-angle);
-      final dx = point.dx - centre.dx;
-      final dy = point.dy - centre.dy;
-      px = dx * cos - dy * sin + centre.dx;
-      py = dx * sin + dy * cos + centre.dy;
-    }
-    final p = Offset(px, py);
+    final p = angle == 0.0
+        ? point
+        : _rotatedDelta(point, centre, angle) + centre;
     final a = Offset(centre.dx, rect.top);
     final b = Offset(rect.left, rect.bottom);
     final c = Offset(rect.right, rect.bottom);

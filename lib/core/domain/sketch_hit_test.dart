@@ -1,8 +1,8 @@
 import 'dart:ui';
 
-import 'package:flowcraft/sketch/domain/sketch_geometry.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
+import 'package:flowcraft/core/domain/sketch_geometry.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
 
 /// Pure hit-test functions for sketch elements.
 ///
@@ -100,63 +100,59 @@ class SketchHitTest {
 
   // ─── internal ───────────────────────────────────────────────────────────
 
+  /// Shared "stroke annulus" test: [point] hits the *outline* of a shape
+  /// when it falls inside the outline inflated by [tolerance] but outside
+  /// the outline deflated by [tolerance]. [containsTest] supplies the
+  /// shape-specific interior test (one of `SketchGeometry.pointInX`).
+  static bool _hitStrokeShape(
+    Offset point,
+    Rect rect,
+    double angle,
+    double tolerance,
+    bool Function(Offset point, Rect rect, double angle) containsTest,
+  ) {
+    final outer = SketchGeometry.inflate(rect, tolerance);
+    final inner = SketchGeometry.inflate(rect, -tolerance);
+    final hitOuter = containsTest(point, outer, angle);
+    final hitInner = inner.width <= 0 || inner.height <= 0
+        ? false
+        : containsTest(point, inner, angle);
+    return hitOuter && !hitInner;
+  }
+
   static bool _hitStrokeRect(
     Offset point,
     Rect rect,
     double angle,
     double tolerance,
-  ) {
-    final inflated = SketchGeometry.inflate(rect, tolerance);
-    final deflated = SketchGeometry.inflate(rect, -tolerance);
-    final inOuter = SketchGeometry.pointInRotatedRect(point, inflated, angle);
-    final inInner = deflated.width <= 0 || deflated.height <= 0
-        ? false
-        : SketchGeometry.pointInRotatedRect(point, deflated, angle);
-    return inOuter && !inInner;
-  }
+  ) =>
+      _hitStrokeShape(
+          point, rect, angle, tolerance, SketchGeometry.pointInRotatedRect);
 
   static bool _hitStrokeEllipse(
     Offset point,
     Rect rect,
     double angle,
     double tolerance,
-  ) {
-    final outer = SketchGeometry.inflate(rect, tolerance);
-    final inner = SketchGeometry.inflate(rect, -tolerance);
-    final hitOuter = SketchGeometry.pointInEllipse(point, outer, angle);
-    final hitInner = inner.width <= 0 || inner.height <= 0
-        ? false
-        : SketchGeometry.pointInEllipse(point, inner, angle);
-    return hitOuter && !hitInner;
-  }
+  ) =>
+      _hitStrokeShape(
+          point, rect, angle, tolerance, SketchGeometry.pointInEllipse);
 
   static bool _hitStrokeDiamond(
     Offset point,
     Rect rect,
     double angle,
     double tolerance,
-  ) {
-    final outer = SketchGeometry.inflate(rect, tolerance);
-    final inner = SketchGeometry.inflate(rect, -tolerance);
-    final hitOuter = SketchGeometry.pointInDiamond(point, outer, angle);
-    final hitInner = inner.width <= 0 || inner.height <= 0
-        ? false
-        : SketchGeometry.pointInDiamond(point, inner, angle);
-    return hitOuter && !hitInner;
-  }
+  ) =>
+      _hitStrokeShape(
+          point, rect, angle, tolerance, SketchGeometry.pointInDiamond);
 
   static bool _hitStrokeTriangle(
     Offset point,
     Rect rect,
     double angle,
     double tolerance,
-  ) {
-    final outer = SketchGeometry.inflate(rect, tolerance);
-    final inner = SketchGeometry.inflate(rect, -tolerance);
-    final hitOuter = SketchGeometry.pointInTriangle(point, outer, angle);
-    final hitInner = inner.width <= 0 || inner.height <= 0
-        ? false
-        : SketchGeometry.pointInTriangle(point, inner, angle);
-    return hitOuter && !hitInner;
-  }
+  ) =>
+      _hitStrokeShape(
+          point, rect, angle, tolerance, SketchGeometry.pointInTriangle);
 }

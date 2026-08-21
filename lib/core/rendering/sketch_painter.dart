@@ -2,11 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 
-import 'package:flowcraft/canvas/viewport_transform.dart';
-import 'package:flowcraft/core/models/flow_viewport.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/models/sketch_style.dart';
-import 'package:flowcraft/sketch/rendering/sketch_render_cache.dart';
+import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/models/flow_viewport.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
+import 'package:flowcraft/core/rendering/arrow_head.dart';
+import 'package:flowcraft/core/rendering/sketch_render_cache.dart';
 
 /// Paints all sketch elements on the canvas in a single pass.
 ///
@@ -139,21 +140,25 @@ class SketchPainter extends CustomPainter {
     if (!editing && element is SketchText) {
       _drawText(canvas, element);
     }
-    if (!editing && element is SketchRectangle && element.text != null) {
-      _drawCenteredText(canvas, element.bounds, element.text!,
-          element.fontSize, style.strokeColor, style.opacity);
-    }
-    if (!editing && element is SketchEllipse && element.text != null) {
-      _drawCenteredText(canvas, element.bounds, element.text!,
-          element.fontSize, style.strokeColor, style.opacity);
-    }
-    if (!editing && element is SketchDiamond && element.text != null) {
-      _drawCenteredText(canvas, element.bounds, element.text!,
-          element.fontSize, style.strokeColor, style.opacity);
-    }
-    if (!editing && element is SketchTriangle && element.text != null) {
-      _drawCenteredText(canvas, element.bounds, element.text!,
-          element.fontSize, style.strokeColor, style.opacity);
+    // Rectangle/ellipse/diamond/triangle all carry the same optional
+    // centred label — they don't share a *public* base type to switch on
+    // (their common base is package-private to sketch_element.dart), so
+    // this switch expression is the one place that collapses the 4
+    // otherwise-identical branches into a single call.
+    final centeredLabel = switch (element) {
+      SketchRectangle(:final text, :final fontSize) when text != null =>
+        (text, fontSize),
+      SketchEllipse(:final text, :final fontSize) when text != null =>
+        (text, fontSize),
+      SketchDiamond(:final text, :final fontSize) when text != null =>
+        (text, fontSize),
+      SketchTriangle(:final text, :final fontSize) when text != null =>
+        (text, fontSize),
+      _ => null,
+    };
+    if (!editing && centeredLabel != null) {
+      _drawCenteredText(canvas, element.bounds, centeredLabel.$1,
+          centeredLabel.$2, style.strokeColor, style.opacity);
     }
     if (!editing && element is SketchSticky && element.text != null) {
       _drawTopLeftText(canvas, element.bounds, element.text!,
@@ -212,27 +217,9 @@ class SketchPainter extends CustomPainter {
   }
 
   void _drawArrowHead(Canvas canvas, SketchArrow arrow) {
-    final dx = arrow.end.dx - arrow.start.dx;
-    final dy = arrow.end.dy - arrow.start.dy;
-    final angle = math.atan2(dy, dx);
     // Scale the head with the stroke so thick arrows keep proportion.
     final size = math.max(arrow.arrowSize, arrow.style.strokeWidth * 6.0);
-    final tip = arrow.end;
-
-    final left = Offset(
-      tip.dx - size * math.cos(angle - 0.5),
-      tip.dy - size * math.sin(angle - 0.5),
-    );
-    final right = Offset(
-      tip.dx - size * math.cos(angle + 0.5),
-      tip.dy - size * math.sin(angle + 0.5),
-    );
-
-    final path = Path()
-      ..moveTo(tip.dx, tip.dy)
-      ..lineTo(left.dx, left.dy)
-      ..lineTo(right.dx, right.dy)
-      ..close();
+    final path = ArrowHead.path(arrow.start, arrow.end, size);
     _fillPaint.color =
         arrow.style.strokeColor.withValues(alpha: arrow.style.opacity);
     canvas.drawPath(path, _fillPaint);
