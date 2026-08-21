@@ -14,12 +14,24 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
   build-macos:
     name: macOS (.dmg)
+    needs: test
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: example
     steps:
       - uses: actions/checkout@v7
 
@@ -70,7 +82,7 @@ jobs:
         run: flutter build macos --release || true
 
       - name: Install CocoaPods dependencies
-        working-directory: example/macos
+        working-directory: macos
         run: pod install --repo-update
 
       - run: flutter build macos --release
@@ -80,22 +92,20 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           hdiutil create -volname "FlowCraft" \
-            -srcfolder "build/macos/Build/Products/Release/flowcraft_example.app" \
+            -srcfolder "build/macos/Build/Products/Release/flowcraft.app" \
             -ov -format UDZO \
             "dist/FlowCraft-macOS-${{ steps.version.outputs.version }}.dmg"
 
       - uses: actions/upload-artifact@v7
         with:
           name: flowcraft-macos-installer
-          path: example/dist/*.dmg
+          path: dist/*.dmg
           if-no-files-found: error
 
   build-windows:
     name: Windows (installer)
+    needs: test
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: example
     steps:
       - uses: actions/checkout@v7
 
@@ -142,15 +152,13 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: flowcraft-windows-installer
-          path: example/windows/installer/Output/*.exe
+          path: windows/installer/Output/*.exe
           if-no-files-found: error
 
   build-linux:
     name: Linux (.deb)
+    needs: test
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: example
     steps:
       - uses: actions/checkout@v7
 
@@ -198,5 +206,5 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: flowcraft-linux-installer
-          path: example/dist/*.deb
+          path: dist/*.deb
           if-no-files-found: error

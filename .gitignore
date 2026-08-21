@@ -5,9 +5,11 @@
 *.swp
 .DS_Store
 .atom/
+.build/
 .buildlog/
 .history
 .svn/
+.swiftpm/
 migrate_working_dir/
 
 # IntelliJ related
@@ -22,14 +24,17 @@ migrate_working_dir/
 #.vscode/
 
 # Flutter/Dart/Pub related
-# Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
+# Lockfiles regenerate on every `pod install` / SDK bump and are pure
+# churn in a desktop-app repo without reproducible-build requirements.
 /pubspec.lock
-example/pubspec.lock
-example/ios/Podfile.lock
-example/macos/Podfile.lock
+ios/Podfile.lock
+macos/Podfile.lock
 **/doc/api/
+**/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
+.pub-cache/
+.pub/
 /build/
 /coverage/
 **/build/
@@ -37,6 +42,15 @@ example/macos/Podfile.lock
 **/dist/
 **/.flutter-plugins
 **/.flutter-plugins-dependencies
+
+# Symbolication / obfuscation output
+app.*.symbols
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
 
 # ── Security: secrets, credentials, signing material ──────────────────────
 # Never commit these files. Use .env.example as a template.
@@ -116,3 +130,7 @@ test/.test_coverage.dart
 .test_runner.dart
 coverage_badge.svg
 lcov.info
+
+
+# my files
+alisher
