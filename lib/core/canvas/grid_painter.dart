@@ -3,7 +3,9 @@ import 'dart:ui' show PointMode;
 
 import 'package:flutter/rendering.dart';
 
-import 'package:flowcraft/core/models/flow_viewport.dart';
+import 'package:flowcraft/core/theme/app_colors.dart';
+import 'package:flowcraft/core/theme/app_spacing.dart';
+import 'package:flowcraft/models/flow_viewport.dart';
 
 /// The type of background grid displayed on the canvas.
 enum GridType {
@@ -26,10 +28,15 @@ class GridPainter extends CustomPainter {
   GridPainter({
     required this.viewport,
     this.gridType = GridType.dots,
-    this.gridSpacing = 20.0,
-    this.gridColor = const Color(0x22888888),
-    this.dotRadius = 1.0,
+    this.gridSpacing = AppSpacing.canvasGrid,
+    this.gridColor = AppColors.outline,
+    this.gridOpacity = _defaultGridOpacity,
+    this.dotRadius = 1.5,
   });
+
+  /// Default grid-dot opacity applied on top of [gridColor] — ~15%, per
+  /// the Kinetic Blueprint design tokens.
+  static const double _defaultGridOpacity = 0.15;
 
   /// The current viewport state (used for zoom and pan offset).
   final FlowViewport viewport;
@@ -40,8 +47,11 @@ class GridPainter extends CustomPainter {
   /// The base spacing between grid points.
   final double gridSpacing;
 
-  /// The color of the grid.
+  /// The color of the grid, before [gridOpacity] is applied.
   final Color gridColor;
+
+  /// Opacity multiplier applied to [gridColor] (0.0-1.0).
+  final double gridOpacity;
 
   /// The radius of grid dots (for [GridType.dots]).
   final double dotRadius;
@@ -63,7 +73,9 @@ class GridPainter extends CustomPainter {
     final startY = -(offsetY % spacing);
 
     final paint = Paint()
-      ..color = gridColor.withValues(alpha: gridColor.a * (zoom.clamp(0.3, 1.0)));
+      ..color = gridColor.withValues(
+        alpha: gridColor.a * gridOpacity * (zoom.clamp(0.3, 1.0)),
+      );
 
     if (gridType == GridType.dots) {
       _paintDots(canvas, size, startX, startY, spacing, paint);
@@ -142,6 +154,7 @@ class GridPainter extends CustomPainter {
     return viewport.offset != oldDelegate.viewport.offset ||
         viewport.zoom != oldDelegate.viewport.zoom ||
         gridType != oldDelegate.gridType ||
-        gridColor != oldDelegate.gridColor;
+        gridColor != oldDelegate.gridColor ||
+        gridOpacity != oldDelegate.gridOpacity;
   }
 }

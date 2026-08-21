@@ -1,13 +1,16 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'package:flowcraft/canvas/grid_painter.dart';
-import 'package:flowcraft/canvas/viewport_transform.dart';
-import 'package:flowcraft/core/models/flow_viewport.dart';
-import 'package:flowcraft/sketch/models/sketch_tool.dart';
-import 'package:flowcraft/sketch/state/sketch_controller.dart';
-import 'package:flowcraft/sketch/widgets/sketch_layer.dart';
+import 'package:flowcraft/core/canvas/grid_painter.dart';
+import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/core/theme/app_colors.dart';
+import 'package:flowcraft/core/theme/app_spacing.dart';
+import 'package:flowcraft/models/flow_viewport.dart';
+import 'package:flowcraft/models/sketch_tool.dart';
+import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/sketch_layer.dart';
 
 /// A self-contained Miro / Excalidraw-style whiteboard.
 ///
@@ -28,10 +31,11 @@ class WhiteboardCanvas extends StatefulWidget {
   const WhiteboardCanvas({
     super.key,
     required this.sketchController,
-    this.backgroundColor = const Color(0xFFFFFFFF),
+    this.backgroundColor = AppColors.surface,
     this.gridType = GridType.dots,
-    this.gridColor = const Color(0x22888888),
-    this.gridSpacing = 20.0,
+    this.gridColor = AppColors.outline,
+    this.gridOpacity = 0.15,
+    this.gridSpacing = AppSpacing.canvasGrid,
     this.minZoom = 0.1,
     this.maxZoom = 4.0,
     this.initialZoom = 1.0,
@@ -42,6 +46,7 @@ class WhiteboardCanvas extends StatefulWidget {
   final Color backgroundColor;
   final GridType gridType;
   final Color gridColor;
+  final double gridOpacity;
   final double gridSpacing;
   final double minZoom;
   final double maxZoom;
@@ -244,6 +249,7 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
                       viewport: _viewport,
                       gridType: widget.gridType,
                       gridColor: widget.gridColor,
+                      gridOpacity: widget.gridOpacity,
                       gridSpacing: widget.gridSpacing,
                     ),
                   ),
@@ -251,6 +257,8 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
                 SketchLayer(
                   controller: widget.sketchController,
                   viewportProvider: () => _viewport,
+                  selectionColor: Theme.of(context).colorScheme.primary,
+                  marqueeColor: Theme.of(context).colorScheme.primary,
                 ),
               ],
             ),

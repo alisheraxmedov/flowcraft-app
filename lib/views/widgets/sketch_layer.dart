@@ -1,12 +1,13 @@
 import 'package:flutter/widgets.dart';
 
-import 'package:flowcraft/sketch/interactions/sketch_gesture_handler.dart';
-import 'package:flowcraft/sketch/interactions/sketch_interaction_state.dart';
-import 'package:flowcraft/sketch/rendering/sketch_painter.dart';
-import 'package:flowcraft/sketch/rendering/sketch_preview_painter.dart';
-import 'package:flowcraft/sketch/rendering/sketch_render_cache.dart';
-import 'package:flowcraft/sketch/state/sketch_controller.dart';
-import 'package:flowcraft/sketch/widgets/sketch_text_editor.dart';
+import 'package:flowcraft/core/interactions/sketch_gesture_handler.dart';
+import 'package:flowcraft/core/theme/app_colors.dart';
+import 'package:flowcraft/core/interactions/sketch_interaction_state.dart';
+import 'package:flowcraft/core/rendering/sketch_painter.dart';
+import 'package:flowcraft/core/rendering/sketch_preview_painter.dart';
+import 'package:flowcraft/core/rendering/sketch_render_cache.dart';
+import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/sketch_text_editor.dart';
 
 /// Drop-in widget rendering the sketch (drawing) layer.
 ///
@@ -25,8 +26,12 @@ class SketchLayer extends StatefulWidget {
     super.key,
     required this.controller,
     required this.viewportProvider,
-    this.selectionColor = const Color(0xFF2196F3),
-    this.marqueeColor = const Color(0xFF2196F3),
+    this.selectionColor = AppColors.primary,
+    this.marqueeColor = AppColors.primary,
+    // Downstream of the user's own sketch style, not chrome — mirrors
+    // `SketchStyle`'s / the toolbar palette's default stroke color, and is
+    // overridden with the live `currentStyle.strokeColor` wherever this
+    // widget is actually wired up (see the text-editor build below).
     this.previewColor = const Color(0xFF1E1E1E),
     this.scaleStrokeWithZoom = true,
     this.onConsumedChange,

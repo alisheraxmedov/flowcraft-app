@@ -1,10 +1,11 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'package:flowcraft/canvas/viewport_transform.dart';
-import 'package:flowcraft/core/models/flow_viewport.dart';
-import 'package:flowcraft/sketch/models/sketch_element.dart';
-import 'package:flowcraft/sketch/state/sketch_controller.dart';
+import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/core/theme/app_colors.dart';
+import 'package:flowcraft/models/flow_viewport.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 /// Inline text editor overlaid on the canvas while
 /// [SketchController.editingElementId] (or [editingCanvasPosition]) is set.
@@ -17,8 +18,12 @@ class SketchTextEditor extends StatefulWidget {
     super.key,
     required this.controller,
     required this.viewport,
+    // Downstream of the user's own sketch style, not chrome — mirrors
+    // `SketchStyle`'s / the toolbar palette's default stroke color;
+    // [SketchLayer] always overrides this with the live
+    // `currentStyle.strokeColor` in practice (see `_resolveTextColor`).
     this.textColor = const Color(0xFF1E1E1E),
-    this.cursorColor = const Color(0xFF2196F3),
+    this.cursorColor = AppColors.primary,
   });
 
   final SketchController controller;
@@ -231,7 +236,10 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
             alignment: isShape ? Alignment.center : Alignment.topLeft,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
-              color: const Color(0x10000000),
+              // ~6% black tint — a decorative edit-box background, not a
+              // design-system chrome color, hence `Color.fromRGBO` rather
+              // than an `AppColors` token.
+              color: const Color.fromRGBO(0, 0, 0, 0.0627),
               border: Border.all(
                 color: widget.cursorColor.withValues(alpha: 0.6),
                 width: 1,
