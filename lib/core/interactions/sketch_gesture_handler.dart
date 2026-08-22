@@ -37,7 +37,11 @@ class SketchGestureHandler extends StatefulWidget {
   final ViewportProvider viewportProvider;
   final Widget child;
   final ValueChanged<bool>? onConsumedChange;
+
+  /// Grab radius in *screen* pixels. Converted to canvas-space per event
+  /// (see `_canvasHitTolerance`) so it stays constant on screen at any zoom.
   final double hitTolerance;
+
   final double simplificationTolerance;
 
   @override
@@ -53,9 +57,29 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
 
   static const Duration _doubleTapWindow = Duration(milliseconds: 400);
 
+  /// Guard rails on [_canvasHitTolerance]. Across `FlowViewport`'s own
+  /// 0.1–4.0 zoom range the division never reaches either bound; they only
+  /// stop a pathological viewport from producing an absurd grab radius.
+  static const double _minCanvasHitTolerance = 0.5;
+  static const double _maxCanvasHitTolerance = 96.0;
+
   SketchController get _ctrl => widget.controller;
   SketchInteractionState get _interaction => widget.interaction;
   FlowViewport get _viewport => widget.viewportProvider();
+
+  /// [SketchGestureHandler.hitTolerance] expressed in canvas-space.
+  ///
+  /// `SketchHitTest` measures in canvas coordinates, so handing it a fixed
+  /// number let the grab radius scale with zoom: 4× too generous at 4× zoom
+  /// and 4× too mean at 0.25×, i.e. worst precisely when someone has zoomed
+  /// in to work carefully. Dividing by zoom keeps it a constant number of
+  /// screen pixels, which is what the user's hand actually controls.
+  double get _canvasHitTolerance {
+    final zoom = _viewport.zoom;
+    if (zoom <= 0) return widget.hitTolerance;
+    return (widget.hitTolerance / zoom)
+        .clamp(_minCanvasHitTolerance, _maxCanvasHitTolerance);
+  }
 
   void _setConsumed(bool value) {
     if (_consumed == value) return;
@@ -97,7 +121,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
           return;
         }
 
-        final hit = _ctrl.elementAt(canvas, tolerance: widget.hitTolerance);
+        final hit = _ctrl.elementAt(canvas, tolerance: _canvasHitTolerance);
         if (hit != null) {
           if (!_ctrl.isSelected(hit.id)) {
             _ctrl.select(hit.id);
@@ -262,8 +286,15 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     _setConsumed(false);
   }
 
+  /// Shared by both text-edit entry points — the select tool's
+  /// double-tap-to-edit and the text tool's tap-to-edit — so they can never
+  /// disagree about what counts as "on the text".
   SketchElement? _topMostTextTarget(Offset canvas) =>
-      SketchHitTest.topMostTextTarget(_ctrl.elements, canvas);
+      SketchHitTest.topMostTextTarget(
+        _ctrl.elements,
+        canvas,
+        tolerance: _canvasHitTolerance,
+      );
 
   bool _isDoubleTap(String id) {
     if (_lastTapElementId != id) return false;
@@ -386,7 +417,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
   }
 
   void _eraseAt(Offset canvas) {
-    final hit = _ctrl.elementAt(canvas, tolerance: widget.hitTolerance);
+    final hit = _ctrl.elementAt(canvas, tolerance: _canvasHitTolerance);
     if (hit != null) {
       _ctrl.remove(hit.id);
     }

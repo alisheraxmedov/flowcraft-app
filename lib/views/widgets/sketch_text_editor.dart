@@ -41,6 +41,13 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
   String? _activeId;
   Offset? _activeCanvasPos;
 
+  /// Distance from the edit box's outer edge to its first glyph: the 4/2px
+  /// decorative padding below plus the 1px border. The [Positioned] box is
+  /// shifted back by this and grown by twice it, so the content box lands on
+  /// the element's own geometry — otherwise the text visibly jumps by a few
+  /// pixels the instant editing starts, and jumps back on commit.
+  static const Offset _editorInset = Offset(5, 3);
+
   @override
   void initState() {
     super.initState();
@@ -129,17 +136,42 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     return 16.0;
   }
 
-  ({Offset screenPos, double width, double height, double fontSize})?
-      _editorBoxFor(SketchElement? el) {
+  /// Screen-space box for the editor's *text content* — where the glyphs go,
+  /// not where the decorated edit box goes. [build] grows it by
+  /// [_editorInset] to make room for the surrounding chrome, which is what
+  /// keeps the glyphs sitting exactly where [SketchPainter] draws them once
+  /// the edit is committed.
+  ({
+    Offset screenPos,
+    double width,
+    double height,
+    double fontSize,
+    String? fontFamily,
+  })? _editorBoxFor(SketchElement? el) {
     final viewport = widget.viewport;
     final zoom = viewport.zoom;
 
     if (el != null) {
+      if (el is SketchSticky) {
+        // `SketchPainter._drawTopLeftText` insets a sticky's label by 8
+        // canvas px on every side; mirror that or the label shifts the
+        // moment editing starts.
+        final bounds = el.bounds.deflate(8.0);
+        final tl = ViewportTransform.canvasToScreen(bounds.topLeft, viewport);
+        return (
+          screenPos: tl,
+          width: bounds.width * zoom,
+          height: bounds.height * zoom,
+          fontSize: el.fontSize * zoom,
+          // Shapes and stickies carry no font family — the painter renders
+          // their labels in the default face too.
+          fontFamily: null,
+        );
+      }
       if (el is SketchRectangle ||
           el is SketchEllipse ||
           el is SketchDiamond ||
-          el is SketchTriangle ||
-          el is SketchSticky) {
+          el is SketchTriangle) {
         final bounds = el.bounds;
         final tl = ViewportTransform.canvasToScreen(bounds.topLeft, viewport);
         final fontSize = _shapeFontSize(el);
@@ -148,6 +180,7 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
           width: bounds.width * zoom,
           height: bounds.height * zoom,
           fontSize: fontSize * zoom,
+          fontFamily: null,
         );
       }
       if (el is SketchText) {
@@ -157,6 +190,9 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
           width: 300,
           height: el.fontSize * 2 * zoom,
           fontSize: el.fontSize * zoom,
+          // The painter renders committed text in this face; without it the
+          // glyphs reflow the instant the edit ends.
+          fontFamily: el.fontFamily,
         );
       }
     }
@@ -167,6 +203,9 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
         width: 300,
         height: 40 * zoom,
         fontSize: 16 * zoom,
+        // Matches `SketchText.create`'s default, which is what
+        // `commitTextEdit` builds from this pending position.
+        fontFamily: null,
       );
     }
     return null;
@@ -223,10 +262,10 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     final textColor = _resolveTextColor(el);
 
     return Positioned(
-      left: box.screenPos.dx,
-      top: box.screenPos.dy,
-      width: box.width.clamp(60, 4000),
-      height: box.height.clamp(20, 4000),
+      left: box.screenPos.dx - _editorInset.dx,
+      top: box.screenPos.dy - _editorInset.dy,
+      width: box.width.clamp(60, 4000) + _editorInset.dx * 2,
+      height: box.height.clamp(20, 4000) + _editorInset.dy * 2,
       child: Focus(
         onKeyEvent: (_, e) =>
             _onKey(e) ? KeyEventResult.handled : KeyEventResult.ignored,
@@ -255,6 +294,7 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
               style: TextStyle(
                 color: textColor,
                 fontSize: box.fontSize.clamp(8.0, 200.0),
+                fontFamily: box.fontFamily,
               ),
               cursorColor: widget.cursorColor,
               backgroundCursorColor: widget.cursorColor.withValues(alpha: 0.4),

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/core/utils/id_generator.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 
@@ -751,12 +752,15 @@ class SketchText extends SketchElement {
 
   @override
   Rect get bounds {
-    // Approximate bbox based on text length × fontSize. Accurate measurement
-    // happens at render time via TextPainter; this is sufficient for
-    // coarse-grained hit testing and viewport culling.
-    final approxWidth = math.max(fontSize, text.length * fontSize * 0.55);
-    final approxHeight = fontSize * 1.25;
-    return Rect.fromLTWH(position.dx, position.dy, approxWidth, approxHeight);
+    // Measured through the same layout the painter draws with, so the box
+    // hit-testing and culling see is exactly the box the user sees. An
+    // approximation here silently desynchronises the two.
+    final size = TextMetrics.measure(
+      text: text,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+    );
+    return Rect.fromLTWH(position.dx, position.dy, size.width, size.height);
   }
 
   SketchText copyWith({

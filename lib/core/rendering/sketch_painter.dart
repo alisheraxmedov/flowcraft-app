@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
@@ -226,18 +227,14 @@ class SketchPainter extends CustomPainter {
   }
 
   void _drawText(Canvas canvas, SketchText text) {
-    final span = TextSpan(
+    // Same layout path as `SketchText.bounds` — that shared call is what
+    // keeps the painted glyphs and the hit-test box from drifting apart.
+    final tp = TextMetrics.layout(
       text: text.text,
-      style: TextStyle(
-        color: text.style.strokeColor.withValues(alpha: text.style.opacity),
-        fontSize: text.fontSize,
-        fontFamily: text.fontFamily,
-      ),
+      fontSize: text.fontSize,
+      fontFamily: text.fontFamily,
+      color: text.style.strokeColor.withValues(alpha: text.style.opacity),
     );
-    final tp = TextPainter(
-      text: span,
-      textDirection: TextDirection.ltr,
-    )..layout();
     tp.paint(canvas, text.position);
   }
 

@@ -77,14 +77,19 @@ class SketchHitTest {
   }
 
   /// Topmost element whose text can be edited (a [SketchText], or a shape /
-  /// sticky that carries a label) and whose interior bounds contain [point].
+  /// sticky that carries a label) and whose interior bounds, inflated by
+  /// [tolerance], contain [point].
   ///
   /// Unlike [topMost], this hits the *interior* of text-bearing shapes so a
-  /// user can tap the label (not just the stroke) to start editing.
+  /// user can tap the label (not just the stroke) to start editing. The
+  /// tolerance matters most for a bare [SketchText]: its bounds hug the
+  /// glyphs exactly, so without slack a tap a hair off a thin letter misses
+  /// and the text tool creates a second text box instead of editing this one.
   static SketchElement? topMostTextTarget(
     List<SketchElement> elements,
-    Offset point,
-  ) {
+    Offset point, {
+    double tolerance = 8.0,
+  }) {
     for (var i = elements.length - 1; i >= 0; i--) {
       final e = elements[i];
       final hasText = e is SketchText ||
@@ -93,7 +98,7 @@ class SketchHitTest {
           (e is SketchEllipse && e.text != null) ||
           (e is SketchDiamond && e.text != null) ||
           (e is SketchTriangle && e.text != null);
-      if (hasText && e.bounds.contains(point)) return e;
+      if (hasText && e.bounds.inflate(tolerance).contains(point)) return e;
     }
     return null;
   }

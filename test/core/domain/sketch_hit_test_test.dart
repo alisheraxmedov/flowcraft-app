@@ -91,6 +91,67 @@ void main() {
     });
   });
 
+  group('SketchHitTest.topMostTextTarget', () {
+    SketchText text({String? id}) => SketchText.create(
+          id: id,
+          position: Offset.zero,
+          text: 'Hello',
+          fontSize: 16,
+        );
+
+    test('hits a glyph the old approximate bounds would have missed', () {
+      final t = text(id: 't');
+      // `bounds` now measures the real glyphs; the guess it replaced
+      // (length * fontSize * 0.55) claimed 44px of width, so this click —
+      // on a letter the painter actually draws — used to miss and the text
+      // tool spawned a second, empty text box instead of editing this one.
+      expect(5 * 16 * 0.55, lessThan(70));
+      expect(t.bounds.right, greaterThan(70));
+      expect(SketchHitTest.topMostTextTarget([t], const Offset(70, 8)), same(t));
+    });
+
+    test('tolerance gives slack just off a thin glyph', () {
+      final t = text(id: 't');
+      final justOutside = t.bounds.bottomRight + const Offset(4, 4);
+      expect(SketchHitTest.topMostTextTarget([t], justOutside), same(t));
+      expect(
+        SketchHitTest.topMostTextTarget([t], justOutside, tolerance: 0.0),
+        isNull,
+      );
+    });
+
+    test('hits the interior of a labelled shape, not just its stroke', () {
+      final labelled = SketchRectangle.create(
+        id: 'labelled',
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+        text: 'Label',
+      );
+      expect(
+        SketchHitTest.topMostTextTarget([labelled], const Offset(50, 50)),
+        same(labelled),
+      );
+    });
+
+    test('ignores shapes carrying no label', () {
+      final bare = SketchRectangle.create(
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+      );
+      expect(
+        SketchHitTest.topMostTextTarget([bare], const Offset(50, 50)),
+        isNull,
+      );
+    });
+
+    test('returns the topmost of several overlapping text targets', () {
+      final bottom = text(id: 'bottom');
+      final top = text(id: 'top');
+      expect(
+        SketchHitTest.topMostTextTarget([bottom, top], const Offset(8, 8)),
+        same(top),
+      );
+    });
+  });
+
   group('SketchHitTest.intersecting', () {
     test('returns elements whose bounds overlap region', () {
       final inside = SketchRectangle.create(
