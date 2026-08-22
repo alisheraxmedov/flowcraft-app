@@ -28,11 +28,21 @@ class ProjectSerializer {
     });
   }
 
+  /// Reads a whole project file.
+  ///
+  /// The scene is decoded with [SketchSerializer.load], not `fromMap`: one
+  /// element this build can't parse must not cost the user every other
+  /// element in the file. What it does cost is reported as
+  /// [FlowProjectScene.droppedCount] — a partial scene that autosave then
+  /// wrote back over the original would turn a recoverable file into a
+  /// permanently lossy one, so the count has to reach the UI.
   static FlowProjectScene decodeScene(String source) {
     final map = _decodeVersioned(source);
+    final scene = SketchSerializer.load(map['scene'] as Map<String, dynamic>);
     return FlowProjectScene(
       project: FlowProject.fromJson(map['project'] as Map<String, dynamic>),
-      elements: SketchSerializer.fromMap(map['scene'] as Map<String, dynamic>),
+      elements: scene.elements,
+      droppedCount: scene.droppedCount,
     );
   }
 

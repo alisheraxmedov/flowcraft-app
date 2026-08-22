@@ -20,6 +20,12 @@ import 'package:flowcraft/viewmodels/sketch_controller.dart';
 ///     during the swap there is no target and [_schedule] is inert.
 ///  2. Writes capture their element list and target id synchronously at
 ///     enqueue time, so a queued write can never observe a later scene.
+///
+/// Two further rules decide whether a notification is worth a write at all:
+/// it must have moved [SketchController.paintGen] (selection changes notify
+/// but change no content), and the canvas must not be a partial read of its
+/// own file (see [SketchController.sceneIsPartial]). Both live in
+/// [_schedule].
 class ProjectAutosave {
   ProjectAutosave({
     required ProjectRepository repository,
@@ -40,6 +46,16 @@ class ProjectAutosave {
 
   String? _activeId;
   Timer? _timer;
+
+  /// [SketchController.paintGen] the bound project's file is believed to
+  /// hold. Anything else on the canvas means unsaved content.
+  ///
+  /// A generation rather than a dirty flag, because the flag would have to
+  /// be cleared at exactly the moment a write captures the scene — and a
+  /// stroke drawn *during* that write would clear with it and never be
+  /// saved. Comparing generations makes the later edit visibly newer than
+  /// what was captured, so it schedules its own write.
+  int _savedGen = -1;
 
   /// Serialises writes so a queued save can't overtake an earlier one and
   /// leave the older scene as the file's final state.
@@ -65,6 +81,11 @@ class ProjectAutosave {
       );
     }
     _activeId = projectId;
+    // Binding follows the `loadScene` that put this project's own file on
+    // the canvas, so the two already agree — adopting the generation here
+    // stops that load from being mistaken for an edit and written straight
+    // back, which would bump `updatedAt` on a project merely opened.
+    _savedGen = _controller.paintGen;
   }
 
   /// Writes any pending edits to the current project, then detaches.
@@ -98,6 +119,23 @@ class ProjectAutosave {
 
   void _schedule() {
     if (_activeId == null) return;
+
+    // Selection is not content. `SketchController` notifies on selection,
+    // tool and text-edit changes too, so scheduling off the bare
+    // notification meant *clicking* an element queued a disk write of an
+    // unmodified scene — which bumped `updatedAt` and re-sorted the project
+    // sidebar under the user's cursor. `paintGen` moves only on a visual
+    // mutation, so it is the honest "did the scene change" signal.
+    if (_controller.paintGen == _savedGen) return;
+
+    // Refuse to write a scene that is smaller than the file it came from.
+    // The elements that failed to decode are still in that file and still
+    // recoverable; a debounced write of what did load would overwrite them
+    // within a second of opening the project. `acknowledgePartialScene`
+    // notifies, so accepting the loss re-enters here and saves the edits
+    // made in the meantime.
+    if (_controller.sceneIsPartial) return;
+
     _timer?.cancel();
     _timer = Timer(debounce, _onQuiet);
   }
@@ -114,10 +152,16 @@ class ProjectAutosave {
     // decided on — deferring it into the async body would let a project
     // switch slip in between and hand this write the wrong elements.
     final List<SketchElement> elements = _controller.elements;
+    _savedGen = _controller.paintGen;
     _writes = _writes.then((_) async {
       final saved = await _repository.save(id: id, elements: elements);
       onSaved?.call(saved);
     }).catchError((Object error) {
+      // The file never received this scene, so it must not go on counting
+      // as saved — otherwise one failed write would leave every later edit
+      // looking already-persisted and nothing would ever retry. `-1` can't
+      // equal any real generation, so the next notification reschedules.
+      _savedGen = -1;
       onError?.call(error);
     });
   }

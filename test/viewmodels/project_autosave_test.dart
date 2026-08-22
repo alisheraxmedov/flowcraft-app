@@ -153,6 +153,77 @@ void main() {
     expect(() => autosave.bind('proj_b'), throwsA(isA<StateError>()));
   });
 
+  test('a selection change is not an edit and schedules no write', () async {
+    // The bug: `_schedule` hung off every ChangeNotifier notification, and
+    // selecting notifies — so clicking a shape queued a write of an
+    // unmodified scene, bumping `updatedAt` and re-sorting the sidebar.
+    final project = await repository.create('A');
+    controller.add(_rect('a'));
+    autosave.bind(project.id);
+    expect(autosave.hasPendingWrite, isFalse,
+        reason: 'binding adopts the scene it was just handed');
+
+    controller.select('a');
+    controller.currentTool = SketchTool.rectangle;
+    controller.clearSelection();
+
+    expect(autosave.hasPendingWrite, isFalse);
+  });
+
+  test('a real edit still schedules, after a selection change', () async {
+    final project = await repository.create('A');
+    autosave.bind(project.id);
+
+    controller.add(_rect('a'));
+    controller.select('a');
+
+    expect(autosave.hasPendingWrite, isTrue);
+    await _pastDebounce();
+    await autosave.flush();
+    expect((await repository.load(project.id)).elements, hasLength(1));
+  });
+
+  group('partially-loaded scenes', () {
+    test('will not overwrite the file the missing elements are still in',
+        () async {
+      final project = await repository.create('A');
+      await repository.save(id: project.id, elements: [_rect('a'), _rect('b')]);
+      final file = File('${tempDir.path}/${project.id}.json');
+      final before = file.readAsStringSync();
+
+      // What opening a file with one unreadable element leaves behind.
+      controller.loadScene([_rect('a')], droppedOnLoad: 1);
+      autosave.bind(project.id);
+      controller.add(_rect('c'));
+
+      expect(autosave.hasPendingWrite, isFalse);
+      await _pastDebounce();
+      await autosave.flush();
+
+      expect(file.readAsStringSync(), before);
+    });
+
+    test('accepting the loss saves the edits made in the meantime', () async {
+      final project = await repository.create('A');
+      await repository.save(id: project.id, elements: [_rect('a'), _rect('b')]);
+
+      controller.loadScene([_rect('a')], droppedOnLoad: 1);
+      autosave.bind(project.id);
+      controller.add(_rect('c'));
+
+      controller.acknowledgePartialScene();
+
+      // The edit predates the acknowledgement, so re-arming has to notice it
+      // rather than waiting for the *next* stroke.
+      expect(autosave.hasPendingWrite, isTrue);
+      await _pastDebounce();
+      await autosave.flush();
+
+      final saved = await repository.load(project.id);
+      expect(saved.elements.map((e) => e.id), ['a', 'c']);
+    });
+  });
+
   test('reports write failures instead of throwing into the caller',
       () async {
     Object? reported;

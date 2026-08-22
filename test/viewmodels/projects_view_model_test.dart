@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flowcraft/flowcraft.dart';
@@ -225,6 +226,73 @@ void main() {
         File('${tempDir.path}${Platform.pathSeparator}$doomed.json')
             .existsSync(),
         isFalse,
+      );
+    });
+  });
+
+  group('partially-readable project files', () {
+    /// Plants a project file holding one element this build understands and
+    /// one it does not — a scene saved by a newer FlowCraft, or a file a
+    /// user hand-edited.
+    Future<(FlowProject, File)> plantPartial() async {
+      final project = await repository.create('Partial');
+      final file =
+          File('${tempDir.path}${Platform.pathSeparator}${project.id}.json');
+      file.writeAsStringSync(jsonEncode({
+        'version': 1,
+        'project': project.toJson(),
+        'scene': {
+          'version': 1,
+          'elements': [
+            _rect('keeps-loading').toJson(),
+            {'id': 'from_the_future', 'type': 'hexagon'},
+          ],
+        },
+      }));
+      return (project, file);
+    }
+
+    test('opens what it can and says how much it could not', () async {
+      final (project, _) = await plantPartial();
+
+      await model().ready;
+
+      expect(state().activeId, project.id);
+      expect(canvas().elements.single.id, 'keeps-loading');
+      expect(canvas().droppedOnLoad, 1);
+      expect(canvas().sceneIsPartial, isTrue);
+    });
+
+    test('editing one does not overwrite the file on disk', () async {
+      // The data-loss case this guard exists for: without it the ~800ms
+      // autosave rewrites the reduced scene within a second of opening,
+      // and the element that merely failed to *load* is gone for good.
+      final (_, file) = await plantPartial();
+      final before = file.readAsStringSync();
+
+      await model().ready;
+      canvas().add(_rect('drawn-after-opening'));
+      // Comfortably past the real debounce this view model wires up.
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await model().flush();
+
+      expect(file.readAsStringSync(), before);
+      expect(before, contains('from_the_future'));
+    });
+
+    test('accepting the loss lets saving resume', () async {
+      final (project, file) = await plantPartial();
+
+      await model().ready;
+      canvas().add(_rect('drawn-after-opening'));
+      canvas().acknowledgePartialScene();
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await model().flush();
+
+      expect(file.readAsStringSync(), isNot(contains('from_the_future')));
+      expect(
+        (await repository.load(project.id)).elements.map((e) => e.id),
+        ['keeps-loading', 'drawn-after-opening'],
       );
     });
   });

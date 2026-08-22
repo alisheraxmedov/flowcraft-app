@@ -130,7 +130,7 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
       // leave that whole window unautosaved and then wipe it.
       final scene = await _repository.load(id);
       await _autosave.unbind();
-      _replaceCanvas(scene.elements);
+      _replaceCanvas(scene.elements, droppedOnLoad: scene.droppedCount);
       _autosave.bind(id);
       _set(state.copyWith(activeId: id, clearError: true));
     } catch (error) {
@@ -209,12 +209,16 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
     await _createProject(_defaultProjectName);
   }
 
-  void _replaceCanvas(List<SketchElement> elements) {
+  void _replaceCanvas(List<SketchElement> elements, {int droppedOnLoad = 0}) {
     // `loadScene`, not `replaceAll` — the latter snapshots the outgoing scene
     // into undo history, so an undo straight after a project switch would
     // pull the previous project's elements onto this canvas and autosave
     // would persist them into the wrong file.
-    _controller.loadScene(elements);
+    //
+    // [droppedOnLoad] is what keeps autosave off a partially-read file until
+    // the user has accepted the loss; without it the ~800ms debounce writes
+    // the reduced scene back within a second of opening it.
+    _controller.loadScene(elements, droppedOnLoad: droppedOnLoad);
   }
 
   void _onSaved(FlowProject saved) {
