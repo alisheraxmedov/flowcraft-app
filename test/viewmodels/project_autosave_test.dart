@@ -12,6 +12,23 @@ SketchRectangle _rect(String id) {
 
 Future<void> _pastDebounce() => Future<void>.delayed(_debounce * 4);
 
+/// Polls until [condition] holds, failing after [timeout]. Wall-clock sleeps
+/// are not enough under `flutter test`'s parallel load — a retry chain that
+/// takes 70 ms alone can take many times that with other suites hammering
+/// the same disk.
+Future<void> _waitUntil(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      fail('condition not met within $timeout');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 /// Stretches a save long enough to still be in flight when `detach` is
 /// called, which is the window a delete has to race.
 class _SlowRepository extends ProjectRepository {
@@ -383,8 +400,8 @@ void main() {
       await _pastDebounce();
       expect(saver.hasPendingRetry, isTrue);
 
-      // 30ms, then 40ms (capped) — comfortably inside this wait.
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      // 30ms, then 40ms (capped): two retries, then the third attempt lands.
+      await _waitUntil(() => flaky.attempts == 3 && !saver.hasPendingRetry);
 
       expect(flaky.attempts, 3);
       expect(saver.hasPendingRetry, isFalse);
