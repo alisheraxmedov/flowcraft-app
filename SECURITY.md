@@ -60,9 +60,10 @@ trust:
 - The control server binds `127.0.0.1` only — nothing on your network can reach
   it.
 - Every request except the unauthenticated `GET /health` liveness probe (which
-  reveals only that the app is running and its element count) must carry a
-  256-bit token generated with `Random.secure()`, stored owner-readable-only
-  at `~/.flowcraft/control.token`.
+  reveals only that the app is running and its version; the element count is
+  included only when a valid token is presented) must carry a 256-bit token
+  generated with `Random.secure()`, stored owner-readable-only at
+  `~/.flowcraft/control.token`.
 - Requests carrying a non-local `Origin` header are refused before auth is even
   considered — the DNS-rebinding defence the MCP transport spec requires of
   local servers. There are no CORS headers anywhere.
