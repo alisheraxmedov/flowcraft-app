@@ -676,8 +676,8 @@ The constraints most likely to get a PR rejected:
 - **Any test that pumps the app must override `mcpServerPortProvider` with `0`.** Reading
   `mcpViewModelProvider` starts a real `HttpServer`, and `flutter test` runs files in parallel — a
   fixed port makes two test files race each other and lose to a FlowCraft window you have open.
-- `flutter analyze` and `flutter test` must both be clean; CI gates all three platform builds on
-  them.
+- `dart format`, `flutter analyze --fatal-infos` and `flutter test` must all be clean; CI runs
+  them on every pull request and gates all three platform builds on them.
 
 ---
 

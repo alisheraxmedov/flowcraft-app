@@ -79,7 +79,8 @@ sometimes the best fix for the problem you have is not the one you had in mind.
 3. Branch from `main`. Name it after the work: `fix/arrow-endpoint-drag`,
    `feat/svg-export`.
 4. Make the change. Keep it to the one thing the issue is about.
-5. Make sure `flutter analyze` and `flutter test` are both clean.
+5. Make sure `dart format .`, `flutter analyze --fatal-infos` and `flutter test` are all clean
+   (CI runs exactly these on your pull request).
 6. Open a pull request against `main` and link the issue (`Closes #123`).
 7. Respond to review. The maintainer merges.
 
