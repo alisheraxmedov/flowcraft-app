@@ -72,7 +72,7 @@ flutter build linux --release
 
 ## CI/CD
 
-`.github/workflows/build-desktop.yml`, triggered on push to `feature/flowcraft-app`:
+`.github/workflows/build-desktop.yml`, triggered on push to `main`:
 - `test` job (`flutter analyze` + `flutter test`) gates all three build jobs via `needs:`.
 - `build-macos` / `build-windows` / `build-linux` each also cross-compile and publish a
   pre-built `mcp_server` binary as a workflow artifact, so end users never need the Dart

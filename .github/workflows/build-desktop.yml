@@ -3,7 +3,7 @@ name: Build Desktop Installers
 on:
   push:
     branches:
-      - feature/flowcraft-app
+      - main
   workflow_dispatch: {}
 
 concurrency:
