@@ -1,0 +1,231 @@
+import 'dart:io';
+
+import 'package:flowcraft/flowcraft.dart';
+import 'package:flutter/painting.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+SketchRectangle _rect(String id) {
+  return SketchRectangle.create(id: id, rect: const Rect.fromLTWH(0, 0, 4, 4));
+}
+
+void main() {
+  // `AppLifecycleListener` (used for the flush-on-quit hook) needs a binding.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory tempDir;
+  late ProviderContainer container;
+  late ProjectRepository repository;
+
+  setUp(() {
+    tempDir = Directory.systemTemp.createTempSync('fc_projects_vm_');
+    repository = ProjectRepository(directoryPath: tempDir.path);
+    container = ProviderContainer(
+      overrides: [projectRepositoryProvider.overrideWithValue(repository)],
+    );
+  });
+
+  tearDown(() async {
+    await container.read(projectsViewModelProvider.notifier).flush();
+    container.dispose();
+    if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  ProjectsViewModel model() =>
+      container.read(projectsViewModelProvider.notifier);
+
+  ProjectsState state() => container.read(projectsViewModelProvider);
+
+  SketchController canvas() => container.read(sketchControllerProvider);
+
+  group('startup', () {
+    test('starts a project when the library is empty, so edits are saved',
+        () async {
+      await model().ready;
+
+      expect(state().isLoading, isFalse);
+      expect(state().projects, hasLength(1));
+      expect(state().active?.name, 'Untitled project');
+    });
+
+    test('resumes the most recently edited project', () async {
+      final old = await repository.create('Old');
+      await repository.save(id: old.id, elements: const []);
+      final recent = await repository.create('Recent');
+
+      await model().ready;
+
+      expect(state().activeId, recent.id);
+    });
+
+    test('loads the resumed project onto the canvas', () async {
+      final project = await repository.create('Saved');
+      await repository.save(id: project.id, elements: [_rect('a')]);
+
+      await model().ready;
+
+      expect(canvas().elements.single.id, 'a');
+    });
+
+    test('lists a corrupt project without letting it become active',
+        () async {
+      File('${tempDir.path}${Platform.pathSeparator}proj_bad.json')
+          .writeAsStringSync('not json');
+
+      await model().ready;
+
+      expect(state().projects.where((p) => p.isBroken), hasLength(1));
+      expect(state().active?.isBroken, isFalse);
+    });
+  });
+
+  group('switching projects', () {
+    test('a debounced edit lands in the outgoing project, never the new one',
+        () async {
+      await model().ready;
+      final first = state().activeId!;
+      await model().createProject('Second');
+      final second = state().activeId!;
+      await model().openProject(first);
+
+      // Arms the 800ms debounce, then switches long before it could fire.
+      canvas().add(_rect('drawn-in-first'));
+      await model().openProject(second);
+      await model().flush();
+
+      expect(
+        (await repository.load(first)).elements.single.id,
+        'drawn-in-first',
+      );
+      expect((await repository.load(second)).elements, isEmpty);
+      expect(canvas().elements, isEmpty);
+    });
+
+    test('overlapping switches serialize instead of crossing scenes',
+        () async {
+      await model().ready;
+      final a = state().activeId!;
+      await model().createProject('B');
+      final b = state().activeId!;
+      await model().createProject('C');
+      final c = state().activeId!;
+      await model().openProject(a);
+      canvas().add(_rect('in-a'));
+
+      // Both fired without awaiting the first — the shape of a sidebar tap
+      // landing while another switch is still reading from disk.
+      await Future.wait([model().openProject(b), model().openProject(c)]);
+      await model().flush();
+
+      expect(state().activeId, c);
+      expect((await repository.load(a)).elements.single.id, 'in-a');
+      expect((await repository.load(b)).elements, isEmpty);
+      expect((await repository.load(c)).elements, isEmpty);
+      expect(canvas().elements, isEmpty);
+    });
+
+    test('a tap landing mid-restore does not race the resumed project',
+        () async {
+      final older = await repository.create('Older');
+      await repository.save(id: older.id, elements: [_rect('a')]);
+      await repository.create('Newest');
+
+      // Deliberately not awaiting `ready` first.
+      final tap = model().openProject(older.id);
+      await model().ready;
+      await tap;
+
+      expect(state().activeId, older.id);
+      expect(canvas().elements.single.id, 'a');
+      expect(state().error, isNull);
+    });
+
+    test('opening a project swaps the canvas contents', () async {
+      await model().ready;
+      final first = state().activeId!;
+      canvas().add(_rect('a'));
+      await model().createProject('Second');
+
+      expect(canvas().elements, isEmpty);
+
+      await model().openProject(first);
+      expect(canvas().elements.single.id, 'a');
+    });
+
+    test('re-opening the active project is a no-op', () async {
+      await model().ready;
+      final active = state().activeId!;
+      canvas().add(_rect('a'));
+
+      await model().openProject(active);
+
+      expect(canvas().elements.single.id, 'a');
+    });
+
+    test('a failed open keeps the canvas and keeps saving to the old project',
+        () async {
+      await model().ready;
+      final active = state().activeId!;
+      canvas().add(_rect('a'));
+
+      await model().openProject('proj_missing');
+
+      expect(state().error, contains('Could not open project'));
+      expect(state().activeId, active);
+      expect(canvas().elements.single.id, 'a');
+
+      await model().flush();
+      expect((await repository.load(active)).elements, hasLength(1));
+    });
+  });
+
+  group('mutations', () {
+    test('rename flushes first so the pending edit survives', () async {
+      await model().ready;
+      final active = state().activeId!;
+      canvas().add(_rect('a'));
+
+      await model().renameProject(active, 'Renamed');
+
+      expect(state().active?.name, 'Renamed');
+      expect((await repository.load(active)).elements, hasLength(1));
+    });
+
+    test('deleting the active project opens the next one', () async {
+      await model().ready;
+      final first = state().activeId!;
+      await model().createProject('Second');
+      final second = state().activeId!;
+
+      await model().deleteProject(second);
+
+      expect(state().activeId, first);
+      expect(state().projects.map((p) => p.id), [first]);
+    });
+
+    test('deleting the last project starts a fresh one', () async {
+      await model().ready;
+
+      await model().deleteProject(state().activeId!);
+
+      expect(state().projects, hasLength(1));
+      expect(state().active?.name, 'Untitled project');
+    });
+
+    test('deleting does not resurrect the file via a pending autosave',
+        () async {
+      await model().ready;
+      final doomed = state().activeId!;
+      canvas().add(_rect('a'));
+
+      await model().deleteProject(doomed);
+      await model().flush();
+
+      expect(
+        File('${tempDir.path}${Platform.pathSeparator}$doomed.json')
+            .existsSync(),
+        isFalse,
+      );
+    });
+  });
+}
