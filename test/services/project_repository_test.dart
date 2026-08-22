@@ -70,28 +70,38 @@ void main() {
       final created = await repository.create('Cached');
       sceneFile(created.id).writeAsStringSync('{ not even json');
 
-      final saved = await repository.save(id: created.id, elements: [_rect('a')]);
+      final saved = await repository.save(
+        id: created.id,
+        elements: [_rect('a')],
+      );
 
       expect(saved.name, 'Cached');
       expect(saved.createdAt, created.createdAt);
       expect((await repository.load(created.id)).elements.single.id, 'a');
     });
 
-    test('a fresh instance finds the header in the index, then the file',
-        () async {
-      final created = await repository.create('Cold');
+    test(
+      'a fresh instance finds the header in the index, then the file',
+      () async {
+        final created = await repository.create('Cold');
 
-      final viaIndex = ProjectRepository(directoryPath: tempDir.path);
-      expect((await viaIndex.save(id: created.id, elements: [_rect('a')])).name,
-          'Cold');
+        final viaIndex = ProjectRepository(directoryPath: tempDir.path);
+        expect(
+          (await viaIndex.save(id: created.id, elements: [_rect('a')])).name,
+          'Cold',
+        );
 
-      indexFile().deleteSync();
-      final viaFile = ProjectRepository(directoryPath: tempDir.path);
-      final saved = await viaFile.save(id: created.id, elements: [_rect('b')]);
-      expect(saved.name, 'Cold');
-      expect(saved.createdAt, created.createdAt);
-      expect((await repository.load(created.id)).elements.single.id, 'b');
-    });
+        indexFile().deleteSync();
+        final viaFile = ProjectRepository(directoryPath: tempDir.path);
+        final saved = await viaFile.save(
+          id: created.id,
+          elements: [_rect('b')],
+        );
+        expect(saved.name, 'Cold');
+        expect(saved.createdAt, created.createdAt);
+        expect((await repository.load(created.id)).elements.single.id, 'b');
+      },
+    );
 
     test('saving an unknown project fails loudly', () async {
       expect(
@@ -128,8 +138,7 @@ void main() {
       expect(indexFile().existsSync(), isTrue, reason: 'index rewritten');
     });
 
-    test('rebuilds a corrupt index rather than losing every project',
-        () async {
+    test('rebuilds a corrupt index rather than losing every project', () async {
       await repository.create('Survivor');
       indexFile().writeAsStringSync('}{ garbage');
 
@@ -155,20 +164,29 @@ void main() {
 
     test('sweeps temp files an interrupted write left behind', () async {
       await repository.create('Survivor');
-      final stale = File('${tempDir.path}${Platform.pathSeparator}'
-          'proj_dead.json.7.tmp')
-        ..writeAsStringSync('{"half": "written')
-        ..setLastModifiedSync(DateTime.now().subtract(const Duration(hours: 1)));
-      final fresh = File('${tempDir.path}${Platform.pathSeparator}'
-          'proj_live.json.8.tmp')
-        ..writeAsStringSync('{"still": "being written"}');
+      final stale =
+          File(
+              '${tempDir.path}${Platform.pathSeparator}'
+              'proj_dead.json.7.tmp',
+            )
+            ..writeAsStringSync('{"half": "written')
+            ..setLastModifiedSync(
+              DateTime.now().subtract(const Duration(hours: 1)),
+            );
+      final fresh = File(
+        '${tempDir.path}${Platform.pathSeparator}'
+        'proj_live.json.8.tmp',
+      )..writeAsStringSync('{"still": "being written"}');
 
       final listed = await repository.list();
 
       expect(listed.map((p) => p.name), ['Survivor']);
       expect(stale.existsSync(), isFalse, reason: 'an hour-old temp is junk');
-      expect(fresh.existsSync(), isTrue,
-          reason: 'a temp modified seconds ago may belong to a live write');
+      expect(
+        fresh.existsSync(),
+        isTrue,
+        reason: 'a temp modified seconds ago may belong to a live write',
+      );
     });
 
     test('a failed write leaves no temp file', () async {
@@ -194,8 +212,9 @@ void main() {
         project: FlowProject.create(name: 'Orphan'),
         elements: const [],
       );
-      sceneFile(orphan.project.id)
-          .writeAsStringSync(ProjectSerializer.encodeScene(orphan));
+      sceneFile(
+        orphan.project.id,
+      ).writeAsStringSync(ProjectSerializer.encodeScene(orphan));
 
       expect((await repository.list()).single.name, 'Orphan');
     });
@@ -212,8 +231,9 @@ void main() {
 
     /// `proj_planted.json`, whose header claims to be [claimedId].
     void plant(String claimedId) {
-      File('${projects.path}${Platform.pathSeparator}proj_planted.json')
-          .writeAsStringSync(
+      File(
+        '${projects.path}${Platform.pathSeparator}proj_planted.json',
+      ).writeAsStringSync(
         jsonEncode({
           'version': 1,
           'project': {
@@ -252,16 +272,19 @@ void main() {
       planted = ProjectRepository(directoryPath: projects.path);
     });
 
-    test('a header claiming a traversal id is listed as its own file', () async {
-      plant('..${Platform.pathSeparator}secret');
+    test(
+      'a header claiming a traversal id is listed as its own file',
+      () async {
+        plant('..${Platform.pathSeparator}secret');
 
-      final listed = await planted.list();
+        final listed = await planted.list();
 
-      // The file name decides the identity, and the mismatch marks it
-      // broken — which is also what keeps the startup restore off it.
-      expect(listed.single.id, 'proj_planted');
-      expect(listed.single.isBroken, isTrue);
-    });
+        // The file name decides the identity, and the mismatch marks it
+        // broken — which is also what keeps the startup restore off it.
+        expect(listed.single.id, 'proj_planted');
+        expect(listed.single.isBroken, isTrue);
+      },
+    );
 
     test('a traversal id can neither be read nor deleted', () async {
       final traversal = '..${Platform.pathSeparator}secret';
@@ -291,10 +314,7 @@ void main() {
       plant(absolute);
 
       expect((await planted.list()).single.id, 'proj_planted');
-      await expectLater(
-        planted.load(absolute),
-        throwsA(isA<ArgumentError>()),
-      );
+      await expectLater(planted.load(absolute), throwsA(isA<ArgumentError>()));
     });
 
     test('a header id that simply disagrees with its file is broken, not '
@@ -308,8 +328,9 @@ void main() {
     });
 
     test('a file whose name is not an id is ignored, not listed', () async {
-      File('${projects.path}${Platform.pathSeparator}not-a-project.json')
-          .writeAsStringSync('{}');
+      File(
+        '${projects.path}${Platform.pathSeparator}not-a-project.json',
+      ).writeAsStringSync('{}');
 
       expect(await planted.list(), isEmpty);
     });
@@ -341,14 +362,17 @@ void main() {
         'depth': 3,
       });
       file.writeAsStringSync(jsonEncode(map));
-      expect((await repository.load(created.id)).droppedCount, 1,
-          reason: 'precondition: this build cannot read the hologram');
+      expect(
+        (await repository.load(created.id)).droppedCount,
+        1,
+        reason: 'precondition: this build cannot read the hologram',
+      );
 
       await repository.rename(created.id, 'Renamed');
 
       final after = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      final elements = (after['scene'] as Map<String, dynamic>)['elements']
-          as List<dynamic>;
+      final elements =
+          (after['scene'] as Map<String, dynamic>)['elements'] as List<dynamic>;
       expect(elements, hasLength(2));
       expect(
         elements.last,
@@ -391,16 +415,18 @@ void main() {
       expect((await repository.list()).map((p) => p.id), [kept.id]);
     });
 
-    test('deleting with an unreadable index keeps the other projects',
-        () async {
-      final kept = await repository.create('Kept');
-      final doomed = await repository.create('Doomed');
-      indexFile().writeAsStringSync('}{ garbage');
+    test(
+      'deleting with an unreadable index keeps the other projects',
+      () async {
+        final kept = await repository.create('Kept');
+        final doomed = await repository.create('Doomed');
+        indexFile().writeAsStringSync('}{ garbage');
 
-      await repository.delete(doomed.id);
+        await repository.delete(doomed.id);
 
-      expect((await repository.list()).map((p) => p.id), [kept.id]);
-    });
+        expect((await repository.list()).map((p) => p.id), [kept.id]);
+      },
+    );
 
     test('deleting something already gone is a no-op', () async {
       await expectLater(repository.delete('proj_nope'), completes);

@@ -262,10 +262,10 @@ class SketchGeometry {
   /// The geometry as the element holds it — before [SketchElement.angle] —
   /// which is also what `SketchController.updateLinear` writes back.
   static (Offset, Offset)? endpointsOf(SketchElement e) => switch (e) {
-        SketchLine l => (l.start, l.end),
-        SketchArrow a => (a.start, a.end),
-        _ => null,
-      };
+    SketchLine l => (l.start, l.end),
+    SketchArrow a => (a.start, a.end),
+    _ => null,
+  };
 
   /// True iff [point] is within [tolerance] pixels of any segment in the
   /// polyline defined by [points].
@@ -346,9 +346,9 @@ class SketchGeometry {
 
   /// Inflates a rect by [margin] on every side.
   static Rect inflate(Rect rect, double margin) => Rect.fromLTRB(
-        rect.left - margin,
-        rect.top - margin,
-        rect.right + margin,
-        rect.bottom + margin,
-      );
+    rect.left - margin,
+    rect.top - margin,
+    rect.right + margin,
+    rect.bottom + margin,
+  );
 }

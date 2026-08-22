@@ -19,12 +19,12 @@ const Rect _rect = Rect.fromLTWH(60, 20, 220, 110);
 /// drawn clean whatever its style says, and these tests would pass by
 /// accident at roughness 0.
 SketchSticky _sticky({bool collapsed = false}) => SketchSticky.create(
-      id: 'note',
-      rect: _rect,
-      text: 'remember this',
-      style: SketchSticky.defaultStyle.copyWith(roughness: 2.0),
-      collapsed: collapsed,
-    );
+  id: 'note',
+  rect: _rect,
+  text: 'remember this',
+  style: SketchSticky.defaultStyle.copyWith(roughness: 2.0),
+  collapsed: collapsed,
+);
 
 /// Bounds of the points a path actually passes through.
 ///
@@ -43,7 +43,9 @@ Rect _inkedBounds(Path path) {
     }
   }
   expect(points, isNotEmpty, reason: 'nothing was drawn');
-  return points.skip(1).fold(
+  return points
+      .skip(1)
+      .fold(
         Rect.fromPoints(points.first, points.first),
         (box, p) => box.expandToInclude(Rect.fromPoints(p, p)),
       );
@@ -51,14 +53,26 @@ Rect _inkedBounds(Path path) {
 
 void _expectWithin(Rect drawn, Rect allowed, {double slack = 0.0}) {
   final box = allowed.inflate(slack);
-  expect(drawn.left, greaterThanOrEqualTo(box.left),
-      reason: '$drawn escapes $box on the left');
-  expect(drawn.top, greaterThanOrEqualTo(box.top),
-      reason: '$drawn escapes $box on the top');
-  expect(drawn.right, lessThanOrEqualTo(box.right),
-      reason: '$drawn escapes $box on the right');
-  expect(drawn.bottom, lessThanOrEqualTo(box.bottom),
-      reason: '$drawn escapes $box on the bottom');
+  expect(
+    drawn.left,
+    greaterThanOrEqualTo(box.left),
+    reason: '$drawn escapes $box on the left',
+  );
+  expect(
+    drawn.top,
+    greaterThanOrEqualTo(box.top),
+    reason: '$drawn escapes $box on the top',
+  );
+  expect(
+    drawn.right,
+    lessThanOrEqualTo(box.right),
+    reason: '$drawn escapes $box on the right',
+  );
+  expect(
+    drawn.bottom,
+    lessThanOrEqualTo(box.bottom),
+    reason: '$drawn escapes $box on the bottom',
+  );
 }
 
 void main() {
@@ -69,8 +83,11 @@ void main() {
       expect(note.bounds, _rect);
 
       _expectWithin(cache.fillPath(note).getBounds(), note.bounds, slack: 0.01);
-      _expectWithin(_inkedBounds(cache.strokePath(note)), note.bounds,
-          slack: 0.01);
+      _expectWithin(
+        _inkedBounds(cache.strokePath(note)),
+        note.bounds,
+        slack: 0.01,
+      );
     });
 
     test('the outline is the exact edge of the fill, at any roughness', () {
@@ -98,8 +115,11 @@ void main() {
       // `bounds` stopped 36px in, which is exactly the desync to avoid.
       expect(fill.right, lessThan(_rect.right - 100));
 
-      _expectWithin(_inkedBounds(cache.strokePath(note)), note.bounds,
-          slack: 0.01);
+      _expectWithin(
+        _inkedBounds(cache.strokePath(note)),
+        note.bounds,
+        slack: 0.01,
+      );
     });
   });
 
@@ -111,11 +131,15 @@ void main() {
       final expanded = cache.fillPath(_sticky()).getBounds();
       final collapsed = cache.fillPath(_sticky(collapsed: true)).getBounds();
       expect(collapsed, isNot(expanded));
-      expect(collapsed.width, closeTo(StickyBubbleGeometry.collapsedSize, 0.01));
+      expect(
+        collapsed.width,
+        closeTo(StickyBubbleGeometry.collapsedSize, 0.01),
+      );
 
       final expandedStroke = cache.strokePath(_sticky()).getBounds();
-      final collapsedStroke =
-          cache.strokePath(_sticky(collapsed: true)).getBounds();
+      final collapsedStroke = cache
+          .strokePath(_sticky(collapsed: true))
+          .getBounds();
       expect(collapsedStroke, isNot(expandedStroke));
     });
 
@@ -134,30 +158,35 @@ void main() {
       text: 'label',
     );
 
-    test('a translated element gets its own entry; the sweep drops the old',
-        () {
-      final cache = SketchRenderCache();
-      final before = cache.strokePath(box);
-      final moved = box.translate(const Offset(10, 10));
-      final after = cache.strokePath(moved);
-      expect(identical(before, after), isFalse);
-      expect(after.getBounds().left, greaterThan(before.getBounds().left));
+    test(
+      'a translated element gets its own entry; the sweep drops the old',
+      () {
+        final cache = SketchRenderCache();
+        final before = cache.strokePath(box);
+        final moved = box.translate(const Offset(10, 10));
+        final after = cache.strokePath(moved);
+        expect(identical(before, after), isFalse);
+        expect(after.getBounds().left, greaterThan(before.getBounds().left));
 
-      // Both are live until the scene no longer holds the original. The
-      // sweep is lazy up to `sweepSlack` stale entries, so it is exercised
-      // here by pushing past that slack.
-      final stale = List.generate(
-        SketchRenderCache.sweepSlack + 1,
-        (i) => box.translate(Offset(i.toDouble(), 0)),
-      );
-      for (final e in stale) {
-        cache.strokePath(e);
-      }
-      cache.sweep([moved], generation: 1);
-      expect(cache.strokeEntryCount, 1);
-      expect(identical(cache.strokePath(moved), after), isTrue,
-          reason: 'the live element must keep its entry across a sweep');
-    });
+        // Both are live until the scene no longer holds the original. The
+        // sweep is lazy up to `sweepSlack` stale entries, so it is exercised
+        // here by pushing past that slack.
+        final stale = List.generate(
+          SketchRenderCache.sweepSlack + 1,
+          (i) => box.translate(Offset(i.toDouble(), 0)),
+        );
+        for (final e in stale) {
+          cache.strokePath(e);
+        }
+        cache.sweep([moved], generation: 1);
+        expect(cache.strokeEntryCount, 1);
+        expect(
+          identical(cache.strokePath(moved), after),
+          isTrue,
+          reason: 'the live element must keep its entry across a sweep',
+        );
+      },
+    );
 
     test('a restyled element gets a fresh dashed outline', () {
       final cache = SketchRenderCache();
@@ -166,9 +195,11 @@ void main() {
         box.copyWithStyle(box.style.copyWith(strokeStyle: StrokeStyle.dashed)),
       );
       expect(identical(solid, dashed), isFalse);
-      expect(dashed.computeMetrics().length,
-          greaterThan(solid.computeMetrics().length),
-          reason: 'a dashed outline is many short sub-paths');
+      expect(
+        dashed.computeMetrics().length,
+        greaterThan(solid.computeMetrics().length),
+        reason: 'a dashed outline is many short sub-paths',
+      );
     });
 
     test('the sweep only walks the maps when the generation changes', () {
@@ -211,13 +242,12 @@ void main() {
       cache.dispose();
     });
 
-    test('a copyWith instance lays out afresh and the stale one is swept',
-        () {
+    test('a copyWith instance lays out afresh and the stale one is swept', () {
       final cache = SketchRenderCache();
       TextPainter build() => TextPainter(
-            text: const TextSpan(text: 'hello'),
-            textDirection: TextDirection.ltr,
-          )..layout();
+        text: const TextSpan(text: 'hello'),
+        textDirection: TextDirection.ltr,
+      )..layout();
       final a = cache.textPainter(label, build);
       final edited = label.copyWith(text: 'hello!');
       final b = cache.textPainter(edited, build);
@@ -259,19 +289,21 @@ void main() {
       final note = SketchSticky.create(
         id: 'n',
         rect: _rect,
-        style: SketchSticky.defaultStyle
-            .copyWith(strokeStyle: StrokeStyle.dotted),
+        style: SketchSticky.defaultStyle.copyWith(
+          strokeStyle: StrokeStyle.dotted,
+        ),
         collapsed: true,
       );
       final glyph = StickyBubbleGeometry.glyphPath(note.rect);
-      expect(cache.strokePath(note).computeMetrics().length,
-          glyph.computeMetrics().length);
+      expect(
+        cache.strokePath(note).computeMetrics().length,
+        glyph.computeMetrics().length,
+      );
     });
   });
 
   group('hatch fills', () {
-    test('the outline path is the solid silhouette for every closed shape',
-        () {
+    test('the outline path is the solid silhouette for every closed shape', () {
       final cache = SketchRenderCache();
       const rect = Rect.fromLTWH(10, 10, 100, 60);
       final ellipse = SketchEllipse.create(id: 'e', rect: rect);
@@ -283,14 +315,22 @@ void main() {
       }
       expect(
         SketchRenderCache.hatchNeedsClip(
-            SketchRectangle.create(id: 'r', rect: rect)),
+          SketchRectangle.create(id: 'r', rect: rect),
+        ),
         isFalse,
       );
-      expect(cache.outlinePath(SketchLine.create(
-        id: 'l',
-        start: Offset.zero,
-        end: const Offset(10, 10),
-      )).getBounds(), Rect.zero);
+      expect(
+        cache
+            .outlinePath(
+              SketchLine.create(
+                id: 'l',
+                start: Offset.zero,
+                end: const Offset(10, 10),
+              ),
+            )
+            .getBounds(),
+        Rect.zero,
+      );
     });
 
     test('a shape too large to hatch falls back to a solid fill', () {
@@ -306,8 +346,11 @@ void main() {
       expect(RoughGenerator.hachureFits(huge.bounds), isFalse);
       expect(SketchRenderCache.hatchFallsBackToSolid(huge), isTrue);
       expect(cache.fillPath(huge).getBounds(), huge.bounds);
-      expect(cache.fillPath(huge).computeMetrics().length, 1,
-          reason: 'one closed oval, not thousands of hatch lines');
+      expect(
+        cache.fillPath(huge).computeMetrics().length,
+        1,
+        reason: 'one closed oval, not thousands of hatch lines',
+      );
     });
   });
 }

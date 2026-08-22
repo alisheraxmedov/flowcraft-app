@@ -64,8 +64,10 @@ class _ProjectTitleFieldState extends ConsumerState<ProjectTitleField> {
 
   void _beginEdit(FlowProject project) {
     _controller.text = project.name;
-    _controller.selection =
-        TextSelection(baseOffset: 0, extentOffset: project.name.length);
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: project.name.length,
+    );
     setState(() => _editingId = project.id);
     _focusNode.requestFocus();
   }
@@ -103,10 +105,7 @@ class _ProjectTitleFieldState extends ConsumerState<ProjectTitleField> {
               onSubmitted: _commit,
               onCancel: _cancel,
             )
-          : _NameButton(
-              name: active.name,
-              onTap: () => _beginEdit(active),
-            ),
+          : _NameButton(name: active.name, onTap: () => _beginEdit(active)),
     );
   }
 }
@@ -165,18 +164,14 @@ class _NameField extends StatelessWidget {
     // TextField's own focus instead of needing a second FocusNode this
     // stateless widget would have nowhere to dispose.
     return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.escape): onCancel,
-      },
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): onCancel},
       child: TextField(
         controller: controller,
         focusNode: focusNode,
         autofocus: true,
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => onSubmitted(),
-        style: AppTypography.bodySm.copyWith(
-          color: colorScheme.onSurface,
-        ),
+        style: AppTypography.bodySm.copyWith(color: colorScheme.onSurface),
         decoration: InputDecoration(
           isDense: true,
           filled: true,

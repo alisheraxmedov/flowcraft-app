@@ -36,12 +36,12 @@ class McpServerStatus {
   const McpServerStatus.starting() : this._(state: McpServerState.starting);
 
   const McpServerStatus.running({required int port, required String token})
-      : this._(state: McpServerState.running, port: port, token: token);
+    : this._(state: McpServerState.running, port: port, token: token);
 
   /// [reason] is rendered straight into the card, so it must be one short
   /// human sentence — see [AppControlStartException].
   const McpServerStatus.failed(String reason)
-      : this._(state: McpServerState.failed, error: reason);
+    : this._(state: McpServerState.failed, error: reason);
 
   final McpServerState state;
 

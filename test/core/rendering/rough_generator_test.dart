@@ -67,10 +67,10 @@ void main() {
     });
 
     test('polyline of two points yields a single segment', () {
-      final path = RoughGenerator.polyline(
-        const [Offset(0, 0), Offset(50, 0)],
-        smooth: false,
-      );
+      final path = RoughGenerator.polyline(const [
+        Offset(0, 0),
+        Offset(50, 0),
+      ], smooth: false);
       final m = _firstMetric(path);
       expect(m, isNotNull);
       expect(m!.length, closeTo(50.0, 1e-6));
@@ -109,11 +109,11 @@ void main() {
 
   group('_Rng seeding', () {
     Rect bounds(int seed) => RoughGenerator.line(
-          const Offset(0, 0),
-          const Offset(100, 0),
-          roughness: 2.0,
-          seed: seed,
-        ).getBounds();
+      const Offset(0, 0),
+      const Offset(100, 0),
+      roughness: 2.0,
+      seed: seed,
+    ).getBounds();
 
     test('seed 0x7FFFFFFF still jitters', () {
       // Park–Miller's modulus: `seed & 0xFFFFFFFF` then `% m` used to land
@@ -125,10 +125,16 @@ void main() {
 
     test('seeds already in range keep their exact path', () {
       // Boards saved before the fix must render with the wobble they had.
-      final a = RoughGenerator.line(const Offset(0, 0), const Offset(100, 0),
-          seed: 1);
-      final b = RoughGenerator.line(const Offset(0, 0), const Offset(100, 0),
-          seed: 1);
+      final a = RoughGenerator.line(
+        const Offset(0, 0),
+        const Offset(100, 0),
+        seed: 1,
+      );
+      final b = RoughGenerator.line(
+        const Offset(0, 0),
+        const Offset(100, 0),
+        seed: 1,
+      );
       expect(a.getBounds(), b.getBounds());
       expect(_firstMetric(a)!.length, _firstMetric(b)!.length);
     });
@@ -140,18 +146,20 @@ void main() {
   });
 
   group('RoughGenerator.dash', () {
-    test('cuts a straight path into the pattern and keeps the total length',
-        () {
-      final line = Path()
-        ..moveTo(0, 0)
-        ..lineTo(100, 0);
-      final dashed = RoughGenerator.dash(line, const [8.0, 6.0]);
-      final metrics = dashed.computeMetrics().toList();
-      // 100 / 14 → 7 full (8 on, 6 off) periods plus one 2px tail dash.
-      expect(metrics.length, 8);
-      final on = metrics.fold(0.0, (sum, m) => sum + m.length);
-      expect(on, closeTo(7 * 8 + 2, 0.05));
-    });
+    test(
+      'cuts a straight path into the pattern and keeps the total length',
+      () {
+        final line = Path()
+          ..moveTo(0, 0)
+          ..lineTo(100, 0);
+        final dashed = RoughGenerator.dash(line, const [8.0, 6.0]);
+        final metrics = dashed.computeMetrics().toList();
+        // 100 / 14 → 7 full (8 on, 6 off) periods plus one 2px tail dash.
+        expect(metrics.length, 8);
+        final on = metrics.fold(0.0, (sum, m) => sum + m.length);
+        expect(on, closeTo(7 * 8 + 2, 0.05));
+      },
+    );
 
     test('a pattern shorter than two entries returns the path unchanged', () {
       final line = Path()

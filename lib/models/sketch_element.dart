@@ -180,8 +180,7 @@ class SketchRectangle extends _SketchBoundedShape {
       copyWith(style: newStyle);
 
   @override
-  SketchRectangle translate(Offset delta) =>
-      copyWith(rect: rect.shift(delta));
+  SketchRectangle translate(Offset delta) => copyWith(rect: rect.shift(delta));
 
   @override
   SketchRectangle withId(String id) => copyWith(id: id);
@@ -209,16 +208,16 @@ class SketchRectangle extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'rectangle',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'cornerRadius': cornerRadius,
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'rectangle',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'cornerRadius': cornerRadius,
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchRectangle.fromJson(Map<String, dynamic> json) {
     return SketchRectangle(
@@ -296,15 +295,15 @@ class SketchEllipse extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'ellipse',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'ellipse',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchEllipse.fromJson(Map<String, dynamic> json) {
     return SketchEllipse(
@@ -381,15 +380,15 @@ class SketchDiamond extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'diamond',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'diamond',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchDiamond.fromJson(Map<String, dynamic> json) {
     return SketchDiamond(
@@ -466,15 +465,15 @@ class SketchTriangle extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'triangle',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'triangle',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchTriangle.fromJson(Map<String, dynamic> json) {
     return SketchTriangle(
@@ -578,7 +577,9 @@ class SketchSticky extends _SketchBoundedShape {
       StickyBubbleGeometry.boundsOf(rect, collapsed: collapsed);
 
   /// Measured label sizes, one per note instance — see [labelSize].
-  static final Expando<Size> _labelSizes = Expando<Size>('SketchSticky.labelSize');
+  static final Expando<Size> _labelSizes = Expando<Size>(
+    'SketchSticky.labelSize',
+  );
 
   /// Colour this note's glyphs take — its label, and its badge's mark.
   ///
@@ -610,11 +611,11 @@ class SketchSticky extends _SketchBoundedShape {
   /// Shared by the commit path and the drag preview so the note that lands
   /// is the note that was shown.
   static Rect rectFor(Rect drawn) => Rect.fromLTWH(
-        drawn.left,
-        drawn.top,
-        math.max(drawn.width, defaultSize.width),
-        math.max(drawn.height, defaultSize.height),
-      );
+    drawn.left,
+    drawn.top,
+    math.max(drawn.width, defaultSize.width),
+    math.max(drawn.height, defaultSize.height),
+  );
 
   /// Where this note's label is laid out and how big it comes out, through
   /// the one layout the painter also draws with.
@@ -714,21 +715,21 @@ class SketchSticky extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'sticky',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        'cornerRadius': cornerRadius,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-        // Written only when set, and defaulted on read, which is what keeps
-        // this a schema-version-1 payload in both directions: a scene with no
-        // collapsed notes serialises byte-for-byte as it did before the field
-        // existed, and a scene saved by an older build still loads here.
-        if (collapsed) 'collapsed': true,
-      };
+    'type': 'sticky',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    'cornerRadius': cornerRadius,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+    // Written only when set, and defaulted on read, which is what keeps
+    // this a schema-version-1 payload in both directions: a scene with no
+    // collapsed notes serialises byte-for-byte as it did before the field
+    // existed, and a scene saved by an older build still loads here.
+    if (collapsed) 'collapsed': true,
+  };
 
   factory SketchSticky.fromJson(Map<String, dynamic> json) {
     return SketchSticky(
@@ -834,14 +835,14 @@ class SketchLine extends _SketchLinear {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'line',
-        'id': id,
-        'style': style.toJson(),
-        'start': _offsetToJson(start),
-        'end': _offsetToJson(end),
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'line',
+    'id': id,
+    'style': style.toJson(),
+    'start': _offsetToJson(start),
+    'end': _offsetToJson(end),
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchLine.fromJson(Map<String, dynamic> json) {
     return SketchLine(
@@ -970,17 +971,17 @@ class SketchArrow extends _SketchLinear {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'arrow',
-        'id': id,
-        'style': style.toJson(),
-        'start': _offsetToJson(start),
-        'end': _offsetToJson(end),
-        'arrowSize': arrowSize,
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-        if (startBinding != null) 'startBinding': startBinding!.toJson(),
-        if (endBinding != null) 'endBinding': endBinding!.toJson(),
-      };
+    'type': 'arrow',
+    'id': id,
+    'style': style.toJson(),
+    'start': _offsetToJson(start),
+    'end': _offsetToJson(end),
+    'arrowSize': arrowSize,
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+    if (startBinding != null) 'startBinding': startBinding!.toJson(),
+    if (endBinding != null) 'endBinding': endBinding!.toJson(),
+  };
 
   factory SketchArrow.fromJson(Map<String, dynamic> json) {
     return SketchArrow(
@@ -1031,10 +1032,10 @@ class SketchBinding {
   final double gap;
 
   Map<String, dynamic> toJson() => {
-        'elementId': elementId,
-        'focus': focus,
-        'gap': gap,
-      };
+    'elementId': elementId,
+    'focus': focus,
+    'gap': gap,
+  };
 
   factory SketchBinding.fromJson(Map<String, dynamic> json) {
     return SketchBinding(
@@ -1069,8 +1070,8 @@ class SketchFreedraw extends SketchElement {
     required List<Offset> points,
     super.angle,
     super.groupId,
-  })  : assert(points.isNotEmpty, 'freedraw must contain at least one point'),
-        points = List<Offset>.unmodifiable(points);
+  }) : assert(points.isNotEmpty, 'freedraw must contain at least one point'),
+       points = List<Offset>.unmodifiable(points);
 
   final List<Offset> points;
 
@@ -1116,9 +1117,7 @@ class SketchFreedraw extends SketchElement {
 
   @override
   SketchFreedraw translate(Offset delta) {
-    final shifted = <Offset>[
-      for (final p in points) p + delta,
-    ];
+    final shifted = <Offset>[for (final p in points) p + delta];
     return copyWith(points: shifted);
   }
 
@@ -1136,15 +1135,13 @@ class SketchFreedraw extends SketchElement {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'freedraw',
-        'id': id,
-        'style': style.toJson(),
-        'points': [
-          for (final p in points) _offsetToJson(p),
-        ],
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'freedraw',
+    'id': id,
+    'style': style.toJson(),
+    'points': [for (final p in points) _offsetToJson(p)],
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchFreedraw.fromJson(Map<String, dynamic> json) {
     final raw = json['points'] as List<dynamic>;
@@ -1157,9 +1154,7 @@ class SketchFreedraw extends SketchElement {
       // Every point goes through `_offsetFromJson`, which is where a
       // non-finite coordinate is refused — one `1e999` in a 5 000-point
       // stroke drops the stroke, not the file.
-      points: [
-        for (final p in raw) _offsetFromJson(p as Map<String, dynamic>),
-      ],
+      points: [for (final p in raw) _offsetFromJson(p as Map<String, dynamic>)],
       angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
     );
@@ -1190,8 +1185,9 @@ class SketchText extends SketchElement {
   /// An [Expando] rather than a `late final` field because the constructor
   /// is `const`; it is keyed on identity and collected with the element, so
   /// there is no eviction policy to fall off.
-  static final Expando<Rect> _measuredBounds =
-      Expando<Rect>('SketchText.bounds');
+  static final Expando<Rect> _measuredBounds = Expando<Rect>(
+    'SketchText.bounds',
+  );
 
   /// Measured through the same layout the painter draws with, so the box
   /// hit-testing and culling see is exactly the box the user sees. An
@@ -1246,8 +1242,7 @@ class SketchText extends SketchElement {
   SketchText copyWithStyle(SketchStyle newStyle) => copyWith(style: newStyle);
 
   @override
-  SketchText translate(Offset delta) =>
-      copyWith(position: position + delta);
+  SketchText translate(Offset delta) => copyWith(position: position + delta);
 
   @override
   SketchText withId(String id) => copyWith(id: id);
@@ -1275,16 +1270,16 @@ class SketchText extends SketchElement {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'text',
-        'id': id,
-        'style': style.toJson(),
-        'position': _offsetToJson(position),
-        'text': text,
-        'fontSize': fontSize,
-        if (fontFamily != null) 'fontFamily': fontFamily,
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'text',
+    'id': id,
+    'style': style.toJson(),
+    'position': _offsetToJson(position),
+    'text': text,
+    'fontSize': fontSize,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchText.fromJson(Map<String, dynamic> json) {
     return SketchText(
@@ -1365,24 +1360,22 @@ const double _maxArrowSize = 512.0;
 
 Map<String, double> _offsetToJson(Offset o) => {'dx': o.dx, 'dy': o.dy};
 
-Offset _offsetFromJson(Map<String, dynamic> json) => Offset(
-      _finite(json['dx'], 'dx'),
-      _finite(json['dy'], 'dy'),
-    );
+Offset _offsetFromJson(Map<String, dynamic> json) =>
+    Offset(_finite(json['dx'], 'dx'), _finite(json['dy'], 'dy'));
 
 Map<String, double> _rectToJson(Rect r) => {
-      'l': r.left,
-      't': r.top,
-      'w': r.width,
-      'h': r.height,
-    };
+  'l': r.left,
+  't': r.top,
+  'w': r.width,
+  'h': r.height,
+};
 
 Rect _rectFromJson(Map<String, dynamic> json) => Rect.fromLTWH(
-      _finite(json['l'], 'l'),
-      _finite(json['t'], 't'),
-      _finite(json['w'], 'w'),
-      _finite(json['h'], 'h'),
-    );
+  _finite(json['l'], 'l'),
+  _finite(json['t'], 't'),
+  _finite(json['w'], 'w'),
+  _finite(json['h'], 'h'),
+);
 
 /// A required geometry coordinate: present, numeric and finite.
 ///
@@ -1423,30 +1416,31 @@ double _clampedDouble(
   return value.clamp(min, max);
 }
 
-double _fontSizeFromJson(Map<String, dynamic> json, {required double fallback}) =>
-    _clampedDouble(
-      json['fontSize'],
-      min: 1.0,
-      max: _maxFontSize,
-      fallback: fallback,
-    );
+double _fontSizeFromJson(
+  Map<String, dynamic> json, {
+  required double fallback,
+}) => _clampedDouble(
+  json['fontSize'],
+  min: 1.0,
+  max: _maxFontSize,
+  fallback: fallback,
+);
 
 double _cornerRadiusFromJson(
   Map<String, dynamic> json, {
   required double fallback,
-}) =>
-    _clampedDouble(
-      json['cornerRadius'],
-      min: 0.0,
-      max: double.infinity,
-      fallback: fallback,
-    );
+}) => _clampedDouble(
+  json['cornerRadius'],
+  min: 0.0,
+  max: double.infinity,
+  fallback: fallback,
+);
 
 /// Rotation is a coordinate of sorts: a NaN angle makes every rotated
 /// corner NaN, so it gets the fallback rather than poisoning [bounds].
 double _angleFromJson(Map<String, dynamic> json) => _clampedDouble(
-      json['angle'],
-      min: double.negativeInfinity,
-      max: double.infinity,
-      fallback: 0.0,
-    );
+  json['angle'],
+  min: double.negativeInfinity,
+  max: double.infinity,
+  fallback: 0.0,
+);

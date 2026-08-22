@@ -169,17 +169,16 @@ class RoughGenerator {
     final path = Path();
     if (points.isEmpty) return path;
     if (points.length == 1) {
-      path.addOval(
-        Rect.fromCircle(center: points.first, radius: 0.5),
-      );
+      path.addOval(Rect.fromCircle(center: points.first, radius: 0.5));
       return path;
     }
 
     final rng = _Rng(seed);
     final jitter = roughness;
 
-    Offset jit(Offset p) =>
-        jitter == 0 ? p : p + Offset((rng.next() - 0.5) * jitter, (rng.next() - 0.5) * jitter);
+    Offset jit(Offset p) => jitter == 0
+        ? p
+        : p + Offset((rng.next() - 0.5) * jitter, (rng.next() - 0.5) * jitter);
 
     final first = jit(points.first);
     path.moveTo(first.dx, first.dy);
@@ -214,14 +213,18 @@ class RoughGenerator {
   static const int maxHachureSteps = 2000;
 
   /// Whether [hachure] will pattern [rect] rather than give up on it.
-  static bool hachureFits(Rect rect, {double gap = 8.0, double angleDeg = -41.0}) =>
-      _hachureSteps(rect, gap, angleDeg) <= maxHachureSteps;
+  static bool hachureFits(
+    Rect rect, {
+    double gap = 8.0,
+    double angleDeg = -41.0,
+  }) => _hachureSteps(rect, gap, angleDeg) <= maxHachureSteps;
 
   static int _hachureSteps(Rect rect, double gap, double angleDeg) {
     final angle = angleDeg * math.pi / 180.0;
     // Diagonal extent ≈ |w·cos| + |h·sin|, walked in [gap]-sized steps.
     final extent =
-        rect.width * math.cos(angle).abs() + rect.height * math.sin(angle).abs();
+        rect.width * math.cos(angle).abs() +
+        rect.height * math.sin(angle).abs();
     return (extent / gap).floor() + 1;
   }
 
@@ -311,16 +314,16 @@ class RoughGenerator {
   }) {
     final len = (p2 - p1).distance;
     if (len == 0) return;
-    final offsetMag = (roughness * 1.5 * math.min(len * 0.07, 5.0)).clamp(0.0, 8.0);
+    final offsetMag = (roughness * 1.5 * math.min(len * 0.07, 5.0)).clamp(
+      0.0,
+      8.0,
+    );
     final maxOffset = math.max(0.5, offsetMag);
 
-    final divergePoint = 0.5 +
-        (rng.next() - 0.5) * 0.4; // 0.3–0.7
+    final divergePoint = 0.5 + (rng.next() - 0.5) * 0.4; // 0.3–0.7
 
-    Offset jit() => Offset(
-          (rng.next() - 0.5) * maxOffset,
-          (rng.next() - 0.5) * maxOffset,
-        );
+    Offset jit() =>
+        Offset((rng.next() - 0.5) * maxOffset, (rng.next() - 0.5) * maxOffset);
 
     final mid1 = Offset(
       p1.dx + (p2.dx - p1.dx) * divergePoint,
@@ -348,11 +351,7 @@ class RoughGenerator {
 
   /// Liang-Barsky line clipping against [rect].
   /// Returns the clipped segment, or null if entirely outside.
-  static (Offset, Offset)? _clipSegmentToRect(
-    Offset p1,
-    Offset p2,
-    Rect rect,
-  ) {
+  static (Offset, Offset)? _clipSegmentToRect(Offset p1, Offset p2, Rect rect) {
     final dx = p2.dx - p1.dx;
     final dy = p2.dy - p1.dy;
     final p = [-dx, dx, -dy, dy];
@@ -396,9 +395,9 @@ class _Rng {
   /// reduced modulo `m - 1` plus one, which lands in range for negative
   /// seeds too (Dart's `%` is never negative).
   _Rng(int seed)
-      : _state = (seed >= 1 && seed < _modulus)
-            ? seed
-            : (seed % _modulusMinusOne) + 1;
+    : _state = (seed >= 1 && seed < _modulus)
+          ? seed
+          : (seed % _modulusMinusOne) + 1;
 
   static const int _modulus = 0x7FFFFFFF;
   static const int _modulusMinusOne = 0x7FFFFFFE;

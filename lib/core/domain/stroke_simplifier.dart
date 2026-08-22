@@ -21,10 +21,7 @@ class StrokeSimplifier {
   /// spiral, a staircase), and this runs on the UI thread at pointer-up for
   /// every freedraw and again on every save, where a multi-thousand-point
   /// scribble from a 120 Hz input is the normal case, not the edge.
-  static List<Offset> simplify(
-    List<Offset> points, {
-    double tolerance = 0.5,
-  }) {
+  static List<Offset> simplify(List<Offset> points, {double tolerance = 0.5}) {
     if (points.length < 3 || tolerance <= 0) {
       return List<Offset>.unmodifiable(points);
     }

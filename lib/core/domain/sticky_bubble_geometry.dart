@@ -101,11 +101,11 @@ class StickyBubbleGeometry {
 
   /// The rounded part of the bubble — [rect] minus the tail band.
   static Rect bodyOf(Rect rect) => Rect.fromLTRB(
-        rect.left,
-        rect.top,
-        rect.right,
-        rect.bottom - tailHeightOf(rect),
-      );
+    rect.left,
+    rect.top,
+    rect.right,
+    rect.bottom - tailHeightOf(rect),
+  );
 
   /// Where the note's text is laid out, by the painter and by the inline
   /// editor alike. They must agree exactly or the glyphs jump the instant
@@ -213,23 +213,23 @@ class StickyBubbleGeometry {
   /// Filled shape of the collapsed badge.
   static Path badgeFillPath(Rect rect) {
     final badge = collapsedBounds(rect);
-    return Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(badge, const Radius.circular(badgeRadius)),
-      );
+    return Path()..addRRect(
+      RRect.fromRectAndRadius(badge, const Radius.circular(badgeRadius)),
+    );
   }
 
   /// Box the badge's speech-bubble mark is drawn in: [glyphSize], centred.
   static Rect glyphRectOf(Rect rect) => Rect.fromCenter(
-        center: collapsedBounds(rect).center,
-        width: glyphSize.width,
-        height: glyphSize.height,
-      );
+    center: collapsedBounds(rect).center,
+    width: glyphSize.width,
+    height: glyphSize.height,
+  );
 
   /// Outline of the badge's mark — the same bubble silhouette as the
   /// expanded note, in miniature, for the painter to stroke in ink. An
   /// outlined bubble is evocative of a messaging app without reproducing
   /// any product's icon artwork: the shape is this app's own bubble and the
   /// colours are the note's own.
-  static Path glyphPath(Rect rect) => bubblePath(glyphRectOf(rect), glyphRadius);
+  static Path glyphPath(Rect rect) =>
+      bubblePath(glyphRectOf(rect), glyphRadius);
 }

@@ -9,12 +9,11 @@ void main() {
       double spacing = 20,
       double dotRadius = 1.5,
       FlowViewport viewport = const FlowViewport(),
-    }) =>
-        GridPainter(
-          viewport: viewport,
-          gridSpacing: spacing,
-          dotRadius: dotRadius,
-        );
+    }) => GridPainter(
+      viewport: viewport,
+      gridSpacing: spacing,
+      dotRadius: dotRadius,
+    );
 
     test('is false for an identical configuration', () {
       expect(painter().shouldRepaint(painter()), isFalse);
@@ -30,8 +29,9 @@ void main() {
 
     test('repaints when the viewport moves or zooms', () {
       expect(
-        painter(viewport: const FlowViewport(offset: Offset(5, 0)))
-            .shouldRepaint(painter()),
+        painter(
+          viewport: const FlowViewport(offset: Offset(5, 0)),
+        ).shouldRepaint(painter()),
         isTrue,
       );
       expect(

@@ -379,40 +379,23 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
         _divider(),
         Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _strokeColorButton(style),
-            _fillColorButton(style),
-          ],
+          children: [_strokeColorButton(style), _fillColorButton(style)],
         ),
         _divider(),
         Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _strokeWidthButton(style),
-            _roughnessButton(style),
-          ],
+          children: [_strokeWidthButton(style), _roughnessButton(style)],
         ),
         Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _strokeStyleButton(style),
-            _fillStyleButton(style),
-          ],
+          children: [_strokeStyleButton(style), _fillStyleButton(style)],
         ),
         _divider(),
         Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _undoButton(),
-            _redoButton(),
-          ],
+          children: [_undoButton(), _redoButton()],
         ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _clearButton(),
-          ],
-        ),
+        Row(mainAxisSize: MainAxisSize.min, children: [_clearButton()]),
       ],
     );
   }
@@ -468,7 +451,8 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   /// rail's height after this; comparing the grid alone against the full
   /// height is how the rail used to pick single-column at 720 px and push
   /// its bottom buttons off the window.
-  static const double _railChromeHeight = _railPaddingY * 2 +
+  static const double _railChromeHeight =
+      _railPaddingY * 2 +
       2 /* border */ +
       3 * _sectionDividerHeight +
       3 * _anchorRowHeight +
@@ -532,13 +516,15 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
 
     void flush() {
       for (var i = 0; i < pending.length; i += 2) {
-        rows.add(Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _toolButton(pending[i]),
-            if (i + 1 < pending.length) _toolButton(pending[i + 1]),
-          ],
-        ));
+        rows.add(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _toolButton(pending[i]),
+              if (i + 1 < pending.length) _toolButton(pending[i + 1]),
+            ],
+          ),
+        );
       }
       pending = [];
     }
@@ -643,13 +629,9 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       tooltip: _tooltipFor('Stroke width', _MixedField.strokeWidth),
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
-      builder: (context, controller) =>
-          _mixed.contains(_MixedField.strokeWidth)
-              ? _mixedGlyph()
-              : StrokeWidthGlyph(
-                  color: _iconColor,
-                  width: style.strokeWidth,
-                ),
+      builder: (context, controller) => _mixed.contains(_MixedField.strokeWidth)
+          ? _mixedGlyph()
+          : StrokeWidthGlyph(color: _iconColor, width: style.strokeWidth),
       popoverBuilder: (context, close) {
         return SliderPopover(
           label: 'Stroke width',
@@ -673,11 +655,8 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       vertical: widget.orientation == Axis.vertical,
       // This anchor never previewed a value, so there is nothing for a mixed
       // selection to make neutral — only the tooltip and the popover change.
-      builder: (context, controller) => Icon(
-        Icons.gesture_rounded,
-        size: 18,
-        color: _iconColor,
-      ),
+      builder: (context, controller) =>
+          Icon(Icons.gesture_rounded, size: 18, color: _iconColor),
       popoverBuilder: (context, close) {
         return SliderPopover(
           label: 'Roughness',
@@ -702,10 +681,7 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       vertical: widget.orientation == Axis.vertical,
       builder: (context, controller) => mixed
           ? _mixedGlyph()
-          : StrokeStyleGlyph(
-              color: _iconColor,
-              style: style.strokeStyle,
-            ),
+          : StrokeStyleGlyph(color: _iconColor, style: style.strokeStyle),
       popoverBuilder: (context, close) {
         return ChoicePopover<StrokeStyle>(
           label: 'Stroke style',
@@ -727,11 +703,8 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
       // Static icon, like the roughness anchor — nothing to neutralise.
-      builder: (context, controller) => Icon(
-        Icons.format_color_fill_rounded,
-        size: 18,
-        color: _iconColor,
-      ),
+      builder: (context, controller) =>
+          Icon(Icons.format_color_fill_rounded, size: 18, color: _iconColor),
       popoverBuilder: (context, close) {
         return ChoicePopover<FillStyle>(
           label: 'Fill style',

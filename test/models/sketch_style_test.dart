@@ -85,13 +85,12 @@ void main() {
       Object? strokeWidth,
       Object? roughness,
       Object? opacity,
-    }) =>
-        <String, dynamic>{
-          ...const SketchStyle().toJson(),
-          'strokeWidth': ?strokeWidth,
-          'roughness': ?roughness,
-          'opacity': ?opacity,
-        };
+    }) => <String, dynamic>{
+      ...const SketchStyle().toJson(),
+      'strokeWidth': ?strokeWidth,
+      'roughness': ?roughness,
+      'opacity': ?opacity,
+    };
 
     test('round-trips in-range values untouched', () {
       const style = SketchStyle(
@@ -143,8 +142,9 @@ void main() {
         defaults.strokeWidth,
       );
       expect(
-        SketchStyle.fromJson(json(roughness: double.negativeInfinity))
-            .roughness,
+        SketchStyle.fromJson(
+          json(roughness: double.negativeInfinity),
+        ).roughness,
         defaults.roughness,
       );
     });

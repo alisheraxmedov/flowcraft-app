@@ -37,12 +37,14 @@ class FlowcraftControlServer {
     required SketchController controller,
     this.port = 5199,
     Directory? configDir,
-  })  : _controller = controller,
-        _configDir = configDir ?? _defaultConfigDir();
+  }) : _controller = controller,
+       _configDir = configDir ?? _defaultConfigDir();
 
   static Directory _defaultConfigDir() {
     final home =
-        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
+        Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        '.';
     return Directory('$home${Platform.pathSeparator}.flowcraft');
   }
 

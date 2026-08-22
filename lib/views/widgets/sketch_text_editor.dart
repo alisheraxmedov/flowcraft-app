@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
 import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/core/domain/text_metrics.dart';
+import 'package:flowcraft/core/rendering/sketch_painter.dart';
 import 'package:flowcraft/core/theme/app_colors.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -50,12 +51,10 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
   /// pixels the instant editing starts, and jumps back on commit.
   static const Offset _editorInset = Offset(5, 3);
 
-  /// Horizontal room a shape's centred label gives up, both sides together,
-  /// before it wraps. Mirrors `SketchPainter._labelInset` (the `maxWidth:
-  /// bounds.width - 12` in `_drawCenteredText`), which is private to the
-  /// painter; a label whose natural width falls inside those 12 px would
-  /// otherwise sit on one line here and wrap to two the moment it commits.
-  static const double _shapeLabelInset = 12.0;
+  /// Horizontal room a shape's centred label gives up before it wraps — the
+  /// painter's own constant, so the editor and the committed label always
+  /// break lines at the same width.
+  static const double _shapeLabelInset = SketchPainter.labelInset;
 
   /// Width a free text's editor keeps past its widest line, in screen px at
   /// zoom 1: room for the caret and the glyph being typed, so the box never
@@ -141,7 +140,9 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     }
 
     // Transition active → inactive.
-    if (id == null && pos == null && (_activeId != null || _activeCanvasPos != null)) {
+    if (id == null &&
+        pos == null &&
+        (_activeId != null || _activeCanvasPos != null)) {
       _activeId = null;
       _activeCanvasPos = null;
       _focusNode.unfocus();
@@ -192,7 +193,8 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     double height,
     double fontSize,
     String fontFamily,
-  })? _editorBoxFor(SketchElement? el) {
+  })?
+  _editorBoxFor(SketchElement? el) {
     final viewport = widget.viewport;
     final zoom = viewport.zoom;
 
@@ -337,7 +339,8 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     final box = _editorBoxFor(el);
     if (box == null) return const SizedBox.shrink();
 
-    final isShape = el is SketchRectangle ||
+    final isShape =
+        el is SketchRectangle ||
         el is SketchEllipse ||
         el is SketchDiamond ||
         el is SketchTriangle;

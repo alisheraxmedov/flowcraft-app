@@ -56,12 +56,16 @@ void main() {
     });
 
     test('sticky without an explicit color keeps its own default style', () {
-      final withColor = parseDiagramElements([
-        {'type': 'sticky', 'strokeColor': '#000000'},
-      ]).single as SketchSticky;
-      final withoutColor = parseDiagramElements([
-        {'type': 'sticky'},
-      ]).single as SketchSticky;
+      final withColor =
+          parseDiagramElements([
+                {'type': 'sticky', 'strokeColor': '#000000'},
+              ]).single
+              as SketchSticky;
+      final withoutColor =
+          parseDiagramElements([
+                {'type': 'sticky'},
+              ]).single
+              as SketchSticky;
 
       expect(withColor.style.strokeColor, const Color(0xFF000000));
       expect(withoutColor.style, isNot(withColor.style));
@@ -176,23 +180,33 @@ void main() {
     test('refuses hex colors that only look like colors', () {
       // `int.tryParse` took a sign, and a 3-digit shorthand became a
       // nearly transparent black rather than the grey it was meant to be.
-      for (final bad in ['#-1', '#FFF', 'FFF', '#12345', '#1234567',
-          '#123456789', '#GGGGGG', 'red']) {
+      for (final bad in [
+        '#-1',
+        '#FFF',
+        'FFF',
+        '#12345',
+        '#1234567',
+        '#123456789',
+        '#GGGGGG',
+        'red',
+      ]) {
         expect(
           () => parseDiagramElements([
             {'type': 'rectangle', 'strokeColor': bad},
           ]),
           throwsA(
-            isA<DiagramSpecException>()
-                .having((e) => e.message, 'message', contains('RRGGBB')),
+            isA<DiagramSpecException>().having(
+              (e) => e.message,
+              'message',
+              contains('RRGGBB'),
+            ),
           ),
           reason: bad,
         );
       }
     });
 
-    test('non-string type/text/color fields are spec errors, not crashes',
-        () {
+    test('non-string type/text/color fields are spec errors, not crashes', () {
       for (final (field, value) in [
         ('type', 5),
         ('text', 5),
@@ -220,8 +234,9 @@ void main() {
       final atCap = 'x' * maxDiagramTextLength;
       expect(
         (parseDiagramElements([
-          {'type': 'text', 'text': atCap},
-        ]).single as SketchText)
+                  {'type': 'text', 'text': atCap},
+                ]).single
+                as SketchText)
             .text,
         atCap,
         reason: 'the limit is inclusive',
@@ -247,16 +262,21 @@ void main() {
     test('refuses the non-finite numbers JSON can smuggle in', () {
       // `1e999` is the reachable spelling — there is no Infinity literal,
       // so a payload that looks like plain JSON produces one anyway.
-      final decoded = jsonDecode(
-        '[{"type":"rectangle","x":1,"y":2,"width":1e999,"height":10}]',
-      ) as List<dynamic>;
+      final decoded =
+          jsonDecode(
+                '[{"type":"rectangle","x":1,"y":2,"width":1e999,"height":10}]',
+              )
+              as List<dynamic>;
       expect((decoded.single as Map)['width'], double.infinity);
 
       expect(
         () => parseDiagramElements(decoded),
         throwsA(
-          isA<DiagramSpecException>()
-              .having((e) => e.message, 'message', contains('finite')),
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            contains('finite'),
+          ),
         ),
       );
     });

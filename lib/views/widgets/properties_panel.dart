@@ -87,10 +87,24 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   @override
   void dispose() {
     _ctrl.removeListener(_onChange);
-    for (final c in [_xCtrl, _yCtrl, _wCtrl, _hCtrl, _strokeHexCtrl, _fillHexCtrl]) {
+    for (final c in [
+      _xCtrl,
+      _yCtrl,
+      _wCtrl,
+      _hCtrl,
+      _strokeHexCtrl,
+      _fillHexCtrl,
+    ]) {
       c.dispose();
     }
-    for (final f in [_xFocus, _yFocus, _wFocus, _hFocus, _strokeHexFocus, _fillHexFocus]) {
+    for (final f in [
+      _xFocus,
+      _yFocus,
+      _wFocus,
+      _hFocus,
+      _strokeHexFocus,
+      _fillHexFocus,
+    ]) {
       f.dispose();
     }
     super.dispose();
@@ -122,9 +136,12 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _onDimensionFocusChange() {
-    final anyFocused = [_xFocus, _yFocus, _wFocus, _hFocus].any(
-      (f) => f.hasFocus,
-    );
+    final anyFocused = [
+      _xFocus,
+      _yFocus,
+      _wFocus,
+      _hFocus,
+    ].any((f) => f.hasFocus);
     if (!anyFocused) _commitDimensions();
   }
 
@@ -170,8 +187,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       _strokeHexCtrl.text = _colorToHex(style.strokeColor);
     }
     if (!_fillHexFocus.hasFocus) {
-      _fillHexCtrl.text =
-          style.fillColor == null ? '' : _colorToHex(style.fillColor!);
+      _fillHexCtrl.text = style.fillColor == null
+          ? ''
+          : _colorToHex(style.fillColor!);
     }
   }
 
@@ -286,7 +304,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text,
-        style: AppTypography.caption.copyWith(color: _colorScheme.onSurfaceVariant),
+        style: AppTypography.caption.copyWith(
+          color: _colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -337,7 +357,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       decoration: InputDecoration(
         isDense: true,
         labelText: label,
-        labelStyle: AppTypography.caption.copyWith(color: _colorScheme.onSurfaceVariant),
+        labelStyle: AppTypography.caption.copyWith(
+          color: _colorScheme.onSurfaceVariant,
+        ),
         filled: true,
         fillColor: _colorScheme.surfaceContainerHigh,
         border: OutlineInputBorder(
@@ -356,8 +378,13 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionTitle('APPEARANCE'),
-        _colorRow('Fill', style.fillColor, _fillHexCtrl, _fillHexFocus,
-            allowNone: true),
+        _colorRow(
+          'Fill',
+          style.fillColor,
+          _fillHexCtrl,
+          _fillHexFocus,
+          allowNone: true,
+        ),
         const SizedBox(height: 8),
         _colorRow('Stroke', style.strokeColor, _strokeHexCtrl, _strokeHexFocus),
         const SizedBox(height: 8),
@@ -413,15 +440,19 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
             decoration: InputDecoration(
               isDense: true,
               hintText: allowNone ? 'none' : '#RRGGBB',
-              hintStyle: AppTypography.caption.copyWith(color: _colorScheme.onSurfaceVariant),
+              hintStyle: AppTypography.caption.copyWith(
+                color: _colorScheme.onSurfaceVariant,
+              ),
               filled: true,
               fillColor: _colorScheme.surfaceContainerHigh,
               border: OutlineInputBorder(
                 borderRadius: AppRadius.smRadius,
                 borderSide: BorderSide(color: _colorScheme.outlineVariant),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
+              ),
             ),
             onSubmitted: (_) =>
                 allowNone ? _commitFillHex() : _commitStrokeHex(),
@@ -482,8 +513,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     final isText = el is SketchText;
     // `null` reads as Inter: that is the face `TextMetrics` resolves a
     // missing family to, so it is what the text is actually painted in.
-    final current =
-        isText ? (el.fontFamily ?? AppTypography.interFamily) : AppTypography.interFamily;
+    final current = isText
+        ? (el.fontFamily ?? AppTypography.interFamily)
+        : AppTypography.interFamily;
     // Anything else — an "Arial" from a hand-edited JSON file, say — is
     // listed as-is rather than asserting: `DropdownButton` requires its
     // value to be one of its items, and a panel that throws on a file the
@@ -580,14 +612,19 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
                         fontSize: 12,
                         color: _colorScheme.onSurface,
                       ),
-                      decoration: const InputDecoration(border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                     if (error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
                           error!,
-                          style: TextStyle(color: _colorScheme.error, fontSize: 12),
+                          style: TextStyle(
+                            color: _colorScheme.error,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                   ],
@@ -605,9 +642,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
                           jsonDecode(textCtrl.text) as Map<String, dynamic>;
                       final updated = SketchElement.fromJson(decoded);
                       if (updated.id != el.id) {
-                        setDialogState(
-                          () => error = 'id must stay "${el.id}"',
-                        );
+                        setDialogState(() => error = 'id must stay "${el.id}"');
                         return;
                       }
                       _ctrl.update(updated);

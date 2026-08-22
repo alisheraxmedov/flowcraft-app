@@ -30,7 +30,8 @@ void main() {
             expect(
               owner,
               anyOf(isNull, shortcut.label),
-              reason: '$key is claimed by both "$owner" and '
+              reason:
+                  '$key is claimed by both "$owner" and '
                   '"${shortcut.label}"',
             );
             seen[key] = shortcut.label;
@@ -49,8 +50,9 @@ void main() {
       });
 
       test('the menu takes the commands, not the tool keys', () {
-        final titles =
-            CanvasShortcutTable.menuGroups(platform).map((g) => g.title);
+        final titles = CanvasShortcutTable.menuGroups(
+          platform,
+        ).map((g) => g.title);
 
         expect(titles, contains('Edit'));
         expect(titles, isNot(contains('Tools')));
@@ -58,8 +60,9 @@ void main() {
       });
 
       test('the menu lists a twice-bound command once', () {
-        final edit = CanvasShortcutTable.menuGroups(platform)
-            .firstWhere((g) => g.title == 'Edit');
+        final edit = CanvasShortcutTable.menuGroups(
+          platform,
+        ).firstWhere((g) => g.title == 'Edit');
 
         expect(edit.shortcuts.where((s) => s.label == 'Delete'), hasLength(1));
       });
@@ -69,10 +72,11 @@ void main() {
   test('the primary modifier follows the platform', () {
     SingleActivator copyOn(TargetPlatform platform) {
       return CanvasShortcutTable.groups(platform)
-          .firstWhere((g) => g.title == 'Edit')
-          .shortcuts
-          .firstWhere((s) => s.label == 'Copy')
-          .activator as SingleActivator;
+              .firstWhere((g) => g.title == 'Edit')
+              .shortcuts
+              .firstWhere((s) => s.label == 'Copy')
+              .activator
+          as SingleActivator;
     }
 
     expect(copyOn(TargetPlatform.macOS).meta, isTrue);
@@ -91,18 +95,16 @@ void main() {
       expect(hints.expand((g) => g.hints), isNotEmpty);
       // Nothing in them can be bound: no activator, no intent.
       final bound = CanvasShortcutTable.bindings(TargetPlatform.linux).length;
-      final listed = CanvasShortcutTable.groups(TargetPlatform.linux)
-          .expand((g) => g.shortcuts)
-          .length;
+      final listed = CanvasShortcutTable.groups(
+        TargetPlatform.linux,
+      ).expand((g) => g.shortcuts).length;
       expect(bound, listed);
     });
 
     test('spell the modifiers the way the platform does', () {
-      String keysOf(TargetPlatform p) =>
-          CanvasShortcutTable.modifierGroups(p)
-              .expand((g) => g.hints)
-              .map((h) => h.keys)
-              .join(' ');
+      String keysOf(TargetPlatform p) => CanvasShortcutTable.modifierGroups(
+        p,
+      ).expand((g) => g.hints).map((h) => h.keys).join(' ');
 
       expect(keysOf(TargetPlatform.macOS), contains('⇧'));
       expect(keysOf(TargetPlatform.macOS), contains('⌥'));
@@ -111,10 +113,12 @@ void main() {
     });
 
     testWidgets('the reference sheet shows them', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        theme: ThemeData(platform: TargetPlatform.linux),
-        home: const Scaffold(body: ShortcutsHelpDialog()),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.linux),
+          home: const Scaffold(body: ShortcutsHelpDialog()),
+        ),
+      );
 
       expect(find.textContaining('Shift'), findsWidgets);
       expect(find.textContaining('Alt'), findsWidgets);
@@ -127,8 +131,11 @@ void main() {
   group('labels', () {
     test('write chords the way each platform prints them', () {
       const copy = SingleActivator(LogicalKeyboardKey.keyC, meta: true);
-      const redo =
-          SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true);
+      const redo = SingleActivator(
+        LogicalKeyboardKey.keyZ,
+        control: true,
+        shift: true,
+      );
 
       expect(ShortcutLabel.of(copy, TargetPlatform.macOS), '⌘C');
       expect(ShortcutLabel.of(redo, TargetPlatform.linux), 'Ctrl+Shift+Z');
@@ -138,16 +145,13 @@ void main() {
       // Delete answers both Del and Backspace; two rows would read as two
       // different commands.
       final rows = ShortcutLabel.merge(
-        CanvasShortcutTable.groups(TargetPlatform.macOS)
-            .firstWhere((g) => g.title == 'Edit')
-            .shortcuts,
+        CanvasShortcutTable.groups(
+          TargetPlatform.macOS,
+        ).firstWhere((g) => g.title == 'Edit').shortcuts,
         TargetPlatform.macOS,
       );
 
-      expect(
-        rows.firstWhere((r) => r.label == 'Delete').keys,
-        'Del / ⌫',
-      );
+      expect(rows.firstWhere((r) => r.label == 'Delete').keys, 'Del / ⌫');
     });
   });
 }

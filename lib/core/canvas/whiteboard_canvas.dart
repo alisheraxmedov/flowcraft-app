@@ -170,7 +170,8 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
     final delta = event.scrollDelta;
-    final zoomModifier = HardwareKeyboard.instance.isControlPressed ||
+    final zoomModifier =
+        HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
     if (!zoomModifier) {
       // Scroll content the way the wheel moves a page: wheel-down (dy > 0)
@@ -181,8 +182,10 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
     if (delta.dy == 0) return;
     // One flung wheel event can report hundreds of pixels; bound a single
     // step to halving / doubling so the factor can never go negative.
-    final factor =
-        (1 - delta.dy * WhiteboardCanvas.wheelZoomRate).clamp(0.5, 2.0);
+    final factor = (1 - delta.dy * WhiteboardCanvas.wheelZoomRate).clamp(
+      0.5,
+      2.0,
+    );
     final newZoom = _viewport.zoom * factor;
     _setViewport(
       ViewportTransform.zoomAtFocalPoint(

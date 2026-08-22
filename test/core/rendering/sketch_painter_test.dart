@@ -52,12 +52,16 @@ Future<ByteData> _rasterise(
 bool _isRed(ByteData px, int width, int x, int y) {
   final i = (y * width + x) * 4;
   // Red dominant: the hatch over white, or antialiased against it.
-  return px.getUint8(i) > 200 && px.getUint8(i + 1) < 128 && px.getUint8(i + 2) < 128;
+  return px.getUint8(i) > 200 &&
+      px.getUint8(i + 1) < 128 &&
+      px.getUint8(i + 2) < 128;
 }
 
 bool _isWhite(ByteData px, int width, int x, int y) {
   final i = (y * width + x) * 4;
-  return px.getUint8(i) >= 250 && px.getUint8(i + 1) >= 250 && px.getUint8(i + 2) >= 250;
+  return px.getUint8(i) >= 250 &&
+      px.getUint8(i + 1) >= 250 &&
+      px.getUint8(i + 2) >= 250;
 }
 
 /// Any red tint at all — a hatch pixel at any antialiased coverage. The
@@ -92,7 +96,8 @@ Future<void> _expectHatchStaysInside(
       }
       // Only judge points clearly outside: the outline stroke and the
       // clip's antialiasing own the first few pixels past the edge.
-      final clearlyOutside = !inside(p) &&
+      final clearlyOutside =
+          !inside(p) &&
           !inside(p + Offset(margin, 0)) &&
           !inside(p - Offset(margin, 0)) &&
           !inside(p + Offset(0, margin)) &&
@@ -108,8 +113,12 @@ Future<void> _expectHatchStaysInside(
   }
   expect(outsideSamples, greaterThan(100), reason: 'probe covers the corners');
   expect(insideHits, greaterThan(20), reason: 'the hatch was painted at all');
-  expect(outsideHits, 0,
-      reason: '$outsideHits hatch pixels painted outside the ${shape.runtimeType}');
+  expect(
+    outsideHits,
+    0,
+    reason:
+        '$outsideHits hatch pixels painted outside the ${shape.runtimeType}',
+  );
 }
 
 void main() {
@@ -123,16 +132,31 @@ void main() {
       final cache = SketchRenderCache();
       final shapes = <SketchElement>[
         SketchRectangle.create(
-            id: 'r', rect: const Rect.fromLTWH(0, 0, 10, 40), text: 'Hi'),
+          id: 'r',
+          rect: const Rect.fromLTWH(0, 0, 10, 40),
+          text: 'Hi',
+        ),
         SketchEllipse.create(
-            id: 'e', rect: const Rect.fromLTWH(20, 0, 10, 40), text: 'Hi'),
+          id: 'e',
+          rect: const Rect.fromLTWH(20, 0, 10, 40),
+          text: 'Hi',
+        ),
         SketchDiamond.create(
-            id: 'd', rect: const Rect.fromLTWH(40, 0, 10, 40), text: 'Hi'),
+          id: 'd',
+          rect: const Rect.fromLTWH(40, 0, 10, 40),
+          text: 'Hi',
+        ),
         SketchTriangle.create(
-            id: 't', rect: const Rect.fromLTWH(60, 0, 10, 40), text: 'Hi'),
+          id: 't',
+          rect: const Rect.fromLTWH(60, 0, 10, 40),
+          text: 'Hi',
+        ),
         // Just above the inset: lays out at maxWidth 0, must not throw.
         SketchRectangle.create(
-            id: 'r12', rect: const Rect.fromLTWH(80, 0, 12, 40), text: 'Hi'),
+          id: 'r12',
+          rect: const Rect.fromLTWH(80, 0, 12, 40),
+          text: 'Hi',
+        ),
       ];
       expect(
         () => SketchPainter(
@@ -153,16 +177,19 @@ void main() {
     test('a label is laid out once per element instance, not per frame', () {
       final cache = SketchRenderCache();
       final box = SketchRectangle.create(
-          id: 'r', rect: const Rect.fromLTWH(0, 0, 120, 60), text: 'Once');
+        id: 'r',
+        rect: const Rect.fromLTWH(0, 0, 120, 60),
+        text: 'Once',
+      );
       SketchPainter painter(int gen) => SketchPainter(
-            elements: [box],
-            selectedIds: const {},
-            viewport: const FlowViewport(),
-            paintGen: gen,
-            cache: cache,
-            selectionColor: const Color(0xFF000000),
-            canvasSize: const Size(200, 200),
-          );
+        elements: [box],
+        selectedIds: const {},
+        viewport: const FlowViewport(),
+        paintGen: gen,
+        cache: cache,
+        selectionColor: const Color(0xFF000000),
+        canvasSize: const Size(200, 200),
+      );
       for (var frame = 0; frame < 3; frame++) {
         final recorder = ui.PictureRecorder();
         painter(frame).paint(Canvas(recorder), const Size(200, 200));
@@ -219,8 +246,11 @@ void main() {
     });
 
     test('a rectangle is still hatched edge to edge', () async {
-      final shape =
-          SketchRectangle.create(id: 'r', rect: rect, style: _hatched);
+      final shape = SketchRectangle.create(
+        id: 'r',
+        rect: rect,
+        style: _hatched,
+      );
       final px = await _rasterise([shape]);
       var hits = 0;
       for (var y = 22; y < 178; y += 2) {
@@ -236,16 +266,20 @@ void main() {
     test('a dotted line leaves gaps a solid line does not', () async {
       const size = Size(200, 40);
       SketchLine line(StrokeStyle s) => SketchLine.create(
-            id: s.name,
-            start: const Offset(10, 20),
-            end: const Offset(190, 20),
-            style: SketchStyle(
-              strokeColor: _hatchRed,
-              strokeStyle: s,
-              roughness: 0.0,
-              strokeWidth: 2.0,
-            ),
-          );
+        id: s.name,
+        start: const Offset(10, 20),
+        end: const Offset(190, 20),
+        style: SketchStyle(
+          strokeColor: _hatchRed,
+          strokeStyle: s,
+          roughness: 0.0,
+          strokeWidth: 2.0,
+          // `create` hands out a random seed; the rough line still bows
+          // by a seed-dependent amount even at roughness 0, which moved the
+          // gap count between runs. Pin it so the probe is deterministic.
+          seed: 7,
+        ),
+      );
       final solid = await _rasterise([line(StrokeStyle.solid)], size: size);
       final dotted = await _rasterise([line(StrokeStyle.dotted)], size: size);
       // Columns along the line with no ink anywhere in a band around it
@@ -270,33 +304,38 @@ void main() {
   });
 
   group('sweep', () {
-    test('painters for removed elements are released on the next generation',
-        () {
-      final cache = SketchRenderCache();
-      final texts = List.generate(
-        SketchRenderCache.sweepSlack + 10,
-        (i) => SketchText.create(
-            id: 't$i', position: Offset(0, i * 20.0), text: 'line $i'),
-      );
-      void frame(List<SketchElement> elements, int gen) {
-        final recorder = ui.PictureRecorder();
-        SketchPainter(
-          elements: elements,
-          selectedIds: const {},
-          viewport: const FlowViewport(),
-          paintGen: gen,
-          cache: cache,
-          selectionColor: const Color(0xFF000000),
-          canvasSize: Size(400, texts.length * 20.0 + 40),
-        ).paint(Canvas(recorder), const Size(400, 400));
-        recorder.endRecording().dispose();
-      }
+    test(
+      'painters for removed elements are released on the next generation',
+      () {
+        final cache = SketchRenderCache();
+        final texts = List.generate(
+          SketchRenderCache.sweepSlack + 10,
+          (i) => SketchText.create(
+            id: 't$i',
+            position: Offset(0, i * 20.0),
+            text: 'line $i',
+          ),
+        );
+        void frame(List<SketchElement> elements, int gen) {
+          final recorder = ui.PictureRecorder();
+          SketchPainter(
+            elements: elements,
+            selectedIds: const {},
+            viewport: const FlowViewport(),
+            paintGen: gen,
+            cache: cache,
+            selectionColor: const Color(0xFF000000),
+            canvasSize: Size(400, texts.length * 20.0 + 40),
+          ).paint(Canvas(recorder), const Size(400, 400));
+          recorder.endRecording().dispose();
+        }
 
-      frame(texts, 1);
-      expect(cache.textEntryCount, texts.length);
-      frame(texts.sublist(0, 3), 2);
-      expect(cache.textEntryCount, 3);
-      cache.dispose();
-    });
+        frame(texts, 1);
+        expect(cache.textEntryCount, texts.length);
+        frame(texts.sublist(0, 3), 2);
+        expect(cache.textEntryCount, 3);
+        cache.dispose();
+      },
+    );
   });
 }

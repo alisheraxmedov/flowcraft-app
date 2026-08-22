@@ -41,10 +41,12 @@ void main() {
   /// into the controller beforehand.
   ///
   void addBox() {
-    sketch.add(SketchRectangle.create(
-      id: 'box',
-      rect: const Rect.fromLTWH(300, 200, 160, 100),
-    ));
+    sketch.add(
+      SketchRectangle.create(
+        id: 'box',
+        rect: const Rect.fromLTWH(300, 200, 160, 100),
+      ),
+    );
   }
 
   /// Every edit arms the 800 ms autosave debounce; a test that edited has
@@ -53,7 +55,10 @@ void main() {
   Future<void> settleAutosave(WidgetTester tester) =>
       tester.pump(const Duration(seconds: 1));
 
-  Future<void> pumpScreen(WidgetTester tester, {Size size = const Size(1280, 720)}) async {
+  Future<void> pumpScreen(
+    WidgetTester tester, {
+    Size size = const Size(1280, 720),
+  }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -80,8 +85,9 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('the properties panel and the MCP card never overlap',
-      (tester) async {
+  testWidgets('the properties panel and the MCP card never overlap', (
+    tester,
+  ) async {
     // The two used to be anchored independently — panel to the top-right,
     // card to the bottom-right — and met in the middle on any window
     // shorter than ~780 px, with the card painting over the panel's
@@ -97,41 +103,49 @@ void main() {
     final panel = tester.getRect(find.byType(PropertiesPanel));
     final card = tester.getRect(find.byType(McpCard));
 
-    expect(panel.overlaps(card), isFalse,
-        reason: 'panel $panel vs card $card');
+    expect(panel.overlaps(card), isFalse, reason: 'panel $panel vs card $card');
     expect(panel.bottom, lessThanOrEqualTo(card.top));
     // Both still inside the window, card still pinned to the bottom.
-    expect(card.bottom, 720 - AppSpacing.gutter, reason: 'pinned to the bottom');
+    expect(
+      card.bottom,
+      720 - AppSpacing.gutter,
+      reason: 'pinned to the bottom',
+    );
     expect(panel.top, greaterThanOrEqualTo(56), reason: 'below the app bar');
     await settleAutosave(tester);
   });
 
-  testWidgets("the panel's last control is reachable by scrolling, not hidden",
-      (tester) async {
-    await pumpScreen(tester);
-    addBox();
-    sketch.select('box');
-    await tester.pump();
+  testWidgets(
+    "the panel's last control is reachable by scrolling, not hidden",
+    (tester) async {
+      await pumpScreen(tester);
+      addBox();
+      sketch.select('box');
+      await tester.pump();
 
-    // The panel shrank to fit above the card, so its bottom control may be
-    // below the fold — but inside its own scroll view, never under the
-    // card.
-    // `.first`: the panel's own scroll view, above the text fields' own.
-    final scrollable = find
-        .descendant(
-          of: find.byType(PropertiesPanel),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    await tester.scrollUntilVisible(find.text('Edit JSON'), 200,
-        scrollable: scrollable);
-    await tester.pump();
+      // The panel shrank to fit above the card, so its bottom control may be
+      // below the fold — but inside its own scroll view, never under the
+      // card.
+      // `.first`: the panel's own scroll view, above the text fields' own.
+      final scrollable = find
+          .descendant(
+            of: find.byType(PropertiesPanel),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('Edit JSON'),
+        200,
+        scrollable: scrollable,
+      );
+      await tester.pump();
 
-    final button = tester.getRect(find.text('Edit JSON'));
-    final card = tester.getRect(find.byType(McpCard));
-    expect(button.overlaps(card), isFalse);
-    await settleAutosave(tester);
-  });
+      final button = tester.getRect(find.text('Edit JSON'));
+      final card = tester.getRect(find.byType(McpCard));
+      expect(button.overlaps(card), isFalse);
+      await settleAutosave(tester);
+    },
+  );
 
   testWidgets('every rail control sits inside the window', (tester) async {
     await pumpScreen(tester);
@@ -140,12 +154,15 @@ void main() {
       final rect = tester.getRect(find.byTooltip(ToolShortcuts.tooltip(tool)));
       expect(rect.bottom, lessThanOrEqualTo(720), reason: '$tool');
     }
-    expect(tester.getRect(find.byTooltip('Clear sketches')).bottom,
-        lessThanOrEqualTo(720));
+    expect(
+      tester.getRect(find.byTooltip('Clear sketches')).bottom,
+      lessThanOrEqualTo(720),
+    );
   });
 
-  testWidgets('a tool key works after Enter in the inline editor',
-      (tester) async {
+  testWidgets('a tool key works after Enter in the inline editor', (
+    tester,
+  ) async {
     await pumpScreen(tester);
     addBox();
     sketch.beginTextEdit(elementId: 'box');

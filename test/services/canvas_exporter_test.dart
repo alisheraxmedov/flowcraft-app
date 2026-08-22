@@ -38,83 +38,89 @@ void main() {
   });
 
   group('CanvasExporter.renderPng', () {
-    test('sizes the image to content bounds + padding, times pixelRatio',
-        () async {
-      final bytes = await CanvasExporter.renderPng(
-        [_rect()],
-        background: _background,
-        pixelRatio: 2.0,
-        padding: 32,
-      );
+    test(
+      'sizes the image to content bounds + padding, times pixelRatio',
+      () async {
+        final bytes = await CanvasExporter.renderPng(
+          [_rect()],
+          background: _background,
+          pixelRatio: 2.0,
+          padding: 32,
+        );
 
-      final image = await _decode(bytes);
-      addTearDown(image.dispose);
+        final image = await _decode(bytes);
+        addTearDown(image.dispose);
 
-      // 200x120 content, inflated by 32 on all sides => 264x184 logical.
-      expect(image.width, (264 * 2).round());
-      expect(image.height, (184 * 2).round());
-    });
+        // 200x120 content, inflated by 32 on all sides => 264x184 logical.
+        expect(image.width, (264 * 2).round());
+        expect(image.height, (184 * 2).round());
+      },
+    );
 
-    test('honours a non-default pixelRatio above the viewport zoom cap',
-        () async {
-      final bytes = await CanvasExporter.renderPng(
-        [_rect()],
-        background: _background,
-        pixelRatio: 6.0,
-        padding: 10,
-      );
+    test(
+      'honours a non-default pixelRatio above the viewport zoom cap',
+      () async {
+        final bytes = await CanvasExporter.renderPng(
+          [_rect()],
+          background: _background,
+          pixelRatio: 6.0,
+          padding: 10,
+        );
 
-      final image = await _decode(bytes);
-      addTearDown(image.dispose);
+        final image = await _decode(bytes);
+        addTearDown(image.dispose);
 
-      expect(image.width, (220 * 6).round());
-      expect(image.height, (140 * 6).round());
-    });
+        expect(image.width, (220 * 6).round());
+        expect(image.height, (140 * 6).round());
+      },
+    );
 
-    test('scales a huge scene down instead of asking for an oversized image',
-        () async {
-      // 20000 canvas units at the default 2x would request a 40000px image —
-      // past every GPU's max texture size, i.e. a crash rather than a file.
-      final bytes = await CanvasExporter.renderPng(
-        [_rect(rect: const Rect.fromLTWH(0, 0, 20000, 400))],
-        background: _background,
-        padding: 0,
-      );
+    test(
+      'scales a huge scene down instead of asking for an oversized image',
+      () async {
+        // 20000 canvas units at the default 2x would request a 40000px image —
+        // past every GPU's max texture size, i.e. a crash rather than a file.
+        final bytes = await CanvasExporter.renderPng(
+          [_rect(rect: const Rect.fromLTWH(0, 0, 20000, 400))],
+          background: _background,
+          padding: 0,
+        );
 
-      final image = await _decode(bytes);
-      addTearDown(image.dispose);
+        final image = await _decode(bytes);
+        addTearDown(image.dispose);
 
-      expect(image.width, CanvasExporter.maxImageDimension);
-      expect(image.height, lessThan(CanvasExporter.maxImageDimension));
-    });
+        expect(image.width, CanvasExporter.maxImageDimension);
+        expect(image.height, lessThan(CanvasExporter.maxImageDimension));
+      },
+    );
 
     test('emits a decodable PNG', () async {
-      final bytes = await CanvasExporter.renderPng(
-        [_rect()],
-        background: _background,
-      );
+      final bytes = await CanvasExporter.renderPng([
+        _rect(),
+      ], background: _background);
 
       expect(bytes.sublist(0, 8), [137, 80, 78, 71, 13, 10, 26, 10]);
     });
 
-    test('renders an empty canvas as a blank padded square, not a crash',
-        () async {
-      final bytes = await CanvasExporter.renderPng(
-        const [],
-        background: _background,
-        pixelRatio: 2.0,
-        padding: 32,
-      );
+    test(
+      'renders an empty canvas as a blank padded square, not a crash',
+      () async {
+        final bytes = await CanvasExporter.renderPng(
+          const [],
+          background: _background,
+          pixelRatio: 2.0,
+          padding: 32,
+        );
 
-      final image = await _decode(bytes);
-      addTearDown(image.dispose);
+        final image = await _decode(bytes);
+        addTearDown(image.dispose);
 
-      expect(image.width, 128);
-      expect(image.height, 128);
-    });
+        expect(image.width, 128);
+        expect(image.height, 128);
+      },
+    );
 
-    test('actually rasterises the elements, not just the background',
-        () async {
+    test('actually rasterises the elements, not just the background', () async {
       // A dimensions-only assertion would pass on a blank image, so sample
       // the middle of a solid-filled shape and prove ink landed there.
       final bytes = await CanvasExporter.renderPng(
@@ -135,8 +141,9 @@ void main() {
 
       final image = await _decode(bytes);
       addTearDown(image.dispose);
-      final pixels =
-          (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+      final pixels = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!;
       // Centre of the 60x60 image is the centre of the filled rectangle.
       final centre = ((30 * image.width) + 30) * 4;
 
@@ -208,10 +215,10 @@ void main() {
 
     test('a second export in the same second gets a distinct name', () async {
       Future<String> export(List<int> bytes) => CanvasExporter.writeExport(
-            fileName: 'scene-20260822-143501.flowcraft.json',
-            bytes: bytes,
-            directoryPath: tempDir.path,
-          );
+        fileName: 'scene-20260822-143501.flowcraft.json',
+        bytes: bytes,
+        directoryPath: tempDir.path,
+      );
 
       final first = await export([1]);
       final second = await export([2]);

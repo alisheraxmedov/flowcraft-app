@@ -10,8 +10,7 @@ SketchRectangle _rect(String id) {
   return SketchRectangle.create(id: id, rect: const Rect.fromLTWH(0, 0, 4, 4));
 }
 
-Future<void> _pastDebounce() =>
-    Future<void>.delayed(_debounce * 4);
+Future<void> _pastDebounce() => Future<void>.delayed(_debounce * 4);
 
 /// Stretches a save long enough to still be in flight when `detach` is
 /// called, which is the window a delete has to race.
@@ -115,29 +114,30 @@ void main() {
     expect((await repository.load(project.id)).elements, hasLength(1));
   });
 
-  test('a timer armed for the old project cannot fire into the new one',
-      () async {
-    final a = await repository.create('A');
-    final b = await repository.create('B');
+  test(
+    'a timer armed for the old project cannot fire into the new one',
+    () async {
+      final a = await repository.create('A');
+      final b = await repository.create('B');
 
-    autosave.bind(a.id);
-    controller.add(_rect('from-a'));
+      autosave.bind(a.id);
+      controller.add(_rect('from-a'));
 
-    // The switch sequence the view model performs: flush + detach, swap the
-    // canvas, then bind. The canvas swap notifies while unbound.
-    await autosave.unbind();
-    controller.replaceAll(const []);
-    autosave.bind(b.id);
+      // The switch sequence the view model performs: flush + detach, swap the
+      // canvas, then bind. The canvas swap notifies while unbound.
+      await autosave.unbind();
+      controller.replaceAll(const []);
+      autosave.bind(b.id);
 
-    await _pastDebounce();
-    await autosave.flush();
+      await _pastDebounce();
+      await autosave.flush();
 
-    expect((await repository.load(a.id)).elements.single.id, 'from-a');
-    expect((await repository.load(b.id)).elements, isEmpty);
-  });
+      expect((await repository.load(a.id)).elements.single.id, 'from-a');
+      expect((await repository.load(b.id)).elements, isEmpty);
+    },
+  );
 
-  test('detach abandons pending edits, for a project being deleted',
-      () async {
+  test('detach abandons pending edits, for a project being deleted', () async {
     final project = await repository.create('A');
     autosave.bind(project.id);
     controller.add(_rect('a'));
@@ -187,8 +187,11 @@ void main() {
     final project = await repository.create('A');
     controller.add(_rect('a'));
     autosave.bind(project.id);
-    expect(autosave.hasPendingWrite, isFalse,
-        reason: 'binding adopts the scene it was just handed');
+    expect(
+      autosave.hasPendingWrite,
+      isFalse,
+      reason: 'binding adopts the scene it was just handed',
+    );
 
     controller.select('a');
     controller.currentTool = SketchTool.rectangle;
@@ -211,24 +214,29 @@ void main() {
   });
 
   group('partially-loaded scenes', () {
-    test('will not overwrite the file the missing elements are still in',
-        () async {
-      final project = await repository.create('A');
-      await repository.save(id: project.id, elements: [_rect('a'), _rect('b')]);
-      final file = File('${tempDir.path}/${project.id}.json');
-      final before = file.readAsStringSync();
+    test(
+      'will not overwrite the file the missing elements are still in',
+      () async {
+        final project = await repository.create('A');
+        await repository.save(
+          id: project.id,
+          elements: [_rect('a'), _rect('b')],
+        );
+        final file = File('${tempDir.path}/${project.id}.json');
+        final before = file.readAsStringSync();
 
-      // What opening a file with one unreadable element leaves behind.
-      controller.loadScene([_rect('a')], droppedOnLoad: 1);
-      autosave.bind(project.id);
-      controller.add(_rect('c'));
+        // What opening a file with one unreadable element leaves behind.
+        controller.loadScene([_rect('a')], droppedOnLoad: 1);
+        autosave.bind(project.id);
+        controller.add(_rect('c'));
 
-      expect(autosave.hasPendingWrite, isFalse);
-      await _pastDebounce();
-      await autosave.flush();
+        expect(autosave.hasPendingWrite, isFalse);
+        await _pastDebounce();
+        await autosave.flush();
 
-      expect(file.readAsStringSync(), before);
-    });
+        expect(file.readAsStringSync(), before);
+      },
+    );
 
     test('accepting the loss saves the edits made in the meantime', () async {
       final project = await repository.create('A');
@@ -315,12 +323,17 @@ void main() {
       }
       await flushing;
 
+      expect((await slow.load(project.id)).elements.map((e) => e.id), [
+        'e0',
+        'e1',
+        'e2',
+        'e3',
+      ]);
       expect(
-        (await slow.load(project.id)).elements.map((e) => e.id),
-        ['e0', 'e1', 'e2', 'e3'],
+        saver.hasPendingWrite,
+        isFalse,
+        reason: 'nothing left to write once flush has converged',
       );
-      expect(saver.hasPendingWrite, isFalse,
-          reason: 'nothing left to write once flush has converged');
     });
   });
 
@@ -352,8 +365,7 @@ void main() {
       expect(flaky.attempts, 2);
     });
 
-    test('a transient failure is retried on its own, with backoff',
-        () async {
+    test('a transient failure is retried on its own, with backoff', () async {
       final flaky = _FlakyRepository(directoryPath: tempDir.path, failures: 2);
       final saver = ProjectAutosave(
         repository: flaky,
@@ -417,8 +429,7 @@ void main() {
     expect((await repository.load(project.id)).elements.single.id, 'a');
   });
 
-  test('reports write failures instead of throwing into the caller',
-      () async {
+  test('reports write failures instead of throwing into the caller', () async {
     Object? reported;
     final failing = ProjectAutosave(
       repository: repository,

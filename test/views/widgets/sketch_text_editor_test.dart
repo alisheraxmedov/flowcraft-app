@@ -16,7 +16,10 @@ Widget _host(SketchController controller, {FocusNode? elsewhere}) {
       body: Stack(
         children: [
           if (elsewhere != null)
-            Focus(focusNode: elsewhere, child: const SizedBox(width: 10, height: 10)),
+            Focus(
+              focusNode: elsewhere,
+              child: const SizedBox(width: 10, height: 10),
+            ),
           SketchTextEditor(
             controller: controller,
             viewport: const FlowViewport(),
@@ -35,21 +38,24 @@ TextEditingController _liveText(WidgetTester tester) =>
 /// (a note) or stays put (a shape). `EditableText` itself grows inside a
 /// fixed box too, up to the box's cap, so it is the wrong thing to measure.
 Finder _composer() => find.ancestor(
-      of: find.byType(EditableText),
-      matching: find.byType(Container),
-    );
+  of: find.byType(EditableText),
+  matching: find.byType(Container),
+);
 
 void main() {
-  testWidgets('a SketchText edits in place, on its own position',
-      (tester) async {
+  testWidgets('a SketchText edits in place, on its own position', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
-    controller.add(SketchText.create(
-      id: 'greeting',
-      position: const Offset(120, 60),
-      text: 'Hello',
-      fontSize: 16,
-    ));
+    controller.add(
+      SketchText.create(
+        id: 'greeting',
+        position: const Offset(120, 60),
+        text: 'Hello',
+        fontSize: 16,
+      ),
+    );
 
     await tester.pumpWidget(_host(controller));
     controller.beginTextEdit(elementId: 'greeting');
@@ -63,13 +69,15 @@ void main() {
   testWidgets('a SketchText edits in its own font family', (tester) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
-    controller.add(SketchText.create(
-      id: 'mono',
-      position: Offset.zero,
-      text: 'Hello',
-      fontSize: 16,
-      fontFamily: 'JetBrains Mono',
-    ));
+    controller.add(
+      SketchText.create(
+        id: 'mono',
+        position: Offset.zero,
+        text: 'Hello',
+        fontSize: 16,
+        fontFamily: 'JetBrains Mono',
+      ),
+    );
 
     await tester.pumpWidget(_host(controller));
     controller.beginTextEdit(elementId: 'mono');
@@ -81,15 +89,18 @@ void main() {
     expect(editable.style.fontFamily, 'JetBrains Mono');
   });
 
-  testWidgets("a shape's label edits inside the painter's own label inset",
-      (tester) async {
+  testWidgets("a shape's label edits inside the painter's own label inset", (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
-    controller.add(SketchRectangle.create(
-      id: 'box',
-      rect: const Rect.fromLTWH(40, 80, 160, 100),
-      text: 'Label',
-    ));
+    controller.add(
+      SketchRectangle.create(
+        id: 'box',
+        rect: const Rect.fromLTWH(40, 80, 160, 100),
+        text: 'Label',
+      ),
+    );
 
     await tester.pumpWidget(_host(controller));
     controller.beginTextEdit(elementId: 'box');
@@ -108,46 +119,59 @@ void main() {
     expect(content.center.dy, 130);
   });
 
-  testWidgets('a long SketchText is one line in the editor, as when painted',
-      (tester) async {
+  testWidgets('a long SketchText is one line in the editor, as when painted', (
+    tester,
+  ) async {
     // Free text is laid out unbounded by the painter — it never wraps. The
     // editor used to wrap it at a fixed 300 px, so anything longer reflowed
     // onto one line the instant the edit ended.
     const text = 'thirty characters of plain text';
     final controller = SketchController();
     addTearDown(controller.dispose);
-    controller.add(SketchText.create(
-      id: 'long',
-      position: Offset.zero,
-      text: text,
-      fontSize: 16,
-    ));
+    controller.add(
+      SketchText.create(
+        id: 'long',
+        position: Offset.zero,
+        text: text,
+        fontSize: 16,
+      ),
+    );
 
     await tester.pumpWidget(_host(controller));
     controller.beginTextEdit(elementId: 'long');
     await tester.pump();
 
     final painted = TextMetrics.measure(text: text, fontSize: 16);
-    expect(painted.width, greaterThan(300),
-        reason: 'the text has to be wider than the old fixed box to prove anything');
+    expect(
+      painted.width,
+      greaterThan(300),
+      reason:
+          'the text has to be wider than the old fixed box to prove anything',
+    );
     final editable = tester.getSize(find.byType(EditableText));
-    expect(editable.height, moreOrLessEquals(painted.height, epsilon: 0.5),
-        reason: 'one painted line, one editor line');
+    expect(
+      editable.height,
+      moreOrLessEquals(painted.height, epsilon: 0.5),
+      reason: 'one painted line, one editor line',
+    );
     expect(editable.width, greaterThanOrEqualTo(painted.width));
   });
 
-  testWidgets("a free text's composer grows as lines are typed",
-      (tester) async {
+  testWidgets("a free text's composer grows as lines are typed", (
+    tester,
+  ) async {
     // The painter draws every line; an editor fixed at ~1.7 lines scrolled
     // the third out of sight.
     final controller = SketchController();
     addTearDown(controller.dispose);
-    controller.add(SketchText.create(
-      id: 'para',
-      position: const Offset(20, 20),
-      text: 'one',
-      fontSize: 16,
-    ));
+    controller.add(
+      SketchText.create(
+        id: 'para',
+        position: const Offset(20, 20),
+        text: 'one',
+        fontSize: 16,
+      ),
+    );
 
     await tester.pumpWidget(_host(controller));
     controller.beginTextEdit(elementId: 'para');
@@ -177,12 +201,14 @@ void main() {
     addTearDown(controller.dispose);
     final elsewhere = FocusNode();
     addTearDown(elsewhere.dispose);
-    controller.add(SketchText.create(
-      id: 't',
-      position: Offset.zero,
-      text: 'before',
-      fontSize: 16,
-    ));
+    controller.add(
+      SketchText.create(
+        id: 't',
+        position: Offset.zero,
+        text: 'before',
+        fontSize: 16,
+      ),
+    );
 
     await tester.pumpWidget(_host(controller, elsewhere: elsewhere));
     controller.beginTextEdit(elementId: 't');
@@ -201,12 +227,14 @@ void main() {
     Future<SketchController> open(WidgetTester tester) async {
       final controller = SketchController();
       addTearDown(controller.dispose);
-      controller.add(SketchText.create(
-        id: 't',
-        position: Offset.zero,
-        text: 'hello',
-        fontSize: 16,
-      ));
+      controller.add(
+        SketchText.create(
+          id: 't',
+          position: Offset.zero,
+          text: 'hello',
+          fontSize: 16,
+        ),
+      );
       await tester.pumpWidget(_host(controller));
       controller.beginTextEdit(elementId: 't');
       await tester.pump();
@@ -214,8 +242,9 @@ void main() {
       return controller;
     }
 
-    testWidgets('are left to the IME while a composition is open',
-        (tester) async {
+    testWidgets('are left to the IME while a composition is open', (
+      tester,
+    ) async {
       // For CJK / pinyin input Enter confirms the candidate and Escape
       // drops it; the framework sees the hardware key first, so acting on
       // it here would commit the whole element mid-composition.
@@ -248,16 +277,15 @@ void main() {
     });
   });
 
-  testWidgets("a note's label edits inside the bubble's own text box",
-      (tester) async {
+  testWidgets("a note's label edits inside the bubble's own text box", (
+    tester,
+  ) async {
     const rect = Rect.fromLTWH(60, 120, 200, 100);
     final controller = SketchController();
     addTearDown(controller.dispose);
-    controller.add(SketchSticky.create(
-      id: 'note',
-      rect: rect,
-      text: 'remember this',
-    ));
+    controller.add(
+      SketchSticky.create(id: 'note', rect: rect, text: 'remember this'),
+    );
 
     await tester.pumpWidget(_host(controller));
     controller.beginTextEdit(elementId: 'note');
@@ -275,8 +303,9 @@ void main() {
     expect(content.width, expected.width);
   });
 
-  testWidgets('a small note edits inside the padding it actually has',
-      (tester) async {
+  testWidgets('a small note edits inside the padding it actually has', (
+    tester,
+  ) async {
     // The bubble's padding is not a constant: on a note too small to give up
     // 8px on every side it shrinks so there is still a box left to write in.
     // An editor carrying its own copy of "inset by 8" agrees with the
@@ -292,8 +321,11 @@ void main() {
     await tester.pump();
 
     final expected = StickyBubbleGeometry.textBoxOf(rect);
-    expect(expected.topLeft, isNot(rect.deflate(8.0).topLeft),
-        reason: 'the two formulas have to disagree for this to prove anything');
+    expect(
+      expected.topLeft,
+      isNot(rect.deflate(8.0).topLeft),
+      reason: 'the two formulas have to disagree for this to prove anything',
+    );
 
     final content = tester.getRect(find.byType(EditableText));
     expect(content.left, moreOrLessEquals(expected.left, epsilon: 0.01));
@@ -332,11 +364,13 @@ void main() {
     // centred in.
     final controller = SketchController();
     addTearDown(controller.dispose);
-    controller.add(SketchRectangle.create(
-      id: 'box',
-      rect: const Rect.fromLTWH(40, 80, 160, 100),
-      text: 'Label',
-    ));
+    controller.add(
+      SketchRectangle.create(
+        id: 'box',
+        rect: const Rect.fromLTWH(40, 80, 160, 100),
+        text: 'Label',
+      ),
+    );
 
     await tester.pumpWidget(_host(controller));
     controller.beginTextEdit(elementId: 'box');
@@ -351,8 +385,9 @@ void main() {
     expect(tester.getRect(_composer()).height, before.height);
   });
 
-  testWidgets("a note's editable glyphs are legible against its paper",
-      (tester) async {
+  testWidgets("a note's editable glyphs are legible against its paper", (
+    tester,
+  ) async {
     // A sticky's stroke colour *is* its paper colour, so editing in it used
     // to mean typing pale yellow onto pale yellow.
     final controller = SketchController();

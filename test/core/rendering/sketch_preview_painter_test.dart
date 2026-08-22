@@ -38,19 +38,22 @@ int _countDominant(ByteData px, int channel) {
   var n = 0;
   for (var i = 0; i < px.lengthInBytes; i += 4) {
     final c = [px.getUint8(i), px.getUint8(i + 1), px.getUint8(i + 2)];
-    final others = [for (var k = 0; k < 3; k++) if (k != channel) c[k]];
+    final others = [
+      for (var k = 0; k < 3; k++)
+        if (k != channel) c[k],
+    ];
     if (c[channel] > 150 && others.every((v) => v < 100)) n++;
   }
   return n;
 }
 
 SketchDragSession _rectSession(SketchStyle style) => SketchDragSession(
-      kind: SketchSessionKind.createBounded,
-      startCanvas: const Offset(20, 20),
-      startScreen: const Offset(20, 20),
-      style: style,
-      tool: SketchTool.rectangle,
-    )..currentCanvas = const Offset(180, 180);
+  kind: SketchSessionKind.createBounded,
+  startCanvas: const Offset(20, 20),
+  startScreen: const Offset(20, 20),
+  style: style,
+  tool: SketchTool.rectangle,
+)..currentCanvas = const Offset(180, 180);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -63,8 +66,11 @@ void main() {
         strokeWidth: 3.0,
       );
       final px = await _rasterise(_rectSession(red));
-      expect(_countDominant(px, 0), greaterThan(200),
-          reason: 'the rubber-band rectangle is red');
+      expect(
+        _countDominant(px, 0),
+        greaterThan(200),
+        reason: 'the rubber-band rectangle is red',
+      );
       expect(_countDominant(px, 2), 0, reason: 'nothing is painted blue');
 
       const blue = SketchStyle(
@@ -92,11 +98,11 @@ void main() {
         roughness: 0.0,
         strokeWidth: 2.0,
       );
-      final solidInk =
-          _countDominant(await _rasterise(_rectSession(solid)), 0);
+      final solidInk = _countDominant(await _rasterise(_rectSession(solid)), 0);
       final dottedInk = _countDominant(
         await _rasterise(
-            _rectSession(solid.copyWith(strokeStyle: StrokeStyle.dotted))),
+          _rectSession(solid.copyWith(strokeStyle: StrokeStyle.dotted)),
+        ),
         0,
       );
       expect(dottedInk, greaterThan(0));

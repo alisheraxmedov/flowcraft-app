@@ -226,13 +226,15 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
   }
 
   void _onSaved(FlowProject saved) {
-    _set(state.copyWith(
-      projects: [
-        saved,
-        for (final project in state.projects)
-          if (project.id != saved.id) project,
-      ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)),
-    ));
+    _set(
+      state.copyWith(
+        projects: [
+          saved,
+          for (final project in state.projects)
+            if (project.id != saved.id) project,
+        ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)),
+      ),
+    );
   }
 
   void _fail(String summary, Object error) {
@@ -246,6 +248,4 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
 }
 
 final projectsViewModelProvider =
-    NotifierProvider<ProjectsViewModel, ProjectsState>(
-  ProjectsViewModel.new,
-);
+    NotifierProvider<ProjectsViewModel, ProjectsState>(ProjectsViewModel.new);

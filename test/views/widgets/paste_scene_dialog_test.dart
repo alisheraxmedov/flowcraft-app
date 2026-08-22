@@ -3,21 +3,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 SketchRectangle _rect(String id) {
-  return SketchRectangle.create(id: id, rect: const Rect.fromLTWH(0, 0, 10, 10));
+  return SketchRectangle.create(
+    id: id,
+    rect: const Rect.fromLTWH(0, 0, 10, 10),
+  );
 }
 
 /// Opens the dialog the way the export menu does.
 Future<void> _open(WidgetTester tester, SketchController controller) async {
-  await tester.pumpWidget(MaterialApp(
-    home: Scaffold(
-      body: Builder(
-        builder: (context) => TextButton(
-          onPressed: () => PasteSceneDialog.show(context, controller),
-          child: const Text('open'),
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => PasteSceneDialog.show(context, controller),
+            child: const Text('open'),
+          ),
         ),
       ),
     ),
-  ));
+  );
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
 }
@@ -54,8 +59,9 @@ void main() {
     expect(controller.elements.single.id, 'pasted');
   });
 
-  testWidgets('a partial payload says so instead of quietly arriving short',
-      (tester) async {
+  testWidgets('a partial payload says so instead of quietly arriving short', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
@@ -69,14 +75,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.elements, hasLength(1));
-    expect(
-      find.textContaining('1 could not be read'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('1 could not be read'), findsOneWidget);
   });
 
-  testWidgets('a bad payload keeps the dialog open with the reason',
-      (tester) async {
+  testWidgets('a bad payload keeps the dialog open with the reason', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
@@ -91,8 +95,9 @@ void main() {
     expect(controller.elements, isEmpty);
   });
 
-  testWidgets('both import buttons are dead until something is pasted',
-      (tester) async {
+  testWidgets('both import buttons are dead until something is pasted', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 

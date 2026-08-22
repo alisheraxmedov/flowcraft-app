@@ -8,10 +8,7 @@ import 'package:flowcraft/viewmodels/mcp_view_model.dart';
 import 'package:flowcraft/views/widgets/export_feedback.dart';
 
 /// Shows the copy-pasteable config for every supported AI CLI.
-Future<void> showMcpSetupDialog(
-  BuildContext context,
-  McpServerStatus status,
-) {
+Future<void> showMcpSetupDialog(BuildContext context, McpServerStatus status) {
   return showDialog<void>(
     context: context,
     builder: (_) => McpSetupDialog(status: status),
@@ -76,7 +73,8 @@ class McpSetupDialog extends StatelessWidget {
                     ),
                     _Section(
                       title: 'Claude Code / Claude Desktop (JSON)',
-                      hint: 'Or add it to .mcp.json / '
+                      hint:
+                          'Or add it to .mcp.json / '
                           'claude_desktop_config.json:',
                       snippet: _claudeJson(endpoint, token),
                     ),
@@ -120,7 +118,8 @@ class McpSetupDialog extends StatelessWidget {
   }
 }
 
-String _claudeJson(String endpoint, String token) => '''
+String _claudeJson(String endpoint, String token) =>
+    '''
 {
   "mcpServers": {
     "flowcraft": {
@@ -131,7 +130,8 @@ String _claudeJson(String endpoint, String token) => '''
   }
 }''';
 
-String _codexToml(String endpoint, String token) => '''
+String _codexToml(String endpoint, String token) =>
+    '''
 [mcp_servers.flowcraft]
 url = "$endpoint"
 
@@ -140,7 +140,8 @@ url = "$endpoint"
 
 /// Gemini CLI keys streamable-HTTP servers off `httpUrl`; plain `url` is
 /// its (older) SSE transport, which this server doesn't speak.
-String _geminiJson(String endpoint, String token) => '''
+String _geminiJson(String endpoint, String token) =>
+    '''
 {
   "mcpServers": {
     "flowcraft": {

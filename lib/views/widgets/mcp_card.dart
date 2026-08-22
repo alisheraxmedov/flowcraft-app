@@ -19,25 +19,25 @@ import 'package:flowcraft/views/widgets/mcp_setup_dialog.dart';
 ) {
   return switch (status.state) {
     McpServerState.running => (
-        badge: 'ON',
-        status: 'Status: Online',
-        color: colorScheme.tertiary,
-      ),
+      badge: 'ON',
+      status: 'Status: Online',
+      color: colorScheme.tertiary,
+    ),
     McpServerState.starting => (
-        badge: 'STARTING',
-        status: 'Status: Starting…',
-        color: colorScheme.onSurfaceVariant,
-      ),
+      badge: 'STARTING',
+      status: 'Status: Starting…',
+      color: colorScheme.onSurfaceVariant,
+    ),
     McpServerState.off => (
-        badge: 'OFF',
-        status: 'Status: Offline',
-        color: colorScheme.outline,
-      ),
+      badge: 'OFF',
+      status: 'Status: Offline',
+      color: colorScheme.outline,
+    ),
     McpServerState.failed => (
-        badge: 'ERROR',
-        status: 'Status: Failed to start',
-        color: colorScheme.error,
-      ),
+      badge: 'ERROR',
+      status: 'Status: Failed to start',
+      color: colorScheme.error,
+    ),
   };
 }
 
@@ -202,9 +202,7 @@ class McpCard extends ConsumerWidget {
           const SizedBox(height: 10),
           Text(
             'FlowCraft v$appVersion',
-            style: AppTypography.caption.copyWith(
-              color: colorScheme.outline,
-            ),
+            style: AppTypography.caption.copyWith(color: colorScheme.outline),
           ),
         ],
       ),

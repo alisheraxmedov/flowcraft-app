@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 SketchRectangle _rect(String id) {
-  return SketchRectangle.create(id: id, rect: const Rect.fromLTWH(0, 0, 10, 10));
+  return SketchRectangle.create(
+    id: id,
+    rect: const Rect.fromLTWH(0, 0, 10, 10),
+  );
 }
 
 void main() {
@@ -34,20 +37,22 @@ void main() {
   /// runs under never completes.
   Future<void> open(WidgetTester tester) async {
     await tester.runAsync(() async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => ImportSceneDialog.show(
-                context,
-                controller,
-                directoryPath: tempDir.path,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => ImportSceneDialog.show(
+                  context,
+                  controller,
+                  directoryPath: tempDir.path,
+                ),
+                child: const Text('open'),
               ),
-              child: const Text('open'),
             ),
           ),
         ),
-      ));
+      );
       await tester.tap(find.text('open'));
       await tester.pump();
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -64,8 +69,9 @@ void main() {
     });
   }
 
-  testWidgets('lists the scenes in the export folder and imports the pick',
-      (tester) async {
+  testWidgets('lists the scenes in the export folder and imports the pick', (
+    tester,
+  ) async {
     plant('board.flowcraft.json', SketchSerializer.serialize([_rect('a')]));
 
     await open(tester);
@@ -89,8 +95,9 @@ void main() {
     expect(controller.elements.map((e) => e.id), ['a', 'b']);
   });
 
-  testWidgets('an empty folder points at the paste route instead',
-      (tester) async {
+  testWidgets('an empty folder points at the paste route instead', (
+    tester,
+  ) async {
     await open(tester);
 
     expect(find.textContaining('No .json files here yet'), findsOneWidget);
@@ -101,8 +108,9 @@ void main() {
     );
   });
 
-  testWidgets('a typed path reaches a file outside the export folder',
-      (tester) async {
+  testWidgets('a typed path reaches a file outside the export folder', (
+    tester,
+  ) async {
     final elsewhere = Directory.systemTemp.createTempSync('fc_elsewhere_');
     addTearDown(() => elsewhere.deleteSync(recursive: true));
     final file = File('${elsewhere.path}${Platform.pathSeparator}sent.json')
@@ -118,8 +126,9 @@ void main() {
     expect(controller.elements, hasLength(2));
   });
 
-  testWidgets('dismissing the dialog mid-read leaves the canvas alone',
-      (tester) async {
+  testWidgets('dismissing the dialog mid-read leaves the canvas alone', (
+    tester,
+  ) async {
     // Cancel is disabled while busy, but Escape and the barrier still pop
     // the dialog. The import used to land on the canvas anyway once the
     // read finished — silently, since there was no dialog left to report
@@ -145,8 +154,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('an unreadable file keeps the dialog open with the reason',
-      (tester) async {
+  testWidgets('an unreadable file keeps the dialog open with the reason', (
+    tester,
+  ) async {
     plant('broken.json', 'not json at all');
 
     await open(tester);

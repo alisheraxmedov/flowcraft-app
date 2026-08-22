@@ -20,8 +20,8 @@ class SceneImportSource {
       const <ImportableScene>[];
 
   static Future<String> read(String path) async => throw UnsupportedError(
-        'Reading files from disk is not available on the web build.',
-      );
+    'Reading files from disk is not available on the web build.',
+  );
 
   static String expandHome(String path) => path;
 }

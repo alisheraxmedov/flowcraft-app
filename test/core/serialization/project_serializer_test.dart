@@ -28,8 +28,9 @@ void main() {
         ],
       );
 
-      final decoded =
-          ProjectSerializer.decodeScene(ProjectSerializer.encodeScene(scene));
+      final decoded = ProjectSerializer.decodeScene(
+        ProjectSerializer.encodeScene(scene),
+      );
 
       expect(decoded.project, _project());
       expect(decoded.elements.map((e) => e.id), ['a', 'b']);
@@ -90,11 +91,17 @@ void main() {
 
       final map = jsonDecode(renamed) as Map<String, dynamic>;
       expect((map['project'] as Map<String, dynamic>)['name'], 'New');
-      expect(map['scene'], jsonDecode(source)['scene'],
-          reason: 'the scene — unknown element included — is untouched');
+      expect(
+        map['scene'],
+        jsonDecode(source)['scene'],
+        reason: 'the scene — unknown element included — is untouched',
+      );
       expect(map['extra'], 'kept');
-      expect(ProjectSerializer.decodeScene(renamed).droppedCount, 1,
-          reason: 'the hologram is still there for a build that can read it');
+      expect(
+        ProjectSerializer.decodeScene(renamed).droppedCount,
+        1,
+        reason: 'the hologram is still there for a build that can read it',
+      );
     });
 
     test('the autosave path writes freedraw points as they are', () {

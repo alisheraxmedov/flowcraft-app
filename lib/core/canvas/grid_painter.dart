@@ -84,8 +84,14 @@ class GridPainter extends CustomPainter {
     }
   }
 
-  void _paintDots(Canvas canvas, Size size, double startX, double startY,
-      double spacing, Paint paint) {
+  void _paintDots(
+    Canvas canvas,
+    Size size,
+    double startX,
+    double startY,
+    double spacing,
+    Paint paint,
+  ) {
     // Count points first to size buffer once.
     int countX = 0;
     for (double x = startX; x <= size.width; x += spacing) {
@@ -115,8 +121,14 @@ class GridPainter extends CustomPainter {
     canvas.drawRawPoints(PointMode.points, buf, paint);
   }
 
-  void _paintLines(Canvas canvas, Size size, double startX, double startY,
-      double spacing, Paint paint) {
+  void _paintLines(
+    Canvas canvas,
+    Size size,
+    double startX,
+    double startY,
+    double spacing,
+    Paint paint,
+  ) {
     paint.strokeWidth = 0.5;
 
     // Build packed buffer of (x0,y0,x1,y1) pairs and issue a single drawRawPoints

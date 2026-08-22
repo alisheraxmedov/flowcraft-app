@@ -52,8 +52,11 @@ void main() {
     }
     final after = _viewportOf(tester);
     expect(after.zoom, 1.0);
-    expect(after.offset.dx, before.offset.dx - 120,
-        reason: 'it pans sideways instead');
+    expect(
+      after.offset.dx,
+      before.offset.dx - 120,
+      reason: 'it pans sideways instead',
+    );
     expect(after.offset.dy, before.offset.dy);
   });
 
@@ -66,21 +69,26 @@ void main() {
     expect(after.offset, before.offset - const Offset(0, 40));
   });
 
-  testWidgets('ctrl+scroll zooms, multiplicatively and about the pointer',
-      (tester) async {
+  testWidgets('ctrl+scroll zooms, multiplicatively and about the pointer', (
+    tester,
+  ) async {
     await _pump(tester);
     final before = _viewportOf(tester);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await _scroll(tester, const Offset(0, -100)); // wheel up → zoom in
     final zoomedIn = _viewportOf(tester);
-    expect(zoomedIn.zoom,
-        closeTo(before.zoom * (1 + 100 * WhiteboardCanvas.wheelZoomRate), 1e-9));
+    expect(
+      zoomedIn.zoom,
+      closeTo(before.zoom * (1 + 100 * WhiteboardCanvas.wheelZoomRate), 1e-9),
+    );
 
     await _scroll(tester, const Offset(0, 100)); // wheel down → zoom out
     final zoomedOut = _viewportOf(tester);
-    expect(zoomedOut.zoom,
-        closeTo(zoomedIn.zoom * (1 - 100 * WhiteboardCanvas.wheelZoomRate), 1e-9));
+    expect(
+      zoomedOut.zoom,
+      closeTo(zoomedIn.zoom * (1 - 100 * WhiteboardCanvas.wheelZoomRate), 1e-9),
+    );
     expect(zoomedOut.zoom, lessThan(zoomedIn.zoom));
 
     // Horizontal travel with the modifier held is still not a zoom.
@@ -97,8 +105,9 @@ void main() {
     expect(_viewportOf(tester).zoom, greaterThan(1.0));
   });
 
-  testWidgets('a single flung wheel event cannot take zoom negative',
-      (tester) async {
+  testWidgets('a single flung wheel event cannot take zoom negative', (
+    tester,
+  ) async {
     await _pump(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await _scroll(tester, const Offset(0, 5000));

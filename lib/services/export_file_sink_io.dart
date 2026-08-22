@@ -16,7 +16,8 @@ class ExportFileSink {
   /// Absolute path of the export folder for the current user. Not
   /// guaranteed to exist yet — [write] creates it on demand.
   static String defaultDirectoryPath() {
-    final home = Platform.environment['HOME'] ??
+    final home =
+        Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
         '.';
     final sep = Platform.pathSeparator;
@@ -83,8 +84,7 @@ class ExportFileSink {
       if (Platform.isLinux) {
         // No portable "select this file" verb on Linux; opening the parent
         // folder is the closest equivalent every desktop environment has.
-        final result =
-            await Process.run('xdg-open', [File(path).parent.path]);
+        final result = await Process.run('xdg-open', [File(path).parent.path]);
         return result.exitCode == 0;
       }
       return false;

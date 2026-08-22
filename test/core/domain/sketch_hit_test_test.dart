@@ -29,9 +29,7 @@ void main() {
     });
 
     test('ellipse interior + border behave as expected', () {
-      final e = SketchEllipse.create(
-        rect: const Rect.fromLTWH(0, 0, 100, 50),
-      );
+      final e = SketchEllipse.create(rect: const Rect.fromLTWH(0, 0, 100, 50));
       // Centre of the unfilled ellipse is empty → miss.
       expect(SketchHitTest.hit(e, const Offset(50, 25), 4.0), isFalse);
       // Near the rightmost border → hit.
@@ -58,11 +56,7 @@ void main() {
 
     test('freedraw is hit near any polyline segment', () {
       final f = SketchFreedraw.create(
-        points: const [
-          Offset(0, 0),
-          Offset(50, 0),
-          Offset(50, 50),
-        ],
+        points: const [Offset(0, 0), Offset(50, 0), Offset(50, 50)],
       );
       expect(SketchHitTest.hit(f, const Offset(25, 0), 3.0), isTrue);
       expect(SketchHitTest.hit(f, const Offset(50, 25), 3.0), isTrue);
@@ -118,21 +112,23 @@ void main() {
       });
     });
 
-    test('filled rectangle is also hit just outside its edge within tolerance',
-        () {
-      // The rough stroke wobbles a few px outside `rect`, and at 0.25× zoom
-      // the tolerance is 32 canvas px: the unfilled shape was hit there and
-      // the identical filled one was not.
-      final filled = SketchRectangle.create(
-        rect: const Rect.fromLTWH(0, 0, 100, 100),
-        style: const SketchStyle(
-          fillStyle: FillStyle.solid,
-          fillColor: Color(0xFF000000),
-        ),
-      );
-      expect(SketchHitTest.hit(filled, const Offset(-3, 50), 4.0), isTrue);
-      expect(SketchHitTest.hit(filled, const Offset(-6, 50), 4.0), isFalse);
-    });
+    test(
+      'filled rectangle is also hit just outside its edge within tolerance',
+      () {
+        // The rough stroke wobbles a few px outside `rect`, and at 0.25× zoom
+        // the tolerance is 32 canvas px: the unfilled shape was hit there and
+        // the identical filled one was not.
+        final filled = SketchRectangle.create(
+          rect: const Rect.fromLTWH(0, 0, 100, 100),
+          style: const SketchStyle(
+            fillStyle: FillStyle.solid,
+            fillColor: Color(0xFF000000),
+          ),
+        );
+        expect(SketchHitTest.hit(filled, const Offset(-3, 50), 4.0), isTrue);
+        expect(SketchHitTest.hit(filled, const Offset(-6, 50), 4.0), isFalse);
+      },
+    );
 
     test('filled ellipse is hit just outside its rim within tolerance', () {
       final filled = SketchEllipse.create(
@@ -154,19 +150,21 @@ void main() {
       // about: a horizontal line becomes a vertical one.
       const quarter = math.pi / 2;
 
-      test('a rotated line is hit where it is drawn, not where it is stored',
-          () {
-        final line = SketchLine(
-          id: 'l',
-          style: const SketchStyle(),
-          start: const Offset(0, 100),
-          end: const Offset(200, 100),
-          angle: quarter,
-        );
-        // Pivot is (100,100); the line now runs from (100,0) to (100,200).
-        expect(SketchHitTest.hit(line, const Offset(100, 20), 4.0), isTrue);
-        expect(SketchHitTest.hit(line, const Offset(20, 100), 4.0), isFalse);
-      });
+      test(
+        'a rotated line is hit where it is drawn, not where it is stored',
+        () {
+          final line = SketchLine(
+            id: 'l',
+            style: const SketchStyle(),
+            start: const Offset(0, 100),
+            end: const Offset(200, 100),
+            angle: quarter,
+          );
+          // Pivot is (100,100); the line now runs from (100,0) to (100,200).
+          expect(SketchHitTest.hit(line, const Offset(100, 20), 4.0), isTrue);
+          expect(SketchHitTest.hit(line, const Offset(20, 100), 4.0), isFalse);
+        },
+      );
 
       test('a rotated arrow follows the same rule', () {
         final arrow = SketchArrow(
@@ -201,8 +199,11 @@ void main() {
           angle: quarter,
         );
         final box = text.unrotatedBounds;
-        expect(box.width, greaterThan(box.height * 3),
-            reason: 'wide enough that a quarter turn moves its far end');
+        expect(
+          box.width,
+          greaterThan(box.height * 3),
+          reason: 'wide enough that a quarter turn moves its far end',
+        );
         final c = box.center;
         // The glyphs' far end now sits below the pivot, not to its right.
         final belowPivot = Offset(c.dx, c.dy + box.width / 2 - 4);
@@ -241,19 +242,22 @@ void main() {
           fillColor: Color(0xFFFF0000),
         ),
       );
-      final hit =
-          SketchHitTest.topMost([bottom, top], const Offset(50, 50), 4.0);
+      final hit = SketchHitTest.topMost(
+        [bottom, top],
+        const Offset(50, 50),
+        4.0,
+      );
       expect(hit, same(top));
     });
   });
 
   group('SketchHitTest.topMostTextTarget', () {
     SketchText text({String? id}) => SketchText.create(
-          id: id,
-          position: Offset.zero,
-          text: 'Hello',
-          fontSize: 16,
-        );
+      id: id,
+      position: Offset.zero,
+      text: 'Hello',
+      fontSize: 16,
+    );
 
     test('hits a glyph the old approximate bounds would have missed', () {
       final t = text(id: 't');
@@ -263,7 +267,10 @@ void main() {
       // tool spawned a second, empty text box instead of editing this one.
       expect(5 * 16 * 0.55, lessThan(70));
       expect(t.bounds.right, greaterThan(70));
-      expect(SketchHitTest.topMostTextTarget([t], const Offset(70, 8)), same(t));
+      expect(
+        SketchHitTest.topMostTextTarget([t], const Offset(70, 8)),
+        same(t),
+      );
     });
 
     test('tolerance gives slack just off a thin glyph', () {
@@ -316,10 +323,10 @@ void main() {
       final outside = SketchRectangle.create(
         rect: const Rect.fromLTWH(100, 100, 5, 5),
       );
-      final hits = SketchHitTest.intersecting(
-        [inside, outside],
-        const Rect.fromLTWH(0, 0, 50, 50),
-      );
+      final hits = SketchHitTest.intersecting([
+        inside,
+        outside,
+      ], const Rect.fromLTWH(0, 0, 50, 50));
       expect(hits, [inside]);
     });
 
@@ -345,8 +352,11 @@ void main() {
       // bounds any width at all, and a band starting on the shaft covers
       // just half of them.
       const band = Rect.fromLTRB(200, 80, 260, 320);
-      expect(wire.bounds.width, closeTo(2 * 12 * math.sin(0.5), 1e-9),
-          reason: 'two wings of the 12px default head');
+      expect(
+        wire.bounds.width,
+        closeTo(2 * 12 * math.sin(0.5), 1e-9),
+        reason: 'two wings of the 12px default head',
+      );
       expect(wire.bounds.center.dx, 200);
       expect(SketchHitTest.intersecting([wire], band), [wire]);
     });
@@ -368,8 +378,9 @@ void main() {
         end: const Offset(300, 200),
       );
       expect(
-        SketchHitTest.intersecting(
-            [wire], const Rect.fromLTRB(80, 150, 320, 260)),
+        SketchHitTest.intersecting([
+          wire,
+        ], const Rect.fromLTRB(80, 150, 320, 260)),
         [wire],
       );
     });
@@ -390,10 +401,9 @@ void main() {
         start: Offset.zero,
         end: const Offset(200, 200),
       );
-      final hits = SketchHitTest.intersecting(
-        [wire],
-        const Rect.fromLTRB(90, 90, 110, 110),
-      );
+      final hits = SketchHitTest.intersecting([
+        wire,
+      ], const Rect.fromLTRB(90, 90, 110, 110));
       expect(hits, [wire]);
     });
 
@@ -423,8 +433,9 @@ void main() {
         rect: const Rect.fromLTWH(0, 0, 300, 300),
       );
       expect(
-        SketchHitTest.intersecting(
-            [frame], const Rect.fromLTWH(10, 150, 200, 0)),
+        SketchHitTest.intersecting([
+          frame,
+        ], const Rect.fromLTWH(10, 150, 200, 0)),
         isEmpty,
       );
     });
@@ -441,13 +452,15 @@ void main() {
       expect(wire.bounds.left, closeTo(100, 1e-9));
       expect(wire.bounds.top, closeTo(0, 1e-9));
       expect(
-        SketchHitTest.intersecting(
-            [wire], const Rect.fromLTRB(90, 10, 110, 30)),
+        SketchHitTest.intersecting([
+          wire,
+        ], const Rect.fromLTRB(90, 10, 110, 30)),
         [wire],
       );
       expect(
-        SketchHitTest.intersecting(
-            [wire], const Rect.fromLTRB(10, 90, 30, 110)),
+        SketchHitTest.intersecting([
+          wire,
+        ], const Rect.fromLTRB(10, 90, 30, 110)),
         isEmpty,
       );
     });
@@ -461,14 +474,22 @@ void main() {
     const rect = Rect.fromLTWH(0, 0, 100, 60);
 
     test('bounded shapes are', () {
-      expect(SketchHitTest.isResizable(SketchRectangle.create(rect: rect)),
-          isTrue);
       expect(
-          SketchHitTest.isResizable(SketchEllipse.create(rect: rect)), isTrue);
+        SketchHitTest.isResizable(SketchRectangle.create(rect: rect)),
+        isTrue,
+      );
       expect(
-          SketchHitTest.isResizable(SketchDiamond.create(rect: rect)), isTrue);
-      expect(SketchHitTest.isResizable(SketchTriangle.create(rect: rect)),
-          isTrue);
+        SketchHitTest.isResizable(SketchEllipse.create(rect: rect)),
+        isTrue,
+      );
+      expect(
+        SketchHitTest.isResizable(SketchDiamond.create(rect: rect)),
+        isTrue,
+      );
+      expect(
+        SketchHitTest.isResizable(SketchTriangle.create(rect: rect)),
+        isTrue,
+      );
     });
 
     test('an expanded sticky note is, a collapsed one is not', () {

@@ -19,15 +19,13 @@ void main() {
         // so the hand-off would only ever happen via the ready timeout.
         projectRepositoryProvider.overrideWithValue(FakeProjectRepository()),
       ],
-      child: MaterialApp(
-        theme: AppTheme.dark(),
-        home: child,
-      ),
+      child: MaterialApp(theme: AppTheme.dark(), home: child),
     );
   }
 
-  testWidgets('splash shows the logo and app name before startup finishes',
-      (tester) async {
+  testWidgets('splash shows the logo and app name before startup finishes', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       wrap(
         const SplashView(
@@ -50,8 +48,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
   });
 
-  testWidgets('splash hands off to the whiteboard once startup settles',
-      (tester) async {
+  testWidgets('splash hands off to the whiteboard once startup settles', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       wrap(
         const SplashView(

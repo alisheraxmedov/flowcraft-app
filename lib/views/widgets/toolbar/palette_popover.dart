@@ -188,8 +188,11 @@ class SwatchCircle extends StatelessWidget {
         border: Border.all(color: border, width: 1),
       ),
       child: showNone
-          ? Icon(Icons.do_not_disturb_alt,
-              size: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)
+          ? Icon(
+              Icons.do_not_disturb_alt,
+              size: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            )
           : null,
     );
   }

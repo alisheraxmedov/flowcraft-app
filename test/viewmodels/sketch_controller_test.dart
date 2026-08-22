@@ -10,9 +10,9 @@ import 'package:flowcraft/models/sketch_tool.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 SketchRectangle _rect({String? id, Rect? rect}) => SketchRectangle.create(
-      id: id,
-      rect: rect ?? const Rect.fromLTWH(0, 0, 10, 10),
-    );
+  id: id,
+  rect: rect ?? const Rect.fromLTWH(0, 0, 10, 10),
+);
 
 void main() {
   group('SketchController.add / remove', () {
@@ -117,8 +117,7 @@ void main() {
       final c = SketchController();
       var notified = 0;
       c.addListener(() => notified++);
-      c.currentStyle =
-          const SketchStyle(strokeColor: Color(0xFFFF0000));
+      c.currentStyle = const SketchStyle(strokeColor: Color(0xFFFF0000));
       expect(notified, 1);
     });
   });
@@ -188,13 +187,18 @@ void main() {
 
     test('restyles every selected element in one history entry', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
       );
       c.selectMany({'a', 'b'});
       expect(c.canUndo, isFalse);
 
-      final changed =
-          c.applyStyleToSelected((s) => s.copyWith(strokeColor: red));
+      final changed = c.applyStyleToSelected(
+        (s) => s.copyWith(strokeColor: red),
+      );
 
       expect(changed, 2);
       expect(c.elements[0].style.strokeColor, red);
@@ -263,7 +267,10 @@ void main() {
 
       expect(c.elements.single.style.strokeWidth, 5);
       c.undo();
-      expect(c.elements.single.style.strokeWidth, const SketchStyle().strokeWidth);
+      expect(
+        c.elements.single.style.strokeWidth,
+        const SketchStyle().strokeWidth,
+      );
       expect(c.canUndo, isFalse);
     });
   });
@@ -433,10 +440,10 @@ void main() {
     test('mints fresh ids, selects the copies, one history entry', () {
       final c = SketchController()..add(_rect(id: 'a'));
 
-      final added = c.pasteElements(
-        [_rect(id: 'a'), _rect(id: 'b')],
-        offset: Offset.zero,
-      );
+      final added = c.pasteElements([
+        _rect(id: 'a'),
+        _rect(id: 'b'),
+      ], offset: Offset.zero);
 
       expect(added, 2);
       expect(c.elements, hasLength(3));
@@ -456,10 +463,10 @@ void main() {
 
   group('SketchController.updateLinear', () {
     SketchLine line() => SketchLine.create(
-          id: 'l',
-          start: Offset.zero,
-          end: const Offset(10, 0),
-        );
+      id: 'l',
+      start: Offset.zero,
+      end: const Offset(10, 0),
+    );
 
     test('moves one endpoint and leaves the other alone', () {
       final c = SketchController(initialElements: [line()]);
@@ -471,14 +478,16 @@ void main() {
     });
 
     test('moves an arrow, and does nothing to a non-linear element', () {
-      final c = SketchController(initialElements: [
-        SketchArrow.create(
-          id: 'a',
-          start: Offset.zero,
-          end: const Offset(5, 5),
-        ),
-        _rect(id: 'r'),
-      ]);
+      final c = SketchController(
+        initialElements: [
+          SketchArrow.create(
+            id: 'a',
+            start: Offset.zero,
+            end: const Offset(5, 5),
+          ),
+          _rect(id: 'r'),
+        ],
+      );
 
       c.updateLinear('a', start: const Offset(1, 1));
       expect((c.elements.first as SketchArrow).start, const Offset(1, 1));
@@ -519,10 +528,12 @@ void main() {
 
   group('SketchController.duplicateSelected', () {
     test('copies get fresh ids, the offset, and the selection', () {
-      final c = SketchController(initialElements: [
-        _rect(id: 'a'),
-        _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
-      ]);
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
+        ],
+      );
       c.selectMany({'a', 'b'});
 
       expect(c.duplicateSelected(), 2);
@@ -554,7 +565,10 @@ void main() {
 
     test('duplicating a group makes a second, independent group', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -585,7 +599,10 @@ void main() {
   group('SketchController copy / paste', () {
     test('a copied selection pastes back with fresh ids', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.select('a');
 
@@ -673,12 +690,14 @@ void main() {
   });
 
   group('SketchController z-order', () {
-    SketchController scene() => SketchController(initialElements: [
-          _rect(id: 'a'),
-          _rect(id: 'b'),
-          _rect(id: 'c'),
-          _rect(id: 'd'),
-        ]);
+    SketchController scene() => SketchController(
+      initialElements: [
+        _rect(id: 'a'),
+        _rect(id: 'b'),
+        _rect(id: 'c'),
+        _rect(id: 'd'),
+      ],
+    );
 
     List<String> order(SketchController c) =>
         c.elements.map((e) => e.id).toList();
@@ -747,7 +766,11 @@ void main() {
   group('SketchController grouping', () {
     test('groupSelected puts the selection in one new group', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
       );
       c.selectMany({'a', 'b'});
 
@@ -764,12 +787,14 @@ void main() {
     });
 
     test('flattens a selection spanning two groups into one', () {
-      final c = SketchController(initialElements: [
-        _rect(id: 'a'),
-        _rect(id: 'b'),
-        _rect(id: 'c'),
-        _rect(id: 'd'),
-      ]);
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+          _rect(id: 'd'),
+        ],
+      );
       c.selectMany({'a', 'b'});
       c.groupSelected();
       final first = c.elements[0].groupId;
@@ -789,7 +814,10 @@ void main() {
 
     test('re-grouping an intact group records nothing', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -815,7 +843,10 @@ void main() {
 
     test('ungroupSelected clears the group in one entry', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -830,7 +861,10 @@ void main() {
 
     test('ungroupSelected records nothing when nothing is grouped', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
 
@@ -841,7 +875,11 @@ void main() {
 
     test('expandToGroups pulls in the rest of a group', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -854,7 +892,10 @@ void main() {
 
     test('expandToGroups sees grouping done after its first call', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       // Primes the cached group index; a stale one would keep selecting
       // yesterday's groups on every click.
@@ -1004,12 +1045,14 @@ void main() {
 
     SketchController withCollapsedNote() {
       final c = SketchController();
-      c.add(SketchSticky.create(
-        id: 'note',
-        rect: rect,
-        text: 'hi',
-        collapsed: true,
-      ));
+      c.add(
+        SketchSticky.create(
+          id: 'note',
+          rect: rect,
+          text: 'hi',
+          collapsed: true,
+        ),
+      );
       return c;
     }
 
@@ -1063,10 +1106,17 @@ void main() {
       final c = SketchController();
       c.addAll([
         SketchSticky.create(id: 'a', rect: rect, text: 'a'),
-        SketchSticky.create(id: 'b', rect: rect.shift(const Offset(300, 0)),
-            text: 'b'),
-        SketchSticky.create(id: 'c', rect: rect.shift(const Offset(600, 0)),
-            text: 'c', collapsed: true),
+        SketchSticky.create(
+          id: 'b',
+          rect: rect.shift(const Offset(300, 0)),
+          text: 'b',
+        ),
+        SketchSticky.create(
+          id: 'c',
+          rect: rect.shift(const Offset(600, 0)),
+          text: 'c',
+          collapsed: true,
+        ),
         _rect(id: 'box'),
       ]);
       return c;

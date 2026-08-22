@@ -22,10 +22,10 @@ class SketchController extends ChangeNotifier {
     SketchTool currentTool = SketchTool.select,
     SketchStyle currentStyle = const SketchStyle(),
     int maxHistory = 50,
-  })  : _elements = [...?initialElements],
-        _currentTool = currentTool,
-        _currentStyle = currentStyle,
-        _history = SketchHistory(maxHistory: maxHistory);
+  }) : _elements = [...?initialElements],
+       _currentTool = currentTool,
+       _currentStyle = currentStyle,
+       _history = SketchHistory(maxHistory: maxHistory);
 
   final List<SketchElement> _elements;
   final Set<String> _selectedIds = <String>{};
@@ -371,10 +371,7 @@ class SketchController extends ChangeNotifier {
   /// decoded (see [SketchSerializer.load]). Pass it, and the scene is marked
   /// [sceneIsPartial] until [acknowledgePartialScene] clears it — see that
   /// getter for what the caller owes the user before saving.
-  void loadScene(
-    Iterable<SketchElement> newElements, {
-    int droppedOnLoad = 0,
-  }) {
+  void loadScene(Iterable<SketchElement> newElements, {int droppedOnLoad = 0}) {
     _elements
       ..clear()
       ..addAll(newElements);
@@ -743,11 +740,9 @@ class SketchController extends ChangeNotifier {
         }
       }
     } else if (pos != null && trimmed.isNotEmpty) {
-      add(SketchText.create(
-        position: pos,
-        text: trimmed,
-        style: _currentStyle,
-      ));
+      add(
+        SketchText.create(position: pos, text: trimmed, style: _currentStyle),
+      );
       return;
     }
 
@@ -844,17 +839,17 @@ class SketchController extends ChangeNotifier {
 
   /// Endpoints of a linear element, `null` for anything else.
   static (Offset, Offset)? _endpointsOf(SketchElement el) => switch (el) {
-        SketchLine l => (l.start, l.end),
-        SketchArrow a => (a.start, a.end),
-        _ => null,
-      };
+    SketchLine l => (l.start, l.end),
+    SketchArrow a => (a.start, a.end),
+    _ => null,
+  };
 
   /// Selected elements in stacking order — the order they were drawn in,
   /// not the order they happen to have been clicked in.
   List<SketchElement> _selectedInOrder() => [
-        for (final el in _elements)
-          if (_selectedIds.contains(el.id)) el,
-      ];
+    for (final el in _elements)
+      if (_selectedIds.contains(el.id)) el,
+  ];
 
   (List<SketchElement>, List<SketchElement>) _partitionBySelection() {
     final selected = <SketchElement>[];

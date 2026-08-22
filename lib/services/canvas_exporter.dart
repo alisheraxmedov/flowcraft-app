@@ -56,8 +56,12 @@ class CanvasExporter {
     );
     final widthPx = math.max(1, (content.width * effectiveRatio).round());
     final heightPx = math.max(1, (content.height * effectiveRatio).round());
-    final imageRect =
-        Rect.fromLTWH(0, 0, widthPx.toDouble(), heightPx.toDouble());
+    final imageRect = Rect.fromLTWH(
+      0,
+      0,
+      widthPx.toDouble(),
+      heightPx.toDouble(),
+    );
 
     // Maps canvas-space onto image-space: the padded content's top-left
     // lands on pixel (0, 0) and one canvas unit becomes `pixelRatio`

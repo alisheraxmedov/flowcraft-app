@@ -35,9 +35,9 @@ class ProjectAutosave {
     this.maxRetryDelay = const Duration(seconds: 30),
     this.onSaved,
     this.onError,
-  })  : _repository = repository,
-        _controller = controller,
-        _nextRetryDelay = retryDelay {
+  }) : _repository = repository,
+       _controller = controller,
+       _nextRetryDelay = retryDelay {
     _controller.addListener(_schedule);
   }
 
@@ -231,23 +231,25 @@ class ProjectAutosave {
     final List<SketchElement> elements = _controller.elements;
     final gen = _controller.paintGen;
     _savedGen = gen;
-    _writes = _writes.then((_) async {
-      final saved = await _repository.save(id: id, elements: elements);
-      _lastWriteFailed = false;
-      _nextRetryDelay = retryDelay;
-      onSaved?.call(saved);
-    }).catchError((Object error) {
-      _lastWriteFailed = true;
-      // The file never received this scene, so it must not go on counting
-      // as saved — otherwise one failed write would leave every later edit
-      // looking already-persisted and nothing would ever retry. `-1` can't
-      // equal any real generation, so the next check reschedules. Unless a
-      // newer write has been enqueued meanwhile: that one carries a newer
-      // scene, and its own outcome decides.
-      if (_savedGen == gen) _savedGen = -1;
-      _armRetry();
-      onError?.call(error);
-    });
+    _writes = _writes
+        .then((_) async {
+          final saved = await _repository.save(id: id, elements: elements);
+          _lastWriteFailed = false;
+          _nextRetryDelay = retryDelay;
+          onSaved?.call(saved);
+        })
+        .catchError((Object error) {
+          _lastWriteFailed = true;
+          // The file never received this scene, so it must not go on counting
+          // as saved — otherwise one failed write would leave every later edit
+          // looking already-persisted and nothing would ever retry. `-1` can't
+          // equal any real generation, so the next check reschedules. Unless a
+          // newer write has been enqueued meanwhile: that one carries a newer
+          // scene, and its own outcome decides.
+          if (_savedGen == gen) _savedGen = -1;
+          _armRetry();
+          onError?.call(error);
+        });
   }
 
   void _armRetry() {

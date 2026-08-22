@@ -31,10 +31,9 @@ class SketchSerializer {
     List<SketchElement> elements, {
     double simplificationTolerance = 0.5,
   }) {
-    return jsonEncode(toMap(
-      elements,
-      simplificationTolerance: simplificationTolerance,
-    ));
+    return jsonEncode(
+      toMap(elements, simplificationTolerance: simplificationTolerance),
+    );
   }
 
   /// Decodes a JSON string previously produced by [serialize].
@@ -65,10 +64,7 @@ class SketchSerializer {
       }
       out.add(element.toJson());
     }
-    return {
-      'version': schemaVersion,
-      'elements': out,
-    };
+    return {'version': schemaVersion, 'elements': out};
   }
 
   /// Strict decode: any element that fails to parse takes the whole scene
@@ -130,15 +126,17 @@ class SketchSerializer {
         elements.add(SketchElement.fromJson(entry.cast<String, dynamic>()));
       } catch (error) {
         if (!tolerant) rethrow;
-        errors.add(SketchElementLoadError(
-          index: i,
-          // Read defensively: this entry is already known to be malformed,
-          // and throwing while describing the failure would defeat the
-          // point of tolerating it.
-          id: _stringOrNull(entry, 'id'),
-          type: _stringOrNull(entry, 'type'),
-          error: error,
-        ));
+        errors.add(
+          SketchElementLoadError(
+            index: i,
+            // Read defensively: this entry is already known to be malformed,
+            // and throwing while describing the failure would defeat the
+            // point of tolerating it.
+            id: _stringOrNull(entry, 'id'),
+            type: _stringOrNull(entry, 'type'),
+            error: error,
+          ),
+        );
       }
     }
     return SketchSceneLoad(elements: elements, errors: errors);
@@ -175,10 +173,7 @@ class SketchElementLoadError {
 
 /// Outcome of a tolerant scene decode: what loaded, and what did not.
 class SketchSceneLoad {
-  const SketchSceneLoad({
-    required this.elements,
-    required this.errors,
-  });
+  const SketchSceneLoad({required this.elements, required this.errors});
 
   final List<SketchElement> elements;
 

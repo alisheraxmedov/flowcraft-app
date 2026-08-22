@@ -67,14 +67,15 @@ class McpTool {
   final McpToolResult Function(
     SketchController controller,
     Map<String, Object?> arguments,
-  ) run;
+  )
+  run;
 
   /// This tool's entry in a `tools/list` result.
   Map<String, Object?> toJson() => {
-        'name': name,
-        'description': description,
-        'inputSchema': inputSchema,
-      };
+    'name': name,
+    'description': description,
+    'inputSchema': inputSchema,
+  };
 }
 
 /// The outcome of one `tools/call`.
@@ -91,11 +92,11 @@ class McpToolResult {
   final bool isError;
 
   Map<String, Object?> toJson() => {
-        'content': [
-          {'type': 'text', 'text': text},
-        ],
-        'isError': isError,
-      };
+    'content': [
+      {'type': 'text', 'text': text},
+    ],
+    'isError': isError,
+  };
 }
 
 const Map<String, Object?> _emptySchema = {
@@ -108,7 +109,8 @@ const Map<String, Object?> _drawSchema = {
   'properties': {
     'mode': {
       'type': 'string',
-      'description': '"add" appends to the existing canvas (default). '
+      'description':
+          '"add" appends to the existing canvas (default). '
           '"replace" clears the canvas first.',
     },
     'elements': {
@@ -119,7 +121,8 @@ const Map<String, Object?> _drawSchema = {
         'properties': {
           'type': {
             'type': 'string',
-            'description': 'rectangle | ellipse | diamond | triangle | '
+            'description':
+                'rectangle | ellipse | diamond | triangle | '
                 'sticky | text | arrow | line',
           },
           'x': {
@@ -145,18 +148,21 @@ const Map<String, Object?> _drawSchema = {
           'text': {
             'type': 'string',
             'maxLength': maxDiagramTextLength,
-            'description': 'Label text, if any. At most 4096 characters; '
+            'description':
+                'Label text, if any. At most 4096 characters; '
                 'split longer text across several elements.',
           },
           'fontSize': {'type': 'number', 'description': 'Label font size.'},
           'strokeColor': {
             'type': 'string',
-            'description': 'Hex color as "#RRGGBB" or "#AARRGGBB", e.g. '
+            'description':
+                'Hex color as "#RRGGBB" or "#AARRGGBB", e.g. '
                 '"#1E1E1E". Defaults to black.',
           },
           'fillColor': {
             'type': 'string',
-            'description': 'Hex color as "#RRGGBB" or "#AARRGGBB", '
+            'description':
+                'Hex color as "#RRGGBB" or "#AARRGGBB", '
                 'optional. No fill if omitted.',
           },
         },

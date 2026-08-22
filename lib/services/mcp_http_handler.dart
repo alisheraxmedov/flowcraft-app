@@ -109,12 +109,14 @@ Future<void> refuseOversizedBody(
   }
   final payload = utf8.encode(jsonEncode(body));
   socket
-    ..add(utf8.encode(
-      'HTTP/1.1 413 Request Entity Too Large\r\n'
-      'Content-Type: application/json; charset=utf-8\r\n'
-      'Content-Length: ${payload.length}\r\n'
-      'Connection: close\r\n\r\n',
-    ))
+    ..add(
+      utf8.encode(
+        'HTTP/1.1 413 Request Entity Too Large\r\n'
+        'Content-Type: application/json; charset=utf-8\r\n'
+        'Content-Length: ${payload.length}\r\n'
+        'Connection: close\r\n\r\n',
+      ),
+    )
     ..add(payload);
   await socket.flush();
   await socket.close();
@@ -159,9 +161,9 @@ class McpHttpHandler {
     required SketchController controller,
     required String token,
     List<McpTool> tools = flowcraftMcpTools,
-  })  : _controller = controller,
-        _token = token,
-        _tools = tools;
+  }) : _controller = controller,
+       _token = token,
+       _tools = tools;
 
   /// Identifies this server in the `initialize` handshake. The version is
   /// the app's own — see [appVersion] for where a release build gets it.
@@ -310,7 +312,9 @@ class McpHttpHandler {
         return const {'result': <String, Object?>{}};
       case 'tools/list':
         return {
-          'result': {'tools': [for (final tool in _tools) tool.toJson()]},
+          'result': {
+            'tools': [for (final tool in _tools) tool.toJson()],
+          },
         };
       case 'tools/call':
         return _callTool(params);
@@ -376,15 +380,10 @@ class McpHttpHandler {
   }
 
   Map<String, Object?> _error(int code, String message) => {
-        'error': {'code': code, 'message': message},
-      };
+    'error': {'code': code, 'message': message},
+  };
 
-  void _replyError(
-    HttpRequest request,
-    int status,
-    int code,
-    String message,
-  ) {
+  void _replyError(HttpRequest request, int status, int code, String message) {
     _replyJson(request, status, {
       'jsonrpc': '2.0',
       'id': null,

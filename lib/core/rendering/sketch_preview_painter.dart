@@ -254,8 +254,14 @@ class SketchPreviewPainter extends CustomPainter {
   }
 
   void _paintMarquee(Canvas canvas, SketchDragSession s) {
-    final tl = ViewportTransform.canvasToScreen(s.currentRect.topLeft, viewport);
-    final br = ViewportTransform.canvasToScreen(s.currentRect.bottomRight, viewport);
+    final tl = ViewportTransform.canvasToScreen(
+      s.currentRect.topLeft,
+      viewport,
+    );
+    final br = ViewportTransform.canvasToScreen(
+      s.currentRect.bottomRight,
+      viewport,
+    );
     final rect = Rect.fromLTRB(tl.dx, tl.dy, br.dx, br.dy);
     _marqueeStroke.color = marqueeColor;
     _marqueeFill.color = marqueeColor.withValues(alpha: 0.12);

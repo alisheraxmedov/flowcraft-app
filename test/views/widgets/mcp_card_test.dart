@@ -34,9 +34,9 @@ void main() {
     platformCalls = [];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      platformCalls.add(call);
-      return null;
-    });
+          platformCalls.add(call);
+          return null;
+        });
   });
 
   tearDown(() {
@@ -63,8 +63,9 @@ void main() {
     'Port 5199 is unavailable: Address already in use',
   );
 
-  testWidgets('shows the live endpoint while the server is running',
-      (tester) async {
+  testWidgets('shows the live endpoint while the server is running', (
+    tester,
+  ) async {
     await pumpCard(tester, running);
 
     expect(find.text('ON'), findsOneWidget);
@@ -75,8 +76,9 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
-  testWidgets('names the build in its footer, whatever the server state',
-      (tester) async {
+  testWidgets('names the build in its footer, whatever the server state', (
+    tester,
+  ) async {
     // The same string the MCP handshake and `/health` report; a bug report
     // filed from a screenshot names the build it came from.
     for (final status in [running, failed, const McpServerStatus.off()]) {
@@ -85,8 +87,9 @@ void main() {
     }
   });
 
-  testWidgets('hides the connection details while the server is off',
-      (tester) async {
+  testWidgets('hides the connection details while the server is off', (
+    tester,
+  ) async {
     await pumpCard(tester, const McpServerStatus.off());
 
     expect(find.text('OFF'), findsOneWidget);
@@ -95,8 +98,9 @@ void main() {
     expect(find.text('Copy connect'), findsNothing);
   });
 
-  testWidgets('promises nothing while the server is still starting',
-      (tester) async {
+  testWidgets('promises nothing while the server is still starting', (
+    tester,
+  ) async {
     await pumpCard(tester, const McpServerStatus.starting());
 
     expect(find.text('STARTING'), findsOneWidget);
@@ -106,8 +110,9 @@ void main() {
     expect(find.text('Copy connect'), findsNothing);
   });
 
-  testWidgets('a failed start shows the reason, not a dead endpoint',
-      (tester) async {
+  testWidgets('a failed start shows the reason, not a dead endpoint', (
+    tester,
+  ) async {
     await pumpCard(tester, failed);
 
     expect(find.text('ERROR'), findsOneWidget);
@@ -123,17 +128,21 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('the failed state is coloured with the error token',
-      (tester) async {
+  testWidgets('the failed state is coloured with the error token', (
+    tester,
+  ) async {
     await pumpCard(tester, failed);
 
     final scheme = AppTheme.dark().colorScheme;
     final badge = tester.widget<Text>(find.text('ERROR'));
     expect(badge.style?.color, scheme.error);
     expect(
-      tester.widget<Text>(
-        find.text('Port 5199 is unavailable: Address already in use'),
-      ).style?.color,
+      tester
+          .widget<Text>(
+            find.text('Port 5199 is unavailable: Address already in use'),
+          )
+          .style
+          ?.color,
       scheme.onErrorContainer,
     );
   });
@@ -154,8 +163,9 @@ void main() {
     await tester.tap(find.text('Copy connect'));
     await tester.pump();
 
-    final copy =
-        platformCalls.singleWhere((c) => c.method == 'Clipboard.setData');
+    final copy = platformCalls.singleWhere(
+      (c) => c.method == 'Clipboard.setData',
+    );
     expect(
       (copy.arguments as Map)['text'],
       'claude mcp add --transport http flowcraft '
@@ -169,11 +179,11 @@ void main() {
     // no snackbar: Copy did nothing and said nothing.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-      if (call.method == 'Clipboard.setData') {
-        throw PlatformException(code: 'denied', message: 'no clipboard');
-      }
-      return null;
-    });
+          if (call.method == 'Clipboard.setData') {
+            throw PlatformException(code: 'denied', message: 'no clipboard');
+          }
+          return null;
+        });
     await pumpCard(tester, running);
 
     await tester.tap(find.text('Copy connect'));
@@ -184,8 +194,7 @@ void main() {
     expect(find.text('Copied the connect command'), findsNothing);
   });
 
-  testWidgets('Setup opens per-CLI config for all three CLIs',
-      (tester) async {
+  testWidgets('Setup opens per-CLI config for all three CLIs', (tester) async {
     await pumpCard(tester, running);
 
     await tester.tap(find.text('Setup'));

@@ -24,14 +24,13 @@ class SketchHitTest {
   /// handle there would either resize nothing visible or silently resize the
   /// bubble hiding behind it.
   static bool isResizable(SketchElement element) => switch (element) {
-        SketchSticky s => !s.collapsed,
-        SketchRectangle _ ||
-        SketchEllipse _ ||
-        SketchDiamond _ ||
-        SketchTriangle _ =>
-          true,
-        _ => false,
-      };
+    SketchSticky s => !s.collapsed,
+    SketchRectangle _ ||
+    SketchEllipse _ ||
+    SketchDiamond _ ||
+    SketchTriangle _ => true,
+    _ => false,
+  };
 
   /// Returns true if [point] hits [element], using the element's geometry
   /// and the given [tolerance] for strokes / linear shapes.
@@ -61,8 +60,12 @@ class SketchHitTest {
         if (d.style.fillStyle == FillStyle.none) return stroke;
         return stroke || SketchGeometry.pointInDiamond(point, d.rect, d.angle);
       case SketchTriangle tri:
-        final stroke =
-            _hitStrokeTriangle(point, tri.rect, tri.angle, tolerance);
+        final stroke = _hitStrokeTriangle(
+          point,
+          tri.rect,
+          tri.angle,
+          tolerance,
+        );
         if (tri.style.fillStyle == FillStyle.none) return stroke;
         return stroke ||
             SketchGeometry.pointInTriangle(point, tri.rect, tri.angle);
@@ -72,15 +75,16 @@ class SketchHitTest {
         // clicks over a rectangle of empty canvas. And not `bounds`: that is
         // the rotated box, which `pointInRotatedRect` would rotate again.
         return SketchGeometry.pointInRotatedRect(
-            point, s.unrotatedBounds, s.angle);
+          point,
+          s.unrotatedBounds,
+          s.angle,
+        );
       case SketchLine l:
         final p = _toLocal(point, l);
-        return SketchGeometry.distanceToSegment(p, l.start, l.end) <=
-            tolerance;
+        return SketchGeometry.distanceToSegment(p, l.start, l.end) <= tolerance;
       case SketchArrow a:
         final p = _toLocal(point, a);
-        return SketchGeometry.distanceToSegment(p, a.start, a.end) <=
-            tolerance;
+        return SketchGeometry.distanceToSegment(p, a.start, a.end) <= tolerance;
       case SketchFreedraw f:
         final p = _toLocal(point, f);
         return SketchGeometry.pointNearPolyline(p, f.points, tolerance);
@@ -95,7 +99,10 @@ class SketchHitTest {
   static Offset _toLocal(Offset point, SketchElement element) {
     if (element.angle == 0.0) return point;
     return SketchGeometry.toLocal(
-        point, element.unrotatedBounds.center, element.angle);
+      point,
+      element.unrotatedBounds.center,
+      element.angle,
+    );
   }
 
   /// First element in [elements] (iterated in reverse — topmost first)
@@ -181,7 +188,8 @@ class SketchHitTest {
   }) {
     for (var i = elements.length - 1; i >= 0; i--) {
       final e = elements[i];
-      final hasText = e is SketchText ||
+      final hasText =
+          e is SketchText ||
           e is SketchSticky ||
           (e is SketchRectangle && e.text != null) ||
           (e is SketchEllipse && e.text != null) ||
@@ -219,34 +227,50 @@ class SketchHitTest {
     Rect rect,
     double angle,
     double tolerance,
-  ) =>
-      _hitStrokeShape(
-          point, rect, angle, tolerance, SketchGeometry.pointInRotatedRect);
+  ) => _hitStrokeShape(
+    point,
+    rect,
+    angle,
+    tolerance,
+    SketchGeometry.pointInRotatedRect,
+  );
 
   static bool _hitStrokeEllipse(
     Offset point,
     Rect rect,
     double angle,
     double tolerance,
-  ) =>
-      _hitStrokeShape(
-          point, rect, angle, tolerance, SketchGeometry.pointInEllipse);
+  ) => _hitStrokeShape(
+    point,
+    rect,
+    angle,
+    tolerance,
+    SketchGeometry.pointInEllipse,
+  );
 
   static bool _hitStrokeDiamond(
     Offset point,
     Rect rect,
     double angle,
     double tolerance,
-  ) =>
-      _hitStrokeShape(
-          point, rect, angle, tolerance, SketchGeometry.pointInDiamond);
+  ) => _hitStrokeShape(
+    point,
+    rect,
+    angle,
+    tolerance,
+    SketchGeometry.pointInDiamond,
+  );
 
   static bool _hitStrokeTriangle(
     Offset point,
     Rect rect,
     double angle,
     double tolerance,
-  ) =>
-      _hitStrokeShape(
-          point, rect, angle, tolerance, SketchGeometry.pointInTriangle);
+  ) => _hitStrokeShape(
+    point,
+    rect,
+    angle,
+    tolerance,
+    SketchGeometry.pointInTriangle,
+  );
 }

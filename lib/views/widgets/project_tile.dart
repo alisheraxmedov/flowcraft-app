@@ -66,8 +66,9 @@ class ProjectTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.bodySm.copyWith(
-                          fontWeight:
-                              isActive ? FontWeight.w600 : FontWeight.w400,
+                          fontWeight: isActive
+                              ? FontWeight.w600
+                              : FontWeight.w400,
                           color: titleColor,
                         ),
                       ),
@@ -159,10 +160,7 @@ class _RowMenu extends StatelessWidget {
             color: colorScheme.error,
           ),
           onPressed: onDelete,
-          child: Text(
-            'Delete',
-            style: TextStyle(color: colorScheme.error),
-          ),
+          child: Text('Delete', style: TextStyle(color: colorScheme.error)),
         ),
       ],
       builder: (context, menu, _) => IconButton(

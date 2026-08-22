@@ -33,7 +33,9 @@ class _SpyController extends SketchController {
 void main() {
   late SketchController controller;
 
-  setUp(() => controller = SketchController(initialElements: [_rect('on-canvas')]));
+  setUp(
+    () => controller = SketchController(initialElements: [_rect('on-canvas')]),
+  );
   tearDown(() => controller.dispose());
 
   group('add', () {
@@ -67,8 +69,7 @@ void main() {
       expect(spy.elements, hasLength(3));
     });
 
-    test('re-identifies, so a file exported from this board can come back',
-        () {
+    test('re-identifies, so a file exported from this board can come back', () {
       // The ids in the payload are already on the canvas. Reusing them would
       // give two elements one id, and hit-testing/selection a single handle
       // for both.
@@ -108,8 +109,7 @@ void main() {
       expect(controller.elements.single.id, 'on-canvas');
     });
 
-    test('does not mark the canvas partial — no file is being overwritten',
-        () {
+    test('does not mark the canvas partial — no file is being overwritten', () {
       final payload = jsonEncode({
         'version': 1,
         'elements': [
@@ -118,8 +118,11 @@ void main() {
         ],
       });
 
-      final result =
-          SceneImporter.import(controller, payload, mode: SceneImportMode.replace);
+      final result = SceneImporter.import(
+        controller,
+        payload,
+        mode: SceneImportMode.replace,
+      );
 
       expect(result.dropped, 1);
       expect(controller.sceneIsPartial, isFalse);
@@ -137,16 +140,22 @@ void main() {
         ],
       });
 
-      final result =
-          SceneImporter.import(controller, payload, mode: SceneImportMode.add);
+      final result = SceneImporter.import(
+        controller,
+        payload,
+        mode: SceneImportMode.add,
+      );
 
       expect(result.imported, 1);
       expect(result.dropped, 2);
     });
 
     test('explains text that is not JSON', () {
-      final result = SceneImporter.import(controller, 'hello there',
-          mode: SceneImportMode.add);
+      final result = SceneImporter.import(
+        controller,
+        'hello there',
+        mode: SceneImportMode.add,
+      );
 
       expect(result.succeeded, isFalse);
       expect(result.error, 'That file is not valid JSON.');
@@ -154,8 +163,11 @@ void main() {
     });
 
     test('explains JSON with no elements in it', () {
-      final result = SceneImporter.import(controller, '{"nope": true}',
-          mode: SceneImportMode.add);
+      final result = SceneImporter.import(
+        controller,
+        '{"nope": true}',
+        mode: SceneImportMode.add,
+      );
 
       expect(result.error, 'That file holds no elements.');
     });
@@ -164,15 +176,20 @@ void main() {
       // `elements` present but not a list — a cast failure, which must not
       // reach the user as a Dart `TypeError`.
       final result = SceneImporter.import(
-          controller, '{"version": 1, "elements": "lots"}',
-          mode: SceneImportMode.add);
+        controller,
+        '{"version": 1, "elements": "lots"}',
+        mode: SceneImportMode.add,
+      );
 
       expect(result.error, 'That file is not a FlowCraft scene.');
     });
 
     test('passes the schema-version refusal through verbatim', () {
-      final result = SceneImporter.import(controller, '{"version": 99}',
-          mode: SceneImportMode.add);
+      final result = SceneImporter.import(
+        controller,
+        '{"version": 99}',
+        mode: SceneImportMode.add,
+      );
 
       expect(result.succeeded, isFalse);
       expect(result.error, contains('Unsupported sketch schema version: 99'));
@@ -186,8 +203,11 @@ void main() {
         ],
       });
 
-      final result =
-          SceneImporter.import(controller, payload, mode: SceneImportMode.add);
+      final result = SceneImporter.import(
+        controller,
+        payload,
+        mode: SceneImportMode.add,
+      );
 
       expect(result.succeeded, isFalse);
       expect(result.error, contains('None of the 1 elements'));

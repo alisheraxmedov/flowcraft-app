@@ -31,11 +31,7 @@ void main() {
           arrowSize: 14,
         ),
         SketchFreedraw.create(
-          points: const [
-            Offset(0, 0),
-            Offset(10, 5),
-            Offset(20, 0),
-          ],
+          points: const [Offset(0, 0), Offset(10, 5), Offset(20, 0)],
         ),
         SketchText.create(
           position: const Offset(40, 40),
@@ -85,10 +81,9 @@ void main() {
       final points = <Offset>[
         for (var i = 0; i < 50; i++) Offset(i.toDouble(), 0),
       ];
-      final map = SketchSerializer.toMap(
-        [SketchFreedraw.create(points: points)],
-        simplificationTolerance: 0,
-      );
+      final map = SketchSerializer.toMap([
+        SketchFreedraw.create(points: points),
+      ], simplificationTolerance: 0);
       final encoded = (map['elements'] as List).first as Map<String, dynamic>;
       expect(encoded['points'], hasLength(points.length));
     });
@@ -112,10 +107,14 @@ void main() {
 
     test('round-trips groupId without a schema bump', () {
       final source = <SketchElement>[
-        SketchRectangle.create(id: 'a', rect: const Rect.fromLTWH(0, 0, 10, 10))
-            .withGroupId('g1'),
-        SketchEllipse.create(id: 'b', rect: const Rect.fromLTWH(0, 0, 10, 10))
-            .withGroupId('g1'),
+        SketchRectangle.create(
+          id: 'a',
+          rect: const Rect.fromLTWH(0, 0, 10, 10),
+        ).withGroupId('g1'),
+        SketchEllipse.create(
+          id: 'b',
+          rect: const Rect.fromLTWH(0, 0, 10, 10),
+        ).withGroupId('g1'),
       ];
 
       final map = SketchSerializer.toMap(source);
@@ -129,19 +128,19 @@ void main() {
   group('SketchSerializer.load (tolerant)', () {
     /// A scene of three rectangles whose middle element is [broken].
     Map<String, dynamic> sceneWith(Object broken) => <String, dynamic>{
-          'version': SketchSerializer.schemaVersion,
-          'elements': <dynamic>[
-            SketchRectangle.create(
-              id: 'first',
-              rect: const Rect.fromLTWH(0, 0, 10, 10),
-            ).toJson(),
-            broken,
-            SketchRectangle.create(
-              id: 'last',
-              rect: const Rect.fromLTWH(20, 0, 10, 10),
-            ).toJson(),
-          ],
-        };
+      'version': SketchSerializer.schemaVersion,
+      'elements': <dynamic>[
+        SketchRectangle.create(
+          id: 'first',
+          rect: const Rect.fromLTWH(0, 0, 10, 10),
+        ).toJson(),
+        broken,
+        SketchRectangle.create(
+          id: 'last',
+          rect: const Rect.fromLTWH(20, 0, 10, 10),
+        ).toJson(),
+      ],
+    };
 
     const unknownType = <String, dynamic>{
       'type': 'wormhole',
@@ -163,11 +162,13 @@ void main() {
     });
 
     test('keeps the rest when an element is missing a required field', () {
-      final loaded = SketchSerializer.load(sceneWith(<String, dynamic>{
-        'type': 'rectangle',
-        'id': 'middle',
-        // no 'style', no 'rect'
-      }));
+      final loaded = SketchSerializer.load(
+        sceneWith(<String, dynamic>{
+          'type': 'rectangle',
+          'id': 'middle',
+          // no 'style', no 'rect'
+        }),
+      );
 
       expect(loaded.elements.map((e) => e.id), ['first', 'last']);
       expect(loaded.errors.single.id, 'middle');
@@ -210,14 +211,17 @@ void main() {
       );
     });
 
-    test('fromMap stays strict, so callers that want a loud failure keep it', () {
-      // The MCP draw path rejects bad input rather than silently dropping
-      // the shape the agent asked for.
-      expect(
-        () => SketchSerializer.fromMap(sceneWith(unknownType)),
-        throwsStateError,
-      );
-    });
+    test(
+      'fromMap stays strict, so callers that want a loud failure keep it',
+      () {
+        // The MCP draw path rejects bad input rather than silently dropping
+        // the shape the agent asked for.
+        expect(
+          () => SketchSerializer.fromMap(sceneWith(unknownType)),
+          throwsStateError,
+        );
+      },
+    );
   });
 
   group('collapsible sticky notes did not change the file format', () {
@@ -225,24 +229,24 @@ void main() {
     /// wrote it — same keys, same values, same version. Users have files
     /// like this on disk in `~/.flowcraft/projects/`.
     Map<String, dynamic> legacyScene() => <String, dynamic>{
-          'version': 1,
-          'elements': <Map<String, dynamic>>[
-            {
-              'type': 'sticky',
-              'id': 'note-1',
-              'style': const SketchStyle(
-                strokeColor: SketchSticky.defaultColor,
-                fillColor: SketchSticky.defaultColor,
-                fillStyle: FillStyle.solid,
-              ).toJson(),
-              'rect': {'l': 32.0, 't': 48.0, 'w': 160.0, 'h': 80.0},
-              'angle': 0.0,
-              'cornerRadius': 4.0,
-              'text': 'written last week',
-              'fontSize': 20.0,
-            },
-          ],
-        };
+      'version': 1,
+      'elements': <Map<String, dynamic>>[
+        {
+          'type': 'sticky',
+          'id': 'note-1',
+          'style': const SketchStyle(
+            strokeColor: SketchSticky.defaultColor,
+            fillColor: SketchSticky.defaultColor,
+            fillStyle: FillStyle.solid,
+          ).toJson(),
+          'rect': {'l': 32.0, 't': 48.0, 'w': 160.0, 'h': 80.0},
+          'angle': 0.0,
+          'cornerRadius': 4.0,
+          'text': 'written last week',
+          'fontSize': 20.0,
+        },
+      ],
+    };
 
     test('the schema version is still 1', () {
       // Adding a field with a `fromJson` default must not bump this — a bump
@@ -272,8 +276,8 @@ void main() {
       final loaded = SketchSerializer.load(legacyScene());
       final rewritten = SketchSerializer.toMap(loaded.elements);
       expect(rewritten['version'], 1);
-      final element = (rewritten['elements'] as List).single
-          as Map<String, dynamic>;
+      final element =
+          (rewritten['elements'] as List).single as Map<String, dynamic>;
       expect(element.containsKey('collapsed'), isFalse);
       expect(element, legacyScene()['elements']![0]);
     });
@@ -285,9 +289,11 @@ void main() {
         text: 'later',
         collapsed: true,
       );
-      final restored = SketchSerializer.deserialize(
-        SketchSerializer.serialize([collapsed]),
-      ).single as SketchSticky;
+      final restored =
+          SketchSerializer.deserialize(
+                SketchSerializer.serialize([collapsed]),
+              ).single
+              as SketchSticky;
       expect(restored.collapsed, isTrue);
       expect(restored.rect, collapsed.rect);
       expect(restored.bounds, collapsed.bounds);

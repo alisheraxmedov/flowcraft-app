@@ -130,27 +130,33 @@ class SketchSnapper {
     }
 
     final delta = Offset(x.correction, y.correction);
-    if (delta == Offset.zero && !x.matched && !y.matched) return SnapResult.none;
+    if (delta == Offset.zero && !x.matched && !y.matched) {
+      return SnapResult.none;
+    }
 
     final snapped = moving.shift(delta);
     final guides = <AlignmentGuide>[];
     final xOwner = x.owner;
     if (xOwner != null) {
-      guides.add(AlignmentGuide(
-        vertical: true,
-        position: x.line,
-        from: math.min(snapped.top, xOwner.top),
-        to: math.max(snapped.bottom, xOwner.bottom),
-      ));
+      guides.add(
+        AlignmentGuide(
+          vertical: true,
+          position: x.line,
+          from: math.min(snapped.top, xOwner.top),
+          to: math.max(snapped.bottom, xOwner.bottom),
+        ),
+      );
     }
     final yOwner = y.owner;
     if (yOwner != null) {
-      guides.add(AlignmentGuide(
-        vertical: false,
-        position: y.line,
-        from: math.min(snapped.left, yOwner.left),
-        to: math.max(snapped.right, yOwner.right),
-      ));
+      guides.add(
+        AlignmentGuide(
+          vertical: false,
+          position: y.line,
+          from: math.min(snapped.left, yOwner.left),
+          to: math.max(snapped.right, yOwner.right),
+        ),
+      );
     }
     return SnapResult(delta, guides);
   }

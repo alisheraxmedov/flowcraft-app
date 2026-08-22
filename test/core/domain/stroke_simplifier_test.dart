@@ -12,9 +12,7 @@ void main() {
     });
 
     test('collinear points are reduced to endpoints', () {
-      final points = [
-        for (var i = 0; i <= 10; i++) Offset(i.toDouble(), 0),
-      ];
+      final points = [for (var i = 0; i <= 10; i++) Offset(i.toDouble(), 0)];
       final out = StrokeSimplifier.simplify(points, tolerance: 0.01);
       expect(out, [const Offset(0, 0), const Offset(10, 0)]);
     });
@@ -47,8 +45,7 @@ void main() {
       expect(() => out.add(Offset.zero), throwsUnsupportedError);
     });
 
-    test('survives a 50 000-point stroke that splits one point at a time',
-        () {
+    test('survives a 50 000-point stroke that splits one point at a time', () {
       // A spiral whose radius grows every step: the point farthest from any
       // chord is always the one next to its end, so every split peels off a
       // single point and the recursive form went as deep as the stroke is
@@ -56,10 +53,7 @@ void main() {
       const n = 50000;
       final points = <Offset>[
         for (var i = 0; i < n; i++)
-          Offset(
-            i * 0.02 * math.cos(i * 0.05),
-            i * 0.02 * math.sin(i * 0.05),
-          ),
+          Offset(i * 0.02 * math.cos(i * 0.05), i * 0.02 * math.sin(i * 0.05)),
       ];
 
       final out = StrokeSimplifier.simplify(points, tolerance: 0.5);
@@ -85,8 +79,11 @@ void main() {
         points.add(Offset(i + 1.0, i.toDouble()));
       }
       final out = StrokeSimplifier.simplify(points, tolerance: 0.1);
-      expect(out.length, points.length,
-          reason: 'each tread is 1px from the chord, well past tolerance');
+      expect(
+        out.length,
+        points.length,
+        reason: 'each tread is 1px from the chord, well past tolerance',
+      );
     });
   });
 }

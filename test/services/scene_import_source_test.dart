@@ -42,22 +42,31 @@ void main() {
   test('reads a file back verbatim', () async {
     final file = write('scene.json', '{"version": 1, "elements": []}');
 
-    expect(await SceneImportSource.read(file.path),
-        '{"version": 1, "elements": []}');
+    expect(
+      await SceneImportSource.read(file.path),
+      '{"version": 1, "elements": []}',
+    );
   });
 
-  test('expands a leading ~, which is how people write paths by hand', () {
-    final home = Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'];
+  test(
+    'expands a leading ~, which is how people write paths by hand',
+    () {
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
 
-    expect(SceneImportSource.expandHome('~/board.json'), '$home/board.json');
-    expect(SceneImportSource.expandHome('~'), home);
-    expect(SceneImportSource.expandHome('/tmp/board.json'), '/tmp/board.json');
-  }, skip: (Platform.environment['HOME'] ??
-              Platform.environment['USERPROFILE']) ==
-          null
-      ? 'no home directory in this environment'
-      : null);
+      expect(SceneImportSource.expandHome('~/board.json'), '$home/board.json');
+      expect(SceneImportSource.expandHome('~'), home);
+      expect(
+        SceneImportSource.expandHome('/tmp/board.json'),
+        '/tmp/board.json',
+      );
+    },
+    skip:
+        (Platform.environment['HOME'] ?? Platform.environment['USERPROFILE']) ==
+            null
+        ? 'no home directory in this environment'
+        : null,
+  );
 
   test('only a bare ~ or ~/ is expanded', () {
     // `~bob/x` names another user's home; substituting ours for the `~`
@@ -67,8 +76,7 @@ void main() {
     expect(SceneImportSource.expandHome('a~/x.json'), 'a~/x.json');
   });
 
-  test('refuses a file over the import size cap without reading it',
-      () async {
+  test('refuses a file over the import size cap without reading it', () async {
     // A sparse file: the size is real, the bytes were never written, so
     // creating it is instant — and reading it would not be.
     final huge = File('${tempDir.path}${Platform.pathSeparator}huge.json');

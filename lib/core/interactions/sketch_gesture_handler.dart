@@ -133,8 +133,10 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
   double get _canvasHitTolerance {
     final zoom = _viewport.zoom;
     if (zoom <= 0) return widget.hitTolerance;
-    return (widget.hitTolerance / zoom)
-        .clamp(_minCanvasHitTolerance, _maxCanvasHitTolerance);
+    return (widget.hitTolerance / zoom).clamp(
+      _minCanvasHitTolerance,
+      _maxCanvasHitTolerance,
+    );
   }
 
   void _setConsumed(bool value) {
@@ -194,8 +196,9 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         // also what decides which open note survives this click. The hit
         // test runs whether or not a handle won, so that a press on a
         // note's own resize handle keeps that note open.
-        final resizeTarget =
-            endpointTarget == null ? _resizeTargetAt(screen) : null;
+        final resizeTarget = endpointTarget == null
+            ? _resizeTargetAt(screen)
+            : null;
         final hit = endpointTarget == null && resizeTarget == null
             ? _ctrl.elementAt(canvas, tolerance: _canvasHitTolerance)
             : null;
@@ -206,34 +209,38 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         if (endpointTarget != null) {
           final (:element, :endpoint, :grabbed, :fixed) = endpointTarget;
           _ctrl.beginDragSession();
-          _interaction.begin(SketchDragSession(
-            kind: SketchSessionKind.moveEndpoint,
-            startCanvas: canvas,
-            startScreen: screen,
-            style: _ctrl.currentStyle,
-            linearElementId: element.id,
-            linearEndpoint: endpoint,
-            linearGrabbedPoint: grabbed,
-            linearFixedPoint: fixed,
-          ));
+          _interaction.begin(
+            SketchDragSession(
+              kind: SketchSessionKind.moveEndpoint,
+              startCanvas: canvas,
+              startScreen: screen,
+              style: _ctrl.currentStyle,
+              linearElementId: element.id,
+              linearEndpoint: endpoint,
+              linearGrabbedPoint: grabbed,
+              linearFixedPoint: fixed,
+            ),
+          );
           _setConsumed(true);
           return;
         }
 
         if (resizeTarget != null) {
           _ctrl.beginDragSession();
-          _interaction.begin(SketchDragSession(
-            kind: SketchSessionKind.resize,
-            startCanvas: canvas,
-            startScreen: screen,
-            style: _ctrl.currentStyle,
-            resizeElementId: resizeTarget.element.id,
-            // The stored rect, not the (rotated) canvas box: the resize is
-            // written back as the element's `rect`, so it has to start from
-            // the same frame or a rotated shape grows by its own AABB.
-            resizeStartRect: resizeTarget.element.unrotatedBounds,
-            resizeHandle: resizeTarget.handle,
-          ));
+          _interaction.begin(
+            SketchDragSession(
+              kind: SketchSessionKind.resize,
+              startCanvas: canvas,
+              startScreen: screen,
+              style: _ctrl.currentStyle,
+              resizeElementId: resizeTarget.element.id,
+              // The stored rect, not the (rotated) canvas box: the resize is
+              // written back as the element's `rect`, so it has to start from
+              // the same frame or a rotated shape grows by its own AABB.
+              resizeStartRect: resizeTarget.element.unrotatedBounds,
+              resizeHandle: resizeTarget.handle,
+            ),
+          );
           _setConsumed(true);
           return;
         }
@@ -263,31 +270,36 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
             _ctrl.selectMany(group);
           }
           _ctrl.beginDragSession();
-          _interaction.begin(SketchDragSession(
-            kind: SketchSessionKind.moveSelection,
-            startCanvas: canvas,
-            startScreen: screen,
-            style: _ctrl.currentStyle,
-            additive: additive,
-            moveStartBounds: _selectionBounds(),
-            // A press on a collapsed note may turn out to be a click (which
-            // opens it) or a drag (which moves it). Which one it was is only
-            // knowable at pointer-up, so the candidate rides along on the
-            // move session — see `_expandTappedSticky`.
-            collapsedStickyId:
-                hit is SketchSticky && hit.collapsed ? hit.id : null,
-          ));
+          _interaction.begin(
+            SketchDragSession(
+              kind: SketchSessionKind.moveSelection,
+              startCanvas: canvas,
+              startScreen: screen,
+              style: _ctrl.currentStyle,
+              additive: additive,
+              moveStartBounds: _selectionBounds(),
+              // A press on a collapsed note may turn out to be a click (which
+              // opens it) or a drag (which moves it). Which one it was is only
+              // knowable at pointer-up, so the candidate rides along on the
+              // move session — see `_expandTappedSticky`.
+              collapsedStickyId: hit is SketchSticky && hit.collapsed
+                  ? hit.id
+                  : null,
+            ),
+          );
           _setConsumed(true);
           return;
         }
         if (!additive) _ctrl.clearSelection();
-        _interaction.begin(SketchDragSession(
-          kind: SketchSessionKind.marquee,
-          startCanvas: canvas,
-          startScreen: screen,
-          style: _ctrl.currentStyle,
-          additive: additive,
-        ));
+        _interaction.begin(
+          SketchDragSession(
+            kind: SketchSessionKind.marquee,
+            startCanvas: canvas,
+            startScreen: screen,
+            style: _ctrl.currentStyle,
+            additive: additive,
+          ),
+        );
         _setConsumed(true);
         return;
 
@@ -296,25 +308,29 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         // on the way would only cost a repaint.
         _eraseAt(canvas);
         _collapseStickiesExcept(null);
-        _interaction.begin(SketchDragSession(
-          kind: SketchSessionKind.erase,
-          startCanvas: canvas,
-          startScreen: screen,
-          style: _ctrl.currentStyle,
-        ));
+        _interaction.begin(
+          SketchDragSession(
+            kind: SketchSessionKind.erase,
+            startCanvas: canvas,
+            startScreen: screen,
+            style: _ctrl.currentStyle,
+          ),
+        );
         _setConsumed(true);
         return;
 
       case SketchTool.freedraw:
         _ctrl.clearSelection();
         _collapseStickiesExcept(null);
-        _interaction.begin(SketchDragSession(
-          kind: SketchSessionKind.createFreedraw,
-          startCanvas: canvas,
-          startScreen: screen,
-          style: _ctrl.currentStyle,
-          tool: tool,
-        ));
+        _interaction.begin(
+          SketchDragSession(
+            kind: SketchSessionKind.createFreedraw,
+            startCanvas: canvas,
+            startScreen: screen,
+            style: _ctrl.currentStyle,
+            tool: tool,
+          ),
+        );
         _setConsumed(true);
         return;
 
@@ -329,13 +345,15 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         // Drawing a new shape is a click outside every open note, the
         // sticky tool included: starting a second note closes the first.
         _collapseStickiesExcept(null);
-        _interaction.begin(SketchDragSession(
-          kind: SketchSessionKind.createBounded,
-          startCanvas: canvas,
-          startScreen: screen,
-          style: _ctrl.currentStyle,
-          tool: tool,
-        ));
+        _interaction.begin(
+          SketchDragSession(
+            kind: SketchSessionKind.createBounded,
+            startCanvas: canvas,
+            startScreen: screen,
+            style: _ctrl.currentStyle,
+            tool: tool,
+          ),
+        );
         _setConsumed(true);
         return;
 
@@ -623,7 +641,8 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     LinearEndpoint endpoint,
     Offset grabbed,
     Offset fixed,
-  })? _endpointTargetAt(Offset screen) {
+  })?
+  _endpointTargetAt(Offset screen) {
     final selected = _ctrl.selectedIds;
     if (selected.isEmpty) return null;
     final viewport = _viewport;
@@ -829,8 +848,12 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     final bounds = element.bounds;
     final tl = ViewportTransform.canvasToScreen(bounds.topLeft, viewport);
     final br = ViewportTransform.canvasToScreen(bounds.bottomRight, viewport);
-    return Rect.fromLTRB(tl.dx, tl.dy, br.dx, br.dy)
-        .inflate(SketchGeometry.selectionPadding);
+    return Rect.fromLTRB(
+      tl.dx,
+      tl.dy,
+      br.dx,
+      br.dy,
+    ).inflate(SketchGeometry.selectionPadding);
   }
 
   // ── Commits ──────────────────────────────────────────────────────────────
@@ -907,9 +930,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
       raw,
       tolerance: widget.simplificationTolerance,
     );
-    _ctrl.add(
-      SketchFreedraw.create(points: simplified, style: session.style),
-    );
+    _ctrl.add(SketchFreedraw.create(points: simplified, style: session.style));
   }
 
   void _eraseAt(Offset canvas) {

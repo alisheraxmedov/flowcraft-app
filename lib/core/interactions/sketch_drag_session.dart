@@ -56,11 +56,11 @@ class SketchDragSession {
     this.linearFixedPoint,
     this.additive = false,
     this.collapsedStickyId,
-  })  : currentCanvas = startCanvas,
-        currentScreen = startScreen,
-        freedrawPoints = kind == SketchSessionKind.createFreedraw
-            ? <Offset>[startCanvas]
-            : null;
+  }) : currentCanvas = startCanvas,
+       currentScreen = startScreen,
+       freedrawPoints = kind == SketchSessionKind.createFreedraw
+           ? <Offset>[startCanvas]
+           : null;
 
   final SketchSessionKind kind;
   final Offset startCanvas;

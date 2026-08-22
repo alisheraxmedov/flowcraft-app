@@ -130,8 +130,9 @@ class SketchPainter extends CustomPainter {
     final badgeMark = element is SketchSticky && element.collapsed;
     final strokeSource = badgeMark ? element.inkColor : style.strokeColor;
     final color = strokeSource.withValues(alpha: style.opacity);
-    final strokeWidth =
-        badgeMark ? StickyBubbleGeometry.glyphStrokeWidth : style.strokeWidth;
+    final strokeWidth = badgeMark
+        ? StickyBubbleGeometry.glyphStrokeWidth
+        : style.strokeWidth;
 
     // ─── fill (under stroke) ─────────────────────────────────────────────
     if (style.fillStyle != FillStyle.none && style.fillColor != null) {
@@ -144,14 +145,17 @@ class SketchPainter extends CustomPainter {
         case FillStyle.crossHatch:
           if (SketchRenderCache.hatchFallsBackToSolid(element)) {
             // Too large to hatch — the cache handed back the silhouette.
-            _fillPaint.color =
-                style.fillColor!.withValues(alpha: style.opacity);
+            _fillPaint.color = style.fillColor!.withValues(
+              alpha: style.opacity,
+            );
             canvas.drawPath(cache.fillPath(element), _fillPaint);
             break;
           }
           _hachurePaint
             ..color = style.fillColor!.withValues(alpha: style.opacity)
-            ..strokeWidth = _scaleStroke(math.max(1.0, style.strokeWidth * 0.5));
+            ..strokeWidth = _scaleStroke(
+              math.max(1.0, style.strokeWidth * 0.5),
+            );
           // The hatch is generated over the bounding rect; clipping it to
           // the outline is what keeps a hatched circle's corners empty.
           final clipped = SketchRenderCache.hatchNeedsClip(element);
@@ -190,14 +194,22 @@ class SketchPainter extends CustomPainter {
     // this switch expression is the one place that collapses the 4
     // otherwise-identical branches into a single call.
     final centeredLabel = switch (element) {
-      SketchRectangle(:final text, :final fontSize) when text != null =>
-        (text, fontSize),
-      SketchEllipse(:final text, :final fontSize) when text != null =>
-        (text, fontSize),
-      SketchDiamond(:final text, :final fontSize) when text != null =>
-        (text, fontSize),
-      SketchTriangle(:final text, :final fontSize) when text != null =>
-        (text, fontSize),
+      SketchRectangle(:final text, :final fontSize) when text != null => (
+        text,
+        fontSize,
+      ),
+      SketchEllipse(:final text, :final fontSize) when text != null => (
+        text,
+        fontSize,
+      ),
+      SketchDiamond(:final text, :final fontSize) when text != null => (
+        text,
+        fontSize,
+      ),
+      SketchTriangle(:final text, :final fontSize) when text != null => (
+        text,
+        fontSize,
+      ),
       _ => null,
     };
     if (!editing && centeredLabel != null) {
@@ -213,8 +225,12 @@ class SketchPainter extends CustomPainter {
     }
   }
 
-  /// Horizontal inset a centred shape label wraps inside of, per side ×2.
-  static const double _labelInset = 12.0;
+  /// Horizontal room a shape's centred label gives up, both sides together,
+  /// before it wraps. Public so the inline editor (`SketchTextEditor`) can
+  /// wrap at exactly the same width — otherwise a label whose natural width
+  /// falls inside these pixels would change line count the moment editing
+  /// ends.
+  static const double labelInset = 12.0;
 
   /// Draws a shape's centred label, laid out once per element instance.
   ///
@@ -234,15 +250,16 @@ class SketchPainter extends CustomPainter {
     // is no room to wrap into, and a negative `maxWidth` trips
     // `TextPainter.layout`'s clamp assertion in debug, every frame, until
     // the shape is widened again.
-    if (bounds.width < _labelInset) return;
+    if (bounds.width < labelInset) return;
     final tp = cache.textPainter(
       element,
       () => TextMetrics.layout(
         text: text,
         fontSize: fontSize,
-        color: element.style.strokeColor
-            .withValues(alpha: element.style.opacity),
-        maxWidth: math.max(0.0, bounds.width - _labelInset),
+        color: element.style.strokeColor.withValues(
+          alpha: element.style.opacity,
+        ),
+        maxWidth: math.max(0.0, bounds.width - labelInset),
         textAlign: TextAlign.center,
       ),
     );
@@ -287,8 +304,9 @@ class SketchPainter extends CustomPainter {
     // Scale the head with the stroke so thick arrows keep proportion.
     final size = math.max(arrow.arrowSize, arrow.style.strokeWidth * 6.0);
     final path = ArrowHead.path(arrow.start, arrow.end, size);
-    _fillPaint.color =
-        arrow.style.strokeColor.withValues(alpha: arrow.style.opacity);
+    _fillPaint.color = arrow.style.strokeColor.withValues(
+      alpha: arrow.style.opacity,
+    );
     canvas.drawPath(path, _fillPaint);
   }
 
@@ -318,11 +336,18 @@ class SketchPainter extends CustomPainter {
       if (!selectedIds.contains(element.id)) continue;
       final canvasRect = element.bounds;
       final tl = ViewportTransform.canvasToScreen(canvasRect.topLeft, viewport);
-      final br = ViewportTransform.canvasToScreen(canvasRect.bottomRight, viewport);
+      final br = ViewportTransform.canvasToScreen(
+        canvasRect.bottomRight,
+        viewport,
+      );
       // Padded by the same shared constant the gesture handler hit-tests
       // against, so the handle under the cursor is the handle that is drawn.
-      final screenRect = Rect.fromLTRB(tl.dx, tl.dy, br.dx, br.dy)
-          .inflate(SketchGeometry.selectionPadding);
+      final screenRect = Rect.fromLTRB(
+        tl.dx,
+        tl.dy,
+        br.dx,
+        br.dy,
+      ).inflate(SketchGeometry.selectionPadding);
       canvas.drawRRect(
         RRect.fromRectAndRadius(screenRect, const Radius.circular(2)),
         _selectionPaint,
@@ -372,18 +397,20 @@ class SketchPainter extends CustomPainter {
   }
 
   static (Offset, Offset)? _endpointsOf(SketchElement e) => switch (e) {
-        SketchLine l => (l.start, l.end),
-        SketchArrow a => (a.start, a.end),
-        _ => null,
-      };
+    SketchLine l => (l.start, l.end),
+    SketchArrow a => (a.start, a.end),
+    _ => null,
+  };
 
   double _scaleStroke(double base) =>
       scaleStrokeWithZoom ? base : base / viewport.zoom;
 
   Rect _viewportCanvasRect(Size size) {
     final topLeft = ViewportTransform.screenToCanvas(Offset.zero, viewport);
-    final bottomRight =
-        ViewportTransform.screenToCanvas(Offset(size.width, size.height), viewport);
+    final bottomRight = ViewportTransform.screenToCanvas(
+      Offset(size.width, size.height),
+      viewport,
+    );
     return Rect.fromLTRB(
       topLeft.dx,
       topLeft.dy,

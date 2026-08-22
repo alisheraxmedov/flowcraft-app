@@ -102,8 +102,7 @@ class SketchRenderCache {
   TextPainter textPainter(
     SketchElement element,
     TextPainter Function() build,
-  ) =>
-      _text[element] ?? _insert(_text, element, build());
+  ) => _text[element] ?? _insert(_text, element, build());
 
   V _insert<V>(Map<SketchElement, V> map, SketchElement element, V value) {
     _insertsSinceSweep++;
@@ -162,23 +161,11 @@ class SketchRenderCache {
           cornerRadius: rect.cornerRadius,
         );
       case SketchEllipse el:
-        path = RoughGenerator.ellipse(
-          el.rect,
-          roughness: r,
-          seed: seed,
-        );
+        path = RoughGenerator.ellipse(el.rect, roughness: r, seed: seed);
       case SketchDiamond d:
-        path = RoughGenerator.diamond(
-          d.rect,
-          roughness: r,
-          seed: seed,
-        );
+        path = RoughGenerator.diamond(d.rect, roughness: r, seed: seed);
       case SketchTriangle t:
-        path = RoughGenerator.triangle(
-          t.rect,
-          roughness: r,
-          seed: seed,
-        );
+        path = RoughGenerator.triangle(t.rect, roughness: r, seed: seed);
       case SketchSticky s:
         // Clean on purpose, whatever the element's roughness — see
         // `StickyBubbleGeometry`. Expanded, the stroke is the very path the
@@ -189,19 +176,9 @@ class SketchRenderCache {
         if (s.collapsed) return StickyBubbleGeometry.glyphPath(s.rect);
         path = StickyBubbleGeometry.bubblePath(s.rect, s.cornerRadius);
       case SketchLine l:
-        path = RoughGenerator.line(
-          l.start,
-          l.end,
-          roughness: r,
-          seed: seed,
-        );
+        path = RoughGenerator.line(l.start, l.end, roughness: r, seed: seed);
       case SketchArrow a:
-        path = RoughGenerator.line(
-          a.start,
-          a.end,
-          roughness: r,
-          seed: seed,
-        );
+        path = RoughGenerator.line(a.start, a.end, roughness: r, seed: seed);
       case SketchFreedraw f:
         path = RoughGenerator.polyline(
           f.points,

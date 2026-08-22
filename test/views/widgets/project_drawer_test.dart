@@ -36,12 +36,14 @@ void main() {
 
   ProjectsState state() => container.read(projectsViewModelProvider);
 
-  testWidgets('lists projects with their size and marks the active one',
-      (tester) async {
+  testWidgets('lists projects with their size and marks the active one', (
+    tester,
+  ) async {
     final project = await repository.create('Architecture');
-    await repository.save(id: project.id, elements: [
-      SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 4, 4)),
-    ]);
+    await repository.save(
+      id: project.id,
+      elements: [SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 4, 4))],
+    );
 
     await pumpDrawer(tester);
 
@@ -54,8 +56,7 @@ void main() {
     );
   });
 
-  testWidgets('creates a project from the New project button',
-      (tester) async {
+  testWidgets('creates a project from the New project button', (tester) async {
     await pumpDrawer(tester);
 
     await tester.tap(find.text('New project'));
@@ -135,8 +136,9 @@ void main() {
     expect(state().active?.name, 'Healthy');
   });
 
-  testWidgets('closes its own drawer when hosted as Scaffold.drawer',
-      (tester) async {
+  testWidgets('closes its own drawer when hosted as Scaffold.drawer', (
+    tester,
+  ) async {
     final other = await repository.create('Other');
     await container.read(projectsViewModelProvider.notifier).ready;
     final scaffoldKey = GlobalKey<ScaffoldState>();
@@ -163,8 +165,9 @@ void main() {
     expect(state().activeId, other.id);
   });
 
-  testWidgets('surfaces a failure in a banner instead of silently',
-      (tester) async {
+  testWidgets('surfaces a failure in a banner instead of silently', (
+    tester,
+  ) async {
     await pumpDrawer(tester);
 
     await container

@@ -21,12 +21,7 @@ enum StrokeStyle {
 }
 
 /// Fill pattern for closed sketch elements.
-enum FillStyle {
-  none,
-  solid,
-  hachure,
-  crossHatch;
-}
+enum FillStyle { none, solid, hachure, crossHatch }
 
 /// Immutable visual style for a [SketchElement].
 ///
@@ -135,22 +130,19 @@ class SketchStyle {
     if (fillStyle == FillStyle.none) {
       return copyWith(fillColor: null, fillStyle: FillStyle.none);
     }
-    return copyWith(
-      fillColor: fillColor ?? strokeColor,
-      fillStyle: fillStyle,
-    );
+    return copyWith(fillColor: fillColor ?? strokeColor, fillStyle: fillStyle);
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'strokeColor': strokeColor.toARGB32(),
-        if (fillColor != null) 'fillColor': fillColor!.toARGB32(),
-        'strokeWidth': strokeWidth,
-        'strokeStyle': strokeStyle.name,
-        'roughness': roughness,
-        'fillStyle': fillStyle.name,
-        'opacity': opacity,
-        'seed': seed,
-      };
+    'strokeColor': strokeColor.toARGB32(),
+    if (fillColor != null) 'fillColor': fillColor!.toARGB32(),
+    'strokeWidth': strokeWidth,
+    'strokeStyle': strokeStyle.name,
+    'roughness': roughness,
+    'fillStyle': fillStyle.name,
+    'opacity': opacity,
+    'seed': seed,
+  };
 
   /// Reads a style, clamping the numeric fields into range.
   ///
@@ -210,15 +202,15 @@ class SketchStyle {
 
   @override
   int get hashCode => Object.hash(
-        strokeColor,
-        fillColor,
-        strokeWidth,
-        strokeStyle,
-        roughness,
-        fillStyle,
-        opacity,
-        seed,
-      );
+    strokeColor,
+    fillColor,
+    strokeWidth,
+    strokeStyle,
+    roughness,
+    fillStyle,
+    opacity,
+    seed,
+  );
 }
 
 const Object _sentinel = Object();

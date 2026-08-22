@@ -54,7 +54,10 @@ void main() {
         fontSize: 16,
         fontFamily: 'JetBrains Mono',
       );
-      expect(mono.bounds.size, measured('Hello', 16, fontFamily: 'JetBrains Mono'));
+      expect(
+        mono.bounds.size,
+        measured('Hello', 16, fontFamily: 'JetBrains Mono'),
+      );
     });
 
     test('is wider than the approximation it replaced', () {
@@ -89,8 +92,11 @@ void main() {
         fontSize: 16,
       );
       expect(identical(t.bounds, t.bounds), isTrue);
-      expect(identical(t.unrotatedBounds, t.bounds), isTrue,
-          reason: 'unrotated: the very instance, not a copy');
+      expect(
+        identical(t.unrotatedBounds, t.bounds),
+        isTrue,
+        reason: 'unrotated: the very instance, not a copy',
+      );
       // A new instance is a new measurement — that is what makes the cache
       // safe: nothing an element is measured from can change under it.
       final retyped = t.copyWith(text: 'Different');
@@ -123,8 +129,7 @@ void main() {
       expect(note.labelSize.width, greaterThan(0));
       // Zero for a note with no text, without touching the cache.
       expect(
-        SketchSticky.create(rect: const Rect.fromLTWH(0, 0, 180, 72))
-            .labelSize,
+        SketchSticky.create(rect: const Rect.fromLTWH(0, 0, 180, 72)).labelSize,
         Size.zero,
       );
     });
@@ -159,8 +164,11 @@ void main() {
         end: const Offset(-60, 130),
         arrowSize: 30,
       );
-      final head =
-          ArrowHead.path(arrow.start, arrow.end, arrow.headLength).getBounds();
+      final head = ArrowHead.path(
+        arrow.start,
+        arrow.end,
+        arrow.headLength,
+      ).getBounds();
       final segment = Rect.fromPoints(arrow.start, arrow.end);
       final expected = segment.expandToInclude(head);
       expect(arrow.bounds.left, closeTo(expected.left, 1e-6));
@@ -235,66 +243,73 @@ void main() {
 
     test('a rect coordinate of 1e999 throws FormatException', () {
       expect(huge.isInfinite, isTrue);
-      final json = _plain(SketchRectangle.create(
-        id: 'r',
-        rect: const Rect.fromLTWH(0, 0, 10, 10),
-      ));
+      final json = _plain(
+        SketchRectangle.create(
+          id: 'r',
+          rect: const Rect.fromLTWH(0, 0, 10, 10),
+        ),
+      );
       (json['rect'] as Map<String, dynamic>)['l'] = huge;
       expect(() => SketchElement.fromJson(json), throwsFormatException);
     });
 
     test('a negative-infinite width throws FormatException', () {
-      final json = _plain(SketchEllipse.create(
-        id: 'e',
-        rect: const Rect.fromLTWH(0, 0, 10, 10),
-      ));
+      final json = _plain(
+        SketchEllipse.create(id: 'e', rect: const Rect.fromLTWH(0, 0, 10, 10)),
+      );
       (json['rect'] as Map<String, dynamic>)['w'] = -huge;
       expect(() => SketchElement.fromJson(json), throwsFormatException);
     });
 
     test('an infinite line endpoint throws FormatException', () {
-      final json = _plain(SketchLine.create(
-        id: 'l',
-        start: Offset.zero,
-        end: const Offset(10, 10),
-      ));
+      final json = _plain(
+        SketchLine.create(
+          id: 'l',
+          start: Offset.zero,
+          end: const Offset(10, 10),
+        ),
+      );
       (json['end'] as Map<String, dynamic>)['dy'] = huge;
       expect(() => SketchElement.fromJson(json), throwsFormatException);
     });
 
     test('a NaN text position throws FormatException', () {
-      final json = _plain(SketchText.create(
-        id: 't',
-        position: Offset.zero,
-        text: 'hi',
-      ));
+      final json = _plain(
+        SketchText.create(id: 't', position: Offset.zero, text: 'hi'),
+      );
       (json['position'] as Map<String, dynamic>)['dx'] = double.nan;
       expect(() => SketchElement.fromJson(json), throwsFormatException);
     });
 
     test('one bad freedraw point throws FormatException for the stroke', () {
-      final json = _plain(SketchFreedraw.create(
-        id: 'f',
-        points: const [Offset(0, 0), Offset(5, 5), Offset(10, 0)],
-      ));
+      final json = _plain(
+        SketchFreedraw.create(
+          id: 'f',
+          points: const [Offset(0, 0), Offset(5, 5), Offset(10, 0)],
+        ),
+      );
       ((json['points'] as List)[1] as Map<String, dynamic>)['dx'] = huge;
       expect(() => SketchElement.fromJson(json), throwsFormatException);
     });
 
     test('an empty freedraw throws FormatException, not an assertion', () {
-      final json = _plain(SketchFreedraw.create(
-        id: 'f',
-        points: const [Offset(0, 0), Offset(5, 5)],
-      ));
+      final json = _plain(
+        SketchFreedraw.create(
+          id: 'f',
+          points: const [Offset(0, 0), Offset(5, 5)],
+        ),
+      );
       json['points'] = <dynamic>[];
       expect(() => SketchElement.fromJson(json), throwsFormatException);
     });
 
     test('a non-numeric coordinate throws FormatException', () {
-      final json = _plain(SketchRectangle.create(
-        id: 'r',
-        rect: const Rect.fromLTWH(0, 0, 10, 10),
-      ));
+      final json = _plain(
+        SketchRectangle.create(
+          id: 'r',
+          rect: const Rect.fromLTWH(0, 0, 10, 10),
+        ),
+      );
       (json['rect'] as Map<String, dynamic>)['t'] = 'ten';
       expect(() => SketchElement.fromJson(json), throwsFormatException);
     });
@@ -310,11 +325,13 @@ void main() {
   group('SketchElement.fromJson style-number clamping', () {
     // Style numbers are clamped rather than refused: a font size of 1e6 is
     // a file worth rescuing, a coordinate of 1e999 is not.
-    Map<String, dynamic> rectJson() => _plain(SketchRectangle.create(
-          id: 'r',
-          rect: const Rect.fromLTWH(0, 0, 10, 10),
-          text: 'label',
-        ));
+    Map<String, dynamic> rectJson() => _plain(
+      SketchRectangle.create(
+        id: 'r',
+        rect: const Rect.fromLTWH(0, 0, 10, 10),
+        text: 'label',
+      ),
+    );
 
     test('fontSize is clamped to 1..512 on every text-bearing element', () {
       final json = rectJson()..['fontSize'] = 1e6;
@@ -323,18 +340,18 @@ void main() {
       final tiny = rectJson()..['fontSize'] = -4;
       expect((SketchElement.fromJson(tiny) as SketchRectangle).fontSize, 1);
 
-      final sticky = _plain(SketchSticky.create(
-        id: 's',
-        rect: const Rect.fromLTWH(0, 0, 180, 72),
-        text: 'note',
-      ))..['fontSize'] = 0;
+      final sticky = _plain(
+        SketchSticky.create(
+          id: 's',
+          rect: const Rect.fromLTWH(0, 0, 180, 72),
+          text: 'note',
+        ),
+      )..['fontSize'] = 0;
       expect((SketchElement.fromJson(sticky) as SketchSticky).fontSize, 1);
 
-      final text = _plain(SketchText.create(
-        id: 't',
-        position: Offset.zero,
-        text: 'hi',
-      ))..['fontSize'] = 9999;
+      final text = _plain(
+        SketchText.create(id: 't', position: Offset.zero, text: 'hi'),
+      )..['fontSize'] = 9999;
       expect((SketchElement.fromJson(text) as SketchText).fontSize, 512);
     });
 
@@ -344,13 +361,17 @@ void main() {
     });
 
     test('arrowSize is clamped to a sane range', () {
-      Map<String, dynamic> arrowJson(Object? size) => _plain(SketchArrow.create(
-            id: 'a',
-            start: Offset.zero,
-            end: const Offset(10, 10),
-          ))..['arrowSize'] = size;
+      Map<String, dynamic> arrowJson(Object? size) => _plain(
+        SketchArrow.create(
+          id: 'a',
+          start: Offset.zero,
+          end: const Offset(10, 10),
+        ),
+      )..['arrowSize'] = size;
       expect(
-          (SketchElement.fromJson(arrowJson(-5)) as SketchArrow).arrowSize, 0);
+        (SketchElement.fromJson(arrowJson(-5)) as SketchArrow).arrowSize,
+        0,
+      );
       expect(
         (SketchElement.fromJson(arrowJson(1e9)) as SketchArrow).arrowSize,
         512,
@@ -364,10 +385,7 @@ void main() {
 
     test('a negative cornerRadius is floored at zero', () {
       final json = rectJson()..['cornerRadius'] = -12;
-      expect(
-        (SketchElement.fromJson(json) as SketchRectangle).cornerRadius,
-        0,
-      );
+      expect((SketchElement.fromJson(json) as SketchRectangle).cornerRadius, 0);
     });
 
     test('a NaN angle takes zero rather than poisoning bounds', () {
@@ -389,9 +407,9 @@ void main() {
       // wobbled identically. A file's seeds are never touched — see below.
       final seeds = <int>{
         for (var i = 0; i < 8; i++)
-          SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 9, 9))
-              .style
-              .seed,
+          SketchRectangle.create(
+            rect: const Rect.fromLTWH(0, 0, 9, 9),
+          ).style.seed,
       };
       expect(seeds.length, greaterThan(1));
       expect(seeds.contains(SketchStyle.defaultSeed), isFalse);
@@ -399,10 +417,16 @@ void main() {
 
     test('applies to every subtype', () {
       for (final el in _oneOfEachSubtype()) {
-        expect(el.style.seed, isNot(SketchStyle.defaultSeed),
-            reason: '${el.runtimeType}');
-        expect(el.style.seed, inInclusiveRange(1, 0x7FFFFFFE),
-            reason: '${el.runtimeType}: inside the Park–Miller range');
+        expect(
+          el.style.seed,
+          isNot(SketchStyle.defaultSeed),
+          reason: '${el.runtimeType}',
+        );
+        expect(
+          el.style.seed,
+          inInclusiveRange(1, 0x7FFFFFFE),
+          reason: '${el.runtimeType}: inside the Park–Miller range',
+        );
       }
     });
 
@@ -425,10 +449,9 @@ void main() {
     });
 
     test('fromJson keeps the file\'s seed, so a scene renders as saved', () {
-      final json = _plain(SketchRectangle.create(
-        id: 'r',
-        rect: const Rect.fromLTWH(0, 0, 9, 9),
-      ));
+      final json = _plain(
+        SketchRectangle.create(id: 'r', rect: const Rect.fromLTWH(0, 0, 9, 9)),
+      );
       (json['style'] as Map<String, dynamic>)['seed'] = 1;
       expect(SketchElement.fromJson(json).style.seed, 1);
     });
@@ -453,8 +476,11 @@ void main() {
         // A group that dissolves the moment it is dragged or restyled is
         // worse than no grouping at all. `copyWithStyle` is each subtype's
         // own `copyWith` underneath, so this covers those too.
-        expect(grouped.translate(const Offset(3, 4)).groupId, 'group-1',
-            reason: reason);
+        expect(
+          grouped.translate(const Offset(3, 4)).groupId,
+          'group-1',
+          reason: reason,
+        );
         expect(
           grouped.copyWithStyle(const SketchStyle(strokeWidth: 4)).groupId,
           'group-1',
@@ -483,8 +509,11 @@ void main() {
       // Adding the field must not change what a scene without groups
       // serialises to — that is what keeps it a version-1 payload.
       for (final el in _oneOfEachSubtype()) {
-        expect(el.toJson().containsKey('groupId'), isFalse,
-            reason: '${el.runtimeType}');
+        expect(
+          el.toJson().containsKey('groupId'),
+          isFalse,
+          reason: '${el.runtimeType}',
+        );
       }
     });
 
@@ -522,11 +551,11 @@ void main() {
     const rect = Rect.fromLTWH(120, 60, 200, 90);
 
     SketchSticky note({bool collapsed = false}) => SketchSticky.create(
-          id: 'note',
-          rect: rect,
-          text: 'remember this',
-          collapsed: collapsed,
-        );
+      id: 'note',
+      rect: rect,
+      text: 'remember this',
+      collapsed: collapsed,
+    );
 
     test('bounds are the badge when collapsed and the rect when not', () {
       expect(note().bounds, rect);
@@ -539,24 +568,27 @@ void main() {
       expect(note(collapsed: true).bounds.topLeft, rect.topLeft);
     });
 
-    test('collapsing keeps the expanded geometry, so expanding restores it',
-        () {
-      final original = note();
-      final roundTripped = original.copyWith(collapsed: true).copyWith(
-            collapsed: false,
-          );
-      expect(roundTripped.rect, original.rect);
-      expect(roundTripped.bounds, original.bounds);
-      expect(roundTripped.text, original.text);
-      expect(roundTripped.fontSize, original.fontSize);
-      // Even while collapsed, the bubble's geometry is still on the element
-      // — it is only `bounds` that shrinks.
-      expect(original.copyWith(collapsed: true).rect, rect);
-    });
+    test(
+      'collapsing keeps the expanded geometry, so expanding restores it',
+      () {
+        final original = note();
+        final roundTripped = original
+            .copyWith(collapsed: true)
+            .copyWith(collapsed: false);
+        expect(roundTripped.rect, original.rect);
+        expect(roundTripped.bounds, original.bounds);
+        expect(roundTripped.text, original.text);
+        expect(roundTripped.fontSize, original.fontSize);
+        // Even while collapsed, the bubble's geometry is still on the element
+        // — it is only `bounds` that shrinks.
+        expect(original.copyWith(collapsed: true).rect, rect);
+      },
+    );
 
     test('round-trips through JSON', () {
       final restored =
-          SketchElement.fromJson(note(collapsed: true).toJson()) as SketchSticky;
+          SketchElement.fromJson(note(collapsed: true).toJson())
+              as SketchSticky;
       expect(restored.collapsed, isTrue);
       expect(restored.rect, rect);
       expect(restored.bounds, StickyBubbleGeometry.collapsedBounds(rect));
@@ -571,16 +603,18 @@ void main() {
     test('defaults to false in a payload written before it existed', () {
       // Verbatim sticky as builds before `collapsed` wrote it, down to the
       // 4px corner radius and 20pt label those builds defaulted to.
-      final restored = SketchElement.fromJson(<String, dynamic>{
-        'type': 'sticky',
-        'id': 's1',
-        'style': const SketchStyle().toJson(),
-        'rect': {'l': 10.0, 't': 20.0, 'w': 160.0, 'h': 80.0},
-        'angle': 0.0,
-        'cornerRadius': 4.0,
-        'text': 'old note',
-        'fontSize': 20.0,
-      }) as SketchSticky;
+      final restored =
+          SketchElement.fromJson(<String, dynamic>{
+                'type': 'sticky',
+                'id': 's1',
+                'style': const SketchStyle().toJson(),
+                'rect': {'l': 10.0, 't': 20.0, 'w': 160.0, 'h': 80.0},
+                'angle': 0.0,
+                'cornerRadius': 4.0,
+                'text': 'old note',
+                'fontSize': 20.0,
+              })
+              as SketchSticky;
       expect(restored.collapsed, isFalse);
       expect(restored.bounds, const Rect.fromLTWH(10, 20, 160, 80));
       // The note keeps the numbers it was saved with, rather than being
@@ -613,9 +647,7 @@ void main() {
     test('a press with no drag still yields a usable note', () {
       // A 0x0 drag rect used to be discarded by the commit path, so clicking
       // with the sticky tool created nothing at all.
-      final settled = SketchSticky.rectFor(
-        const Rect.fromLTWH(50, 50, 0, 0),
-      );
+      final settled = SketchSticky.rectFor(const Rect.fromLTWH(50, 50, 0, 0));
       expect(settled.topLeft, const Offset(50, 50));
       expect(settled.size, SketchSticky.defaultSize);
     });
@@ -644,13 +676,13 @@ void main() {
 
   group('SketchSticky.inkColor', () {
     SketchSticky painted(Color stroke, Color? fill) => SketchSticky.create(
-          rect: const Rect.fromLTWH(0, 0, 10, 10),
-          style: SketchStyle(
-            strokeColor: stroke,
-            fillColor: fill,
-            fillStyle: fill == null ? FillStyle.none : FillStyle.solid,
-          ),
-        );
+      rect: const Rect.fromLTWH(0, 0, 10, 10),
+      style: SketchStyle(
+        strokeColor: stroke,
+        fillColor: fill,
+        fillStyle: fill == null ? FillStyle.none : FillStyle.solid,
+      ),
+    );
 
     test('is dark on the default paper, not the outline colour', () {
       // The stroke is the bubble's *edge* — a darker shade of the paper —
@@ -687,8 +719,7 @@ void main() {
       expect(repainted.inkColor.computeLuminance(), greaterThan(0.5));
     });
 
-    test('an unfilled note takes its outline colour, like any shape label',
-        () {
+    test('an unfilled note takes its outline colour, like any shape label', () {
       const ink = Color(0xFFAA0000);
       expect(painted(ink, null).inkColor, ink);
     });
@@ -727,9 +758,11 @@ void main() {
 
     test('is a no-op on a collapsed note or one with no text', () {
       expect(
-        SketchSticky.create(rect: rect, text: paragraph, collapsed: true)
-            .fittedToText()
-            .rect,
+        SketchSticky.create(
+          rect: rect,
+          text: paragraph,
+          collapsed: true,
+        ).fittedToText().rect,
         rect,
       );
       expect(SketchSticky.create(rect: rect).fittedToText().rect, rect);
@@ -748,10 +781,10 @@ void main() {
     const binding = SketchBinding(elementId: 'shape-1', focus: 0.25, gap: 4);
 
     SketchArrow arrow() => SketchArrow.create(
-          id: 'a1',
-          start: Offset.zero,
-          end: const Offset(30, 30),
-        );
+      id: 'a1',
+      start: Offset.zero,
+      end: const Offset(30, 30),
+    );
 
     test('default to null and stay out of the JSON', () {
       final json = arrow().toJson();

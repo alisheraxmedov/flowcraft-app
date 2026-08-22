@@ -48,10 +48,7 @@ Widget _rail(SketchController controller, {required double height}) {
 }
 
 SketchRectangle _rect({required String id, double left = 0}) =>
-    SketchRectangle.create(
-      id: id,
-      rect: Rect.fromLTWH(left, 0, 100, 60),
-    );
+    SketchRectangle.create(id: id, rect: Rect.fromLTWH(left, 0, 100, 60));
 
 /// Opens [tooltip]'s palette popover and taps the swatch at [index].
 Future<void> _pick(WidgetTester tester, String tooltip, int index) async {
@@ -60,9 +57,9 @@ Future<void> _pick(WidgetTester tester, String tooltip, int index) async {
   await tester.tap(
     find
         .descendant(
-          of: find.byType(tooltip == 'Fill color'
-              ? FillPalettePopover
-              : PalettePopover),
+          of: find.byType(
+            tooltip == 'Fill color' ? FillPalettePopover : PalettePopover,
+          ),
           matching: find.byType(Swatch),
         )
         .at(index),
@@ -84,8 +81,9 @@ void main() {
   final stroke = SketchToolbarRich.defaultPalette[1];
 
   group('SketchToolbarRich fill colour', () {
-    testWidgets('recolours the selected shape and makes the fill visible',
-        (tester) async {
+    testWidgets('recolours the selected shape and makes the fill visible', (
+      tester,
+    ) async {
       final controller = SketchController(initialElements: [_rect(id: 'a')]);
       addTearDown(controller.dispose);
       controller.select('a');
@@ -106,8 +104,9 @@ void main() {
       expect(controller.currentStyle.fillStyle, FillStyle.solid);
     });
 
-    testWidgets('one undo reverts the pick across a multi-element selection',
-        (tester) async {
+    testWidgets('one undo reverts the pick across a multi-element selection', (
+      tester,
+    ) async {
       final controller = SketchController(
         initialElements: [
           _rect(id: 'a'),
@@ -129,10 +128,14 @@ void main() {
 
       controller.undo();
 
-      expect(controller.elements.map((e) => e.style.fillColor),
-          everyElement(isNull));
-      expect(controller.elements.map((e) => e.style.fillStyle),
-          everyElement(FillStyle.none));
+      expect(
+        controller.elements.map((e) => e.style.fillColor),
+        everyElement(isNull),
+      );
+      expect(
+        controller.elements.map((e) => e.style.fillStyle),
+        everyElement(FillStyle.none),
+      );
       expect(controller.canUndo, isFalse);
     });
 
@@ -157,8 +160,9 @@ void main() {
       expect(style.fillStyle, FillStyle.none);
     });
 
-    testWidgets('touches only currentStyle when nothing is selected',
-        (tester) async {
+    testWidgets('touches only currentStyle when nothing is selected', (
+      tester,
+    ) async {
       final controller = SketchController(initialElements: [_rect(id: 'a')]);
       addTearDown(controller.dispose);
 
@@ -181,13 +185,16 @@ void main() {
         );
 
     T anchor<T extends Widget>(WidgetTester tester, String tooltip) =>
-        tester.widget<T>(find.descendant(
-          of: find.byTooltip(tooltip),
-          matching: find.byType(T),
-        ));
+        tester.widget<T>(
+          find.descendant(
+            of: find.byTooltip(tooltip),
+            matching: find.byType(T),
+          ),
+        );
 
-    testWidgets('shows the selected element, not the pending default',
-        (tester) async {
+    testWidgets('shows the selected element, not the pending default', (
+      tester,
+    ) async {
       final controller = SketchController(
         initialElements: [
           styled('a', SketchStyle(strokeColor: stroke, strokeWidth: 6)),
@@ -205,8 +212,9 @@ void main() {
       expect(anchor<StrokeWidthGlyph>(tester, 'Stroke width').width, 6);
     });
 
-    testWidgets('falls back to currentStyle when nothing is selected',
-        (tester) async {
+    testWidgets('falls back to currentStyle when nothing is selected', (
+      tester,
+    ) async {
       final controller = SketchController(
         initialElements: [
           styled('a', SketchStyle(strokeColor: stroke, strokeWidth: 6)),
@@ -217,18 +225,25 @@ void main() {
       await tester.pumpWidget(_host(controller));
 
       final current = controller.currentStyle;
-      expect(anchor<SwatchCircle>(tester, 'Stroke color').color,
-          current.strokeColor);
-      expect(anchor<StrokeWidthGlyph>(tester, 'Stroke width').width,
-          current.strokeWidth);
+      expect(
+        anchor<SwatchCircle>(tester, 'Stroke color').color,
+        current.strokeColor,
+      );
+      expect(
+        anchor<StrokeWidthGlyph>(tester, 'Stroke width').width,
+        current.strokeWidth,
+      );
     });
 
     testWidgets('follows the selection as it changes', (tester) async {
       final controller = SketchController(
         initialElements: [
           styled('a', SketchStyle(strokeColor: stroke)),
-          styled('b', const SketchStyle(strokeColor: Color(0xFF0CA678)),
-              left: 200),
+          styled(
+            'b',
+            const SketchStyle(strokeColor: Color(0xFF0CA678)),
+            left: 200,
+          ),
         ],
       );
       addTearDown(controller.dispose);
@@ -241,8 +256,10 @@ void main() {
 
       controller.select('b');
       await tester.pump();
-      expect(anchor<SwatchCircle>(tester, 'Stroke color').color,
-          const Color(0xFF0CA678));
+      expect(
+        anchor<SwatchCircle>(tester, 'Stroke color').color,
+        const Color(0xFF0CA678),
+      );
     });
 
     testWidgets('a disagreeing multi-selection reads as mixed', (tester) async {
@@ -275,8 +292,9 @@ void main() {
       expect(anchor<StrokeWidthGlyph>(tester, 'Stroke width').width, 6);
     });
 
-    testWidgets('a mixed field marks no swatch as current in its popover',
-        (tester) async {
+    testWidgets('a mixed field marks no swatch as current in its popover', (
+      tester,
+    ) async {
       final controller = SketchController(
         initialElements: [
           styled('a', SketchStyle(strokeColor: stroke)),
@@ -290,8 +308,10 @@ void main() {
       await tester.tap(find.byTooltip('Stroke color — mixed'));
       await tester.pumpAndSettle();
 
-      expect(tester.widget<PalettePopover>(find.byType(PalettePopover)).selected,
-          isNull);
+      expect(
+        tester.widget<PalettePopover>(find.byType(PalettePopover)).selected,
+        isNull,
+      );
     });
 
     testWidgets('an agreeing multi-selection is not mixed', (tester) async {
@@ -312,8 +332,9 @@ void main() {
   });
 
   group('SketchToolbarRich stroke colour', () {
-    testWidgets('recolours the selected shape and is undone in one step',
-        (tester) async {
+    testWidgets('recolours the selected shape and is undone in one step', (
+      tester,
+    ) async {
       final controller = SketchController(initialElements: [_rect(id: 'a')]);
       addTearDown(controller.dispose);
       controller.select('a');
@@ -343,18 +364,28 @@ void main() {
       addTearDown(controller.dispose);
       await tester.pumpWidget(_rail(controller, height: height));
 
-      final scrollable = tester.state<ScrollableState>(find.descendant(
-        of: find.byType(SketchToolbarRich),
-        matching: find.byType(Scrollable),
-      ));
-      expect(scrollable.position.maxScrollExtent, 0,
-          reason: 'nothing left to scroll to at $height px');
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(SketchToolbarRich),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(
+        scrollable.position.maxScrollExtent,
+        0,
+        reason: 'nothing left to scroll to at $height px',
+      );
 
       final clear = tester.getRect(find.byTooltip('Clear sketches'));
-      expect(clear.bottom, lessThanOrEqualTo(height),
-          reason: 'the last control is inside the body at $height px');
+      expect(
+        clear.bottom,
+        lessThanOrEqualTo(height),
+        reason: 'the last control is inside the body at $height px',
+      );
       for (final tool in SketchTool.values) {
-        final rect = tester.getRect(find.byTooltip(ToolShortcuts.tooltip(tool)));
+        final rect = tester.getRect(
+          find.byTooltip(ToolShortcuts.tooltip(tool)),
+        );
         expect(rect.bottom, lessThanOrEqualTo(height));
       }
     }
@@ -385,15 +416,19 @@ void main() {
   });
 
   group('tool tooltips', () {
-    testWidgets('name the tool and its key, never the enum identifier',
-        (tester) async {
+    testWidgets('name the tool and its key, never the enum identifier', (
+      tester,
+    ) async {
       final controller = SketchController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller, tools: SketchTool.values));
 
       for (final tool in SketchTool.values) {
-        expect(find.byTooltip(tool.name), findsNothing,
-            reason: '"${tool.name}" is a Dart identifier, not a label');
+        expect(
+          find.byTooltip(tool.name),
+          findsNothing,
+          reason: '"${tool.name}" is a Dart identifier, not a label',
+        );
         expect(find.byTooltip(ToolShortcuts.tooltip(tool)), findsOneWidget);
       }
       // The reference sheet's wording, plus the key it teaches.
@@ -406,12 +441,16 @@ void main() {
     const lightInk = Color(0xFF1E1E1E);
     final darkInk = AppTheme.dark().colorScheme.onSurface;
 
-    testWidgets('a fresh controller on the dark theme draws in onSurface',
-        (tester) async {
+    testWidgets('a fresh controller on the dark theme draws in onSurface', (
+      tester,
+    ) async {
       final controller = SketchController();
       addTearDown(controller.dispose);
-      expect(controller.currentStyle.strokeColor, lightInk,
-          reason: "the model's own default is the light theme's ink");
+      expect(
+        controller.currentStyle.strokeColor,
+        lightInk,
+        reason: "the model's own default is the light theme's ink",
+      );
 
       await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
       await tester.pump();
@@ -420,8 +459,9 @@ void main() {
       expect(darkInk, isNot(lightInk));
     });
 
-    testWidgets('the default follows a theme toggle, both ways',
-        (tester) async {
+    testWidgets('the default follows a theme toggle, both ways', (
+      tester,
+    ) async {
       // `MaterialApp` cross-fades between themes, so each switch is settled
       // — the stroke tracks the lerp frame by frame and lands on the exact
       // token at the end.
@@ -446,8 +486,9 @@ void main() {
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller, theme: AppTheme.light()));
       await tester.pumpAndSettle();
-      controller.currentStyle =
-          controller.currentStyle.copyWith(strokeColor: stroke);
+      controller.currentStyle = controller.currentStyle.copyWith(
+        strokeColor: stroke,
+      );
 
       await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
       await tester.pumpAndSettle();
@@ -455,8 +496,9 @@ void main() {
       expect(controller.currentStyle.strokeColor, stroke);
     });
 
-    testWidgets("the palette's first swatch is the theme's ink",
-        (tester) async {
+    testWidgets("the palette's first swatch is the theme's ink", (
+      tester,
+    ) async {
       final controller = SketchController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
@@ -472,8 +514,9 @@ void main() {
   });
 
   group('popovers', () {
-    testWidgets('Escape closes the popover instead of deselecting',
-        (tester) async {
+    testWidgets('Escape closes the popover instead of deselecting', (
+      tester,
+    ) async {
       final controller = SketchController(initialElements: [_rect(id: 'a')]);
       addTearDown(controller.dispose);
       controller.select('a');
@@ -508,20 +551,23 @@ void main() {
       );
     });
 
-    testWidgets('the stroke-width slider follows a change of selection',
-        (tester) async {
-      final controller = SketchController(initialElements: [
-        SketchRectangle.create(
-          id: 'a',
-          rect: const Rect.fromLTWH(0, 0, 100, 60),
-          style: const SketchStyle(strokeWidth: 6),
-        ),
-        SketchRectangle.create(
-          id: 'b',
-          rect: const Rect.fromLTWH(200, 0, 100, 60),
-          style: const SketchStyle(strokeWidth: 2),
-        ),
-      ]);
+    testWidgets('the stroke-width slider follows a change of selection', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [
+          SketchRectangle.create(
+            id: 'a',
+            rect: const Rect.fromLTWH(0, 0, 100, 60),
+            style: const SketchStyle(strokeWidth: 6),
+          ),
+          SketchRectangle.create(
+            id: 'b',
+            rect: const Rect.fromLTWH(200, 0, 100, 60),
+            style: const SketchStyle(strokeWidth: 2),
+          ),
+        ],
+      );
       addTearDown(controller.dispose);
       controller.select('a');
       await tester.pumpWidget(_host(controller));
@@ -552,7 +598,10 @@ void main() {
 
   testWidgets('Clear says what it did and offers the way back', (tester) async {
     final controller = SketchController(
-      initialElements: [_rect(id: 'a'), _rect(id: 'b', left: 200)],
+      initialElements: [
+        _rect(id: 'a'),
+        _rect(id: 'b', left: 200),
+      ],
     );
     addTearDown(controller.dispose);
     await tester.pumpWidget(_host(controller));

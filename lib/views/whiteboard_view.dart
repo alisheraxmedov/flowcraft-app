@@ -307,8 +307,10 @@ class _TopBarState extends State<_TopBar> {
                 Consumer(
                   builder: (context, ref, _) => ExportMenuButton(
                     controller: ctrl,
-                    documentName:
-                        ref.watch(projectsViewModelProvider).active?.name,
+                    documentName: ref
+                        .watch(projectsViewModelProvider)
+                        .active
+                        ?.name,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.gutter),

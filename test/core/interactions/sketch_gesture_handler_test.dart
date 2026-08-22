@@ -52,23 +52,23 @@ Future<void> _holding(
 /// A filled rectangle, so a tap anywhere in its interior hits it
 /// independently of stroke-hit tolerance.
 SketchRectangle _filledBox({String id = 'box'}) => SketchRectangle.create(
-      id: id,
-      rect: const Rect.fromLTWH(0, 0, 100, 100),
-      style: const SketchStyle(
-        fillStyle: FillStyle.solid,
-        fillColor: Color(0xFF000000),
-      ),
-    );
+  id: id,
+  rect: const Rect.fromLTWH(0, 0, 100, 100),
+  style: const SketchStyle(
+    fillStyle: FillStyle.solid,
+    fillColor: Color(0xFF000000),
+  ),
+);
 
 /// 'Hello' at 16pt: 80px wide once measured, against the 44px the replaced
 /// `length * fontSize * 0.55` guess claimed. A tap at x=70 therefore lands
 /// on a painted glyph that the old bounds put outside the element.
 SketchText _greeting() => SketchText.create(
-      id: 'greeting',
-      position: Offset.zero,
-      text: 'Hello',
-      fontSize: 16,
-    );
+  id: 'greeting',
+  position: Offset.zero,
+  text: 'Hello',
+  fontSize: 16,
+);
 
 /// Regression coverage for the interaction layer — the eraser tool, which
 /// the user reported as "stopped working" after the `SketchHitTest`
@@ -76,76 +76,79 @@ SketchText _greeting() => SketchText.create(
 /// on existing text used to spawn a second text box on top of it.
 void main() {
   testWidgets(
-      'eraser tool removes the element under the pointer on pointer down',
-      (tester) async {
-    final controller = SketchController(currentTool: SketchTool.eraser);
-    addTearDown(controller.dispose);
+    'eraser tool removes the element under the pointer on pointer down',
+    (tester) async {
+      final controller = SketchController(currentTool: SketchTool.eraser);
+      addTearDown(controller.dispose);
 
-    // A filled rectangle so a tap anywhere in its interior hits it,
-    // independent of stroke-hit tolerance edge cases.
-    final rect = SketchRectangle.create(
-      id: 'erase-me',
-      rect: const Rect.fromLTWH(0, 0, 100, 100),
-      style: const SketchStyle(
-        fillStyle: FillStyle.solid,
-        fillColor: Color(0xFF000000),
-      ),
-    );
-    controller.add(rect);
-    expect(controller.elements, hasLength(1));
-
-    final interaction = SketchInteractionState();
-    addTearDown(interaction.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SketchGestureHandler(
-          controller: controller,
-          interaction: interaction,
-          viewportProvider: () => const FlowViewport(),
-          child: const SizedBox.expand(),
+      // A filled rectangle so a tap anywhere in its interior hits it,
+      // independent of stroke-hit tolerance edge cases.
+      final rect = SketchRectangle.create(
+        id: 'erase-me',
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+        style: const SketchStyle(
+          fillStyle: FillStyle.solid,
+          fillColor: Color(0xFF000000),
         ),
-      ),
-    );
+      );
+      controller.add(rect);
+      expect(controller.elements, hasLength(1));
 
-    // The gesture handler fills the whole test surface at offset zero and
-    // the default viewport has zero pan / 1.0 zoom, so screen == canvas
-    // coordinates. Tap the interior of the rectangle (canvas 50,50).
-    await tester.tapAt(const Offset(50, 50));
-    await tester.pump();
+      final interaction = SketchInteractionState();
+      addTearDown(interaction.dispose);
 
-    expect(controller.elements, isEmpty);
-  });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SketchGestureHandler(
+            controller: controller,
+            interaction: interaction,
+            viewportProvider: () => const FlowViewport(),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+
+      // The gesture handler fills the whole test surface at offset zero and
+      // the default viewport has zero pan / 1.0 zoom, so screen == canvas
+      // coordinates. Tap the interior of the rectangle (canvas 50,50).
+      await tester.tapAt(const Offset(50, 50));
+      await tester.pump();
+
+      expect(controller.elements, isEmpty);
+    },
+  );
 
   testWidgets(
-      'text tool edits existing text instead of stacking a second text box',
-      (tester) async {
-    final controller = SketchController(currentTool: SketchTool.text);
-    addTearDown(controller.dispose);
+    'text tool edits existing text instead of stacking a second text box',
+    (tester) async {
+      final controller = SketchController(currentTool: SketchTool.text);
+      addTearDown(controller.dispose);
 
-    final greeting = _greeting();
-    controller.add(greeting);
-    expect(greeting.bounds.right, greaterThan(70));
+      final greeting = _greeting();
+      controller.add(greeting);
+      expect(greeting.bounds.right, greaterThan(70));
 
-    final interaction = SketchInteractionState();
-    addTearDown(interaction.dispose);
+      final interaction = SketchInteractionState();
+      addTearDown(interaction.dispose);
 
-    await tester.pumpWidget(_host(controller, interaction));
+      await tester.pumpWidget(_host(controller, interaction));
 
-    await tester.tapAt(const Offset(70, 8));
-    await tester.pump();
+      await tester.tapAt(const Offset(70, 8));
+      await tester.pump();
 
-    // Targeting the existing element, not a fresh canvas position.
-    expect(controller.editingElementId, 'greeting');
-    expect(controller.editingCanvasPosition, isNull);
+      // Targeting the existing element, not a fresh canvas position.
+      expect(controller.editingElementId, 'greeting');
+      expect(controller.editingCanvasPosition, isNull);
 
-    controller.commitTextEdit('Hello there');
-    expect(controller.elements, hasLength(1));
-    expect((controller.elements.single as SketchText).text, 'Hello there');
-  });
+      controller.commitTextEdit('Hello there');
+      expect(controller.elements, hasLength(1));
+      expect((controller.elements.single as SketchText).text, 'Hello there');
+    },
+  );
 
-  testWidgets('text tool still creates a new text box on empty canvas',
-      (tester) async {
+  testWidgets('text tool still creates a new text box on empty canvas', (
+    tester,
+  ) async {
     final controller = SketchController(currentTool: SketchTool.text);
     addTearDown(controller.dispose);
     controller.add(_greeting());
@@ -165,8 +168,9 @@ void main() {
     expect(controller.elements, hasLength(2));
   });
 
-  testWidgets('select tool double-tap opens the editor on a bare SketchText',
-      (tester) async {
+  testWidgets('select tool double-tap opens the editor on a bare SketchText', (
+    tester,
+  ) async {
     final controller = SketchController(currentTool: SketchTool.select);
     addTearDown(controller.dispose);
     controller.add(_greeting());
@@ -187,15 +191,18 @@ void main() {
     expect(controller.elements, hasLength(1));
   });
 
-  testWidgets('select tool double-tap opens the editor on a labelled shape',
-      (tester) async {
+  testWidgets('select tool double-tap opens the editor on a labelled shape', (
+    tester,
+  ) async {
     final controller = SketchController(currentTool: SketchTool.select);
     addTearDown(controller.dispose);
-    controller.add(SketchRectangle.create(
-      id: 'box',
-      rect: const Rect.fromLTWH(0, 0, 100, 100),
-      text: 'Label',
-    ));
+    controller.add(
+      SketchRectangle.create(
+        id: 'box',
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+        text: 'Label',
+      ),
+    );
 
     final interaction = SketchInteractionState();
     addTearDown(interaction.dispose);
@@ -232,8 +239,9 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
-  testWidgets('dragging a selection leaves exactly one undo entry',
-      (tester) async {
+  testWidgets('dragging a selection leaves exactly one undo entry', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_filledBox()],
@@ -255,16 +263,21 @@ void main() {
 
     // (40, 20) is where the pointer went; the top edge then snapped the
     // remaining 4px onto the 24px grid — see the snapping tests below.
-    expect(controller.elements.single.bounds,
-        const Rect.fromLTWH(40, 24, 100, 100));
+    expect(
+      controller.elements.single.bounds,
+      const Rect.fromLTWH(40, 24, 100, 100),
+    );
     controller.undo();
-    expect(controller.elements.single.bounds,
-        const Rect.fromLTWH(0, 0, 100, 100));
+    expect(
+      controller.elements.single.bounds,
+      const Rect.fromLTWH(0, 0, 100, 100),
+    );
     expect(controller.canUndo, isFalse);
   });
 
-  testWidgets('grab radius stays a screen distance when zoomed in',
-      (tester) async {
+  testWidgets('grab radius stays a screen distance when zoomed in', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.eraser,
       initialElements: [
@@ -281,11 +294,9 @@ void main() {
     addTearDown(interaction.dispose);
 
     // At 4x zoom the line runs from screen (0,0) to (400,0).
-    await tester.pumpWidget(_host(
-      controller,
-      interaction,
-      viewport: const FlowViewport(zoom: 4.0),
-    ));
+    await tester.pumpWidget(
+      _host(controller, interaction, viewport: const FlowViewport(zoom: 4.0)),
+    );
 
     // 20 screen px away — well outside an 8px grab radius, but only 5
     // *canvas* px, which an unscaled tolerance of 8 would have swallowed.
@@ -299,8 +310,9 @@ void main() {
     expect(controller.elements, isEmpty);
   });
 
-  testWidgets('grab radius stays a screen distance when zoomed out',
-      (tester) async {
+  testWidgets('grab radius stays a screen distance when zoomed out', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.eraser,
       initialElements: [
@@ -317,11 +329,9 @@ void main() {
     addTearDown(interaction.dispose);
 
     // At 0.25x zoom the line runs from screen (0,0) to (100,0).
-    await tester.pumpWidget(_host(
-      controller,
-      interaction,
-      viewport: const FlowViewport(zoom: 0.25),
-    ));
+    await tester.pumpWidget(
+      _host(controller, interaction, viewport: const FlowViewport(zoom: 0.25)),
+    );
 
     // 6 screen px away — comfortably inside the radius, but 24 *canvas* px,
     // which an unscaled tolerance of 8 would have rejected.
@@ -336,8 +346,9 @@ void main() {
   // dragged the whole line, so an arrow drawn 5px off could only be deleted
   // and redrawn.
 
-  testWidgets("dragging a line's start endpoint moves only that end",
-      (tester) async {
+  testWidgets("dragging a line's start endpoint moves only that end", (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -377,8 +388,9 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
-  testWidgets("dragging an arrow's end endpoint moves only the head",
-      (tester) async {
+  testWidgets("dragging an arrow's end endpoint moves only the head", (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -417,8 +429,9 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
-  testWidgets('an endpoint drag refuses to collapse the line to a point',
-      (tester) async {
+  testWidgets('an endpoint drag refuses to collapse the line to a point', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -451,8 +464,9 @@ void main() {
 
   // ── Eight-handle resize ──────────────────────────────────────────────────
 
-  testWidgets('a top-left handle extends the shape up and to the left',
-      (tester) async {
+  testWidgets('a top-left handle extends the shape up and to the left', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_box('box', const Rect.fromLTWH(100, 100, 120, 80))],
@@ -479,37 +493,40 @@ void main() {
     );
   });
 
-  testWidgets('an edge midpoint handle moves one edge and leaves the other axis',
-      (tester) async {
-    final controller = SketchController(
-      currentTool: SketchTool.select,
-      initialElements: [_box('box', const Rect.fromLTWH(100, 100, 120, 80))],
-    );
-    addTearDown(controller.dispose);
-    controller.select('box');
+  testWidgets(
+    'an edge midpoint handle moves one edge and leaves the other axis',
+    (tester) async {
+      final controller = SketchController(
+        currentTool: SketchTool.select,
+        initialElements: [_box('box', const Rect.fromLTWH(100, 100, 120, 80))],
+      );
+      addTearDown(controller.dispose);
+      controller.select('box');
 
-    final interaction = SketchInteractionState();
-    addTearDown(interaction.dispose);
+      final interaction = SketchInteractionState();
+      addTearDown(interaction.dispose);
 
-    await tester.pumpWidget(_host(controller, interaction, snap: false));
+      await tester.pumpWidget(_host(controller, interaction, snap: false));
 
-    // Right-edge midpoint of the padded box: (224, 140).
-    final gesture = await tester.startGesture(const Offset(224, 140));
-    await gesture.moveBy(const Offset(60, 60));
-    await tester.pump();
-    await gesture.up();
-    await tester.pump();
+      // Right-edge midpoint of the padded box: (224, 140).
+      final gesture = await tester.startGesture(const Offset(224, 140));
+      await gesture.moveBy(const Offset(60, 60));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
 
-    // The 60px of vertical pointer travel is ignored: this handle owns one
-    // axis.
-    expect(
-      controller.elements.single.bounds,
-      const Rect.fromLTRB(100, 100, 280, 180),
-    );
-  });
+      // The 60px of vertical pointer travel is ignored: this handle owns one
+      // axis.
+      expect(
+        controller.elements.single.bounds,
+        const Rect.fromLTRB(100, 100, 280, 180),
+      );
+    },
+  );
 
-  testWidgets('Shift locks a corner resize to the original aspect ratio',
-      (tester) async {
+  testWidgets('Shift locks a corner resize to the original aspect ratio', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_box('box', const Rect.fromLTWH(100, 100, 200, 100))],
@@ -541,8 +558,9 @@ void main() {
 
   // ── Additive, group-aware selection ──────────────────────────────────────
 
-  testWidgets('Shift-click adds to the selection, then toggles back out',
-      (tester) async {
+  testWidgets('Shift-click adds to the selection, then toggles back out', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -574,8 +592,9 @@ void main() {
     expect(controller.selectedIds, <String>{'a'});
   });
 
-  testWidgets('a Shift-marquee adds its hits instead of replacing them',
-      (tester) async {
+  testWidgets('a Shift-marquee adds its hits instead of replacing them', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -605,8 +624,9 @@ void main() {
     expect(controller.selectedIds, <String>{'a', 'b'});
   });
 
-  testWidgets('clicking one member of a group selects the whole group',
-      (tester) async {
+  testWidgets('clicking one member of a group selects the whole group', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -630,8 +650,9 @@ void main() {
     expect(controller.selectedIds, <String>{'a', 'b'});
   });
 
-  testWidgets('a marquee catching one group member takes the whole group',
-      (tester) async {
+  testWidgets('a marquee catching one group member takes the whole group', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -658,8 +679,9 @@ void main() {
     expect(controller.selectedIds, <String>{'a', 'b'});
   });
 
-  testWidgets('a marquee drawn flush along a connector catches it',
-      (tester) async {
+  testWidgets('a marquee drawn flush along a connector catches it', (
+    tester,
+  ) async {
     // An axis-aligned arrow's bounds are a single edge, and Rect.overlaps
     // calls a shared edge disjoint — so a band starting exactly on the
     // stroke visibly covered it and selected nothing.
@@ -689,8 +711,9 @@ void main() {
     expect(controller.selectedIds, <String>{'wire'});
   });
 
-  testWidgets('a click in the interior of an unfilled shape selects nothing',
-      (tester) async {
+  testWidgets('a click in the interior of an unfilled shape selects nothing', (
+    tester,
+  ) async {
     // The hit test rejects the empty interior on purpose, so the press fell
     // through to a marquee — and on release the 0×0 band it left behind
     // selected everything whose *bounding box* held the point: the frame,
@@ -756,8 +779,9 @@ void main() {
     expect(controller.selectedIds, <String>{'a'});
   });
 
-  testWidgets('a real marquee over the same unfilled shape still catches it',
-      (tester) async {
+  testWidgets('a real marquee over the same unfilled shape still catches it', (
+    tester,
+  ) async {
     // The guard is about a band with no area, not about unfilled shapes.
     final controller = SketchController(
       currentTool: SketchTool.select,
@@ -784,37 +808,40 @@ void main() {
     expect(controller.selectedIds, <String>{'frame'});
   });
 
-  testWidgets('a marquee clipping only a diagonal line\'s empty corner misses',
-      (tester) async {
-    final controller = SketchController(
-      currentTool: SketchTool.select,
-      initialElements: [
-        SketchLine.create(
-          id: 'rail',
-          start: Offset.zero,
-          end: const Offset(200, 200),
-        ),
-      ],
-    );
-    addTearDown(controller.dispose);
+  testWidgets(
+    'a marquee clipping only a diagonal line\'s empty corner misses',
+    (tester) async {
+      final controller = SketchController(
+        currentTool: SketchTool.select,
+        initialElements: [
+          SketchLine.create(
+            id: 'rail',
+            start: Offset.zero,
+            end: const Offset(200, 200),
+          ),
+        ],
+      );
+      addTearDown(controller.dispose);
 
-    final interaction = SketchInteractionState();
-    addTearDown(interaction.dispose);
+      final interaction = SketchInteractionState();
+      addTearDown(interaction.dispose);
 
-    await tester.pumpWidget(_host(controller, interaction));
+      await tester.pumpWidget(_host(controller, interaction));
 
-    // Inside the line's bounding box, but ~100px from the stroke.
-    final gesture = await tester.startGesture(const Offset(190, 10));
-    await gesture.moveTo(const Offset(150, 50));
-    await tester.pump();
-    await gesture.up();
-    await tester.pump();
+      // Inside the line's bounding box, but ~100px from the stroke.
+      final gesture = await tester.startGesture(const Offset(190, 10));
+      await gesture.moveTo(const Offset(150, 50));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
 
-    expect(controller.selectedIds, isEmpty);
-  });
+      expect(controller.selectedIds, isEmpty);
+    },
+  );
 
-  testWidgets('a cancelled drag does not wedge the drag after it',
-      (tester) async {
+  testWidgets('a cancelled drag does not wedge the drag after it', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_box('box', const Rect.fromLTWH(96, 96, 48, 48))],
@@ -837,8 +864,11 @@ void main() {
       controller.elements.single.bounds,
       const Rect.fromLTWH(120, 120, 48, 48),
     );
-    expect(controller.canUndo, isTrue,
-        reason: 'the cancelled drag still moved something');
+    expect(
+      controller.canUndo,
+      isTrue,
+      reason: 'the cancelled drag still moved something',
+    );
 
     // The next drag must record its own entry. It used to record none: the
     // controller was still mid-session, so `beginDragSession` no-opped and
@@ -876,8 +906,9 @@ void main() {
     ('right', kSecondaryButton),
     ('middle', kMiddleMouseButton),
   ]) {
-    testWidgets('a $name-click with a shape tool draws nothing',
-        (tester) async {
+    testWidgets('a $name-click with a shape tool draws nothing', (
+      tester,
+    ) async {
       final controller = SketchController(currentTool: SketchTool.rectangle);
       addTearDown(controller.dispose);
 
@@ -906,8 +937,9 @@ void main() {
       expect(consumed, isEmpty);
     });
 
-    testWidgets('a $name-click with the eraser deletes nothing',
-        (tester) async {
+    testWidgets('a $name-click with the eraser deletes nothing', (
+      tester,
+    ) async {
       // The eraser erases on pointer-down, so it is the tool that loses
       // work outright if the button is not checked.
       final controller = SketchController(
@@ -956,8 +988,10 @@ void main() {
     await tester.pump();
 
     expect(controller.elements, hasLength(1));
-    expect(controller.elements.single.bounds,
-        const Rect.fromLTRB(100, 100, 180, 160));
+    expect(
+      controller.elements.single.bounds,
+      const Rect.fromLTRB(100, 100, 180, 160),
+    );
     expect(consumed, <bool>[true, false]);
   });
 
@@ -967,8 +1001,9 @@ void main() {
     SketchTool.diamond,
     SketchTool.triangle,
   ]) {
-    testWidgets('a zero-height drag with the ${tool.name} tool draws nothing',
-        (tester) async {
+    testWidgets('a zero-height drag with the ${tool.name} tool draws nothing', (
+      tester,
+    ) async {
       // The guard was `width < 1 && height < 1`, so a horizontal pull that
       // stayed within a pixel vertically committed a W×0 shape — for an
       // ellipse an empty path: invisible, but hit-testable through its
@@ -999,8 +1034,9 @@ void main() {
     });
   }
 
-  testWidgets('a trackpad-style touch drag still counts as primary',
-      (tester) async {
+  testWidgets('a trackpad-style touch drag still counts as primary', (
+    tester,
+  ) async {
     final controller = SketchController(currentTool: SketchTool.rectangle);
     addTearDown(controller.dispose);
 
@@ -1020,8 +1056,9 @@ void main() {
     expect(controller.elements, hasLength(1));
   });
 
-  testWidgets('pressing a second button mid-drag does not abandon the drag',
-      (tester) async {
+  testWidgets('pressing a second button mid-drag does not abandon the drag', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_box('box', const Rect.fromLTWH(96, 96, 48, 48))],
@@ -1038,10 +1075,12 @@ void main() {
     final pointer = TestPointer(1, PointerDeviceKind.mouse);
     await tester.sendEventToBinding(pointer.down(const Offset(120, 120)));
     await tester.pump();
-    await tester.sendEventToBinding(pointer.move(
-      const Offset(140, 140),
-      buttons: kPrimaryButton | kSecondaryButton,
-    ));
+    await tester.sendEventToBinding(
+      pointer.move(
+        const Offset(140, 140),
+        buttons: kPrimaryButton | kSecondaryButton,
+      ),
+    );
     await tester.pump();
     await tester.sendEventToBinding(pointer.up());
     await tester.pump();
@@ -1052,8 +1091,9 @@ void main() {
     );
   });
 
-  testWidgets('a move reporting no buttons does not abandon the drag',
-      (tester) async {
+  testWidgets('a move reporting no buttons does not abandon the drag', (
+    tester,
+  ) async {
     // Flutter normalises touch and stylus masks but passes mouse and
     // trackpad ones through as the platform sent them, so a zero mask on a
     // move is a report with no interpretation — and the reading that drops
@@ -1085,8 +1125,9 @@ void main() {
     );
   });
 
-  testWidgets('releasing the primary under a held secondary ends the drag',
-      (tester) async {
+  testWidgets('releasing the primary under a held secondary ends the drag', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_box('box', const Rect.fromLTWH(96, 96, 48, 48))],
@@ -1134,8 +1175,9 @@ void main() {
 
   // ── Snapping ─────────────────────────────────────────────────────────────
 
-  testWidgets('a move snaps onto the grid, and Alt turns that off',
-      (tester) async {
+  testWidgets('a move snaps onto the grid, and Alt turns that off', (
+    tester,
+  ) async {
     // Already grid-aligned: 96 and 144 are both multiples of the 24px grid.
     final controller = SketchController(
       currentTool: SketchTool.select,
@@ -1178,25 +1220,35 @@ void main() {
     );
   });
 
-  testWidgets('the snap threshold is a screen distance at 0.25x and at 4x',
-      (tester) async {
+  testWidgets('the snap threshold is a screen distance at 0.25x and at 4x', (
+    tester,
+  ) async {
     // 4 screen px of gap is inside the 6px magnet at both zooms...
-    expect(await _alignmentRun(tester, zoom: 0.25, screenGap: 4),
-        moreOrLessEquals(400, epsilon: 0.01));
-    expect(await _alignmentRun(tester, zoom: 4.0, screenGap: 4),
-        moreOrLessEquals(400, epsilon: 0.01));
+    expect(
+      await _alignmentRun(tester, zoom: 0.25, screenGap: 4),
+      moreOrLessEquals(400, epsilon: 0.01),
+    );
+    expect(
+      await _alignmentRun(tester, zoom: 4.0, screenGap: 4),
+      moreOrLessEquals(400, epsilon: 0.01),
+    );
     // ...and 10 screen px is outside it at both, even though those are 40
     // and 2.5 *canvas* pixels respectively.
-    expect(await _alignmentRun(tester, zoom: 0.25, screenGap: 10),
-        moreOrLessEquals(410, epsilon: 0.01));
-    expect(await _alignmentRun(tester, zoom: 4.0, screenGap: 10),
-        moreOrLessEquals(410, epsilon: 0.01));
+    expect(
+      await _alignmentRun(tester, zoom: 0.25, screenGap: 10),
+      moreOrLessEquals(410, epsilon: 0.01),
+    );
+    expect(
+      await _alignmentRun(tester, zoom: 4.0, screenGap: 10),
+      moreOrLessEquals(410, epsilon: 0.01),
+    );
   });
 
   // ── Sticky notes ─────────────────────────────────────────────────────────
 
-  testWidgets('clicking a collapsed note opens it back to its bubble',
-      (tester) async {
+  testWidgets('clicking a collapsed note opens it back to its bubble', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_collapsedNote()],
@@ -1240,8 +1292,9 @@ void main() {
     expect(controller.hasSelection, isFalse);
   });
 
-  testWidgets('dragging a collapsed note moves it instead of opening it',
-      (tester) async {
+  testWidgets('dragging a collapsed note moves it instead of opening it', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_collapsedNote()],
@@ -1281,10 +1334,11 @@ void main() {
     // element puts a handle, and where the painter would draw one. The badge
     // is a fixed size, so nothing is drawn there and nothing may be grabbed
     // there either; the drag has to leave the note alone.
-    final corner = StickyBubbleGeometry.collapsedBounds(_noteRect)
-        .bottomRight
-        .translate(SketchGeometry.selectionPadding,
-            SketchGeometry.selectionPadding);
+    final corner = StickyBubbleGeometry.collapsedBounds(_noteRect).bottomRight
+        .translate(
+          SketchGeometry.selectionPadding,
+          SketchGeometry.selectionPadding,
+        );
     final gesture = await tester.startGesture(corner);
     await gesture.moveBy(const Offset(50, 50));
     await tester.pump();
@@ -1327,8 +1381,9 @@ void main() {
     );
   });
 
-  testWidgets('double-clicking a collapsed note opens it and edits it',
-      (tester) async {
+  testWidgets('double-clicking a collapsed note opens it and edits it', (
+    tester,
+  ) async {
     // Consistent with every other text-bearing element: one click selects
     // (and here, opens), two edit. No third convention.
     final controller = SketchController(
@@ -1352,8 +1407,9 @@ void main() {
     expect((controller.elements.single as SketchSticky).collapsed, isFalse);
   });
 
-  testWidgets('the text tool opens a collapsed note before typing into it',
-      (tester) async {
+  testWidgets('the text tool opens a collapsed note before typing into it', (
+    tester,
+  ) async {
     // The editor lays its glyphs out over the bubble's text box; a badge
     // does not have one.
     final controller = SketchController(
@@ -1374,8 +1430,9 @@ void main() {
     expect((controller.elements.single as SketchSticky).collapsed, isFalse);
   });
 
-  testWidgets('a click with the sticky tool drops a default-sized note',
-      (tester) async {
+  testWidgets('a click with the sticky tool drops a default-sized note', (
+    tester,
+  ) async {
     // A 0x0 drag rect used to be discarded, so clicking did nothing at all.
     final controller = SketchController(currentTool: SketchTool.sticky);
     addTearDown(controller.dispose);
@@ -1395,8 +1452,9 @@ void main() {
     expect(controller.editingElementId, note.id);
   });
 
-  testWidgets('a sticky dragged smaller than a note can be is grown',
-      (tester) async {
+  testWidgets('a sticky dragged smaller than a note can be is grown', (
+    tester,
+  ) async {
     final controller = SketchController(currentTool: SketchTool.sticky);
     addTearDown(controller.dispose);
 
@@ -1455,8 +1513,9 @@ void main() {
     expect(controller.canUndo, isFalse);
   });
 
-  testWidgets('a drag that starts outside closes the note on the way down',
-      (tester) async {
+  testWidgets('a drag that starts outside closes the note on the way down', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [_openNote()],
@@ -1471,8 +1530,11 @@ void main() {
     // Pointer-down on empty canvas, before any marquee has been dragged.
     final gesture = await tester.startGesture(const Offset(600, 400));
     await tester.pump();
-    expect((controller.elements.single as SketchSticky).collapsed, isTrue,
-        reason: 'closed on pointer-down, not when the marquee ends');
+    expect(
+      (controller.elements.single as SketchSticky).collapsed,
+      isTrue,
+      reason: 'closed on pointer-down, not when the marquee ends',
+    );
     await gesture.moveBy(const Offset(40, 40));
     await gesture.up();
     await tester.pump();
@@ -1496,8 +1558,9 @@ void main() {
     expect(controller.isSelected('note'), isTrue);
   });
 
-  testWidgets("a press on the open note's own resize handle keeps it open",
-      (tester) async {
+  testWidgets("a press on the open note's own resize handle keeps it open", (
+    tester,
+  ) async {
     // The handle sits on the padded selection box, *outside* the note's
     // bounds — a naive "was the hit inside the note" test closes the note
     // under the user's hand the instant they try to resize it.
@@ -1529,8 +1592,9 @@ void main() {
     expect(note.rect.width, _noteRect.width + 30, reason: 'and it resized');
   });
 
-  testWidgets('clicking from one open note to another closes the first',
-      (tester) async {
+  testWidgets('clicking from one open note to another closes the first', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.select,
       initialElements: [
@@ -1558,33 +1622,36 @@ void main() {
     expect(byId('other').collapsed, isFalse);
   });
 
-  testWidgets('a cancelled edit is not stranded open: the next click closes it',
-      (tester) async {
-    // Escape keeps its meaning for the *text* — nothing is committed — but
-    // must not leave the note in a third state that is expanded, not
-    // editing, and immune to click-away.
-    final controller = SketchController(
-      currentTool: SketchTool.select,
-      initialElements: [_openNote()],
-    );
-    addTearDown(controller.dispose);
+  testWidgets(
+    'a cancelled edit is not stranded open: the next click closes it',
+    (tester) async {
+      // Escape keeps its meaning for the *text* — nothing is committed — but
+      // must not leave the note in a third state that is expanded, not
+      // editing, and immune to click-away.
+      final controller = SketchController(
+        currentTool: SketchTool.select,
+        initialElements: [_openNote()],
+      );
+      addTearDown(controller.dispose);
 
-    final interaction = SketchInteractionState();
-    addTearDown(interaction.dispose);
+      final interaction = SketchInteractionState();
+      addTearDown(interaction.dispose);
 
-    await tester.pumpWidget(_host(controller, interaction));
+      await tester.pumpWidget(_host(controller, interaction));
 
-    controller.beginTextEdit(elementId: 'note');
-    controller.cancelTextEdit();
-    expect((controller.elements.single as SketchSticky).collapsed, isFalse);
+      controller.beginTextEdit(elementId: 'note');
+      controller.cancelTextEdit();
+      expect((controller.elements.single as SketchSticky).collapsed, isFalse);
 
-    await tester.tapAt(const Offset(600, 400));
-    await tester.pump();
-    expect((controller.elements.single as SketchSticky).collapsed, isTrue);
-  });
+      await tester.tapAt(const Offset(600, 400));
+      await tester.pump();
+      expect((controller.elements.single as SketchSticky).collapsed, isTrue);
+    },
+  );
 
-  testWidgets('drawing with a shape tool closes open notes too',
-      (tester) async {
+  testWidgets('drawing with a shape tool closes open notes too', (
+    tester,
+  ) async {
     final controller = SketchController(
       currentTool: SketchTool.rectangle,
       initialElements: [_openNote()],
@@ -1605,8 +1672,9 @@ void main() {
     expect(controller.elements, hasLength(2));
   });
 
-  testWidgets('panning with the hand tool leaves an open note open',
-      (tester) async {
+  testWidgets('panning with the hand tool leaves an open note open', (
+    tester,
+  ) async {
     // Navigation, not a click on the board — scrolling a conversation does
     // not dismiss the message you were reading.
     final controller = SketchController(
@@ -1630,29 +1698,26 @@ void main() {
 /// are distinguishable in a hit test.
 const Rect _noteRect = Rect.fromLTWH(100, 60, 220, 100);
 
-SketchSticky _openNote() => SketchSticky.create(
-      id: 'note',
-      rect: _noteRect,
-      text: 'remember this',
-    );
+SketchSticky _openNote() =>
+    SketchSticky.create(id: 'note', rect: _noteRect, text: 'remember this');
 
 SketchSticky _collapsedNote() => SketchSticky.create(
-      id: 'note',
-      rect: _noteRect,
-      text: 'remember this',
-      collapsed: true,
-    );
+  id: 'note',
+  rect: _noteRect,
+  text: 'remember this',
+  collapsed: true,
+);
 
 /// A filled box, so a tap anywhere inside it hits independently of
 /// stroke-hit tolerance.
 SketchRectangle _box(String id, Rect rect) => SketchRectangle.create(
-      id: id,
-      rect: rect,
-      style: const SketchStyle(
-        fillStyle: FillStyle.solid,
-        fillColor: Color(0xFF000000),
-      ),
-    );
+  id: id,
+  rect: rect,
+  style: const SketchStyle(
+    fillStyle: FillStyle.solid,
+    fillColor: Color(0xFF000000),
+  ),
+);
 
 /// Drags a box until its left edge sits [screenGap] *screen* pixels short of
 /// another box's left edge, and reports where that edge ended up — also in
@@ -1684,12 +1749,14 @@ Future<double> _alignmentRun(
 
   // Grid off, so the only magnet under test is element alignment — the grid
   // has a floor of its own at low zoom (see SketchSnapper).
-  await tester.pumpWidget(_host(
-    controller,
-    interaction,
-    viewport: FlowViewport(zoom: zoom),
-    gridSpacing: null,
-  ));
+  await tester.pumpWidget(
+    _host(
+      controller,
+      interaction,
+      viewport: FlowViewport(zoom: zoom),
+      gridSpacing: null,
+    ),
+  );
 
   final gesture = await tester.startGesture(const Offset(150, 350));
   await gesture.moveBy(Offset(300 + screenGap, 0));

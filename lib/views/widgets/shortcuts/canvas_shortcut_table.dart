@@ -230,8 +230,14 @@ class CanvasShortcutTable {
 
     return <CanvasModifierGroup>[
       CanvasModifierGroup('Pointer modifiers', <CanvasModifierHint>[
-        CanvasModifierHint('Add to / remove from selection', '$shift${sep}click'),
-        CanvasModifierHint('Keep aspect ratio while resizing', '$shift${sep}drag'),
+        CanvasModifierHint(
+          'Add to / remove from selection',
+          '$shift${sep}click',
+        ),
+        CanvasModifierHint(
+          'Keep aspect ratio while resizing',
+          '$shift${sep}drag',
+        ),
         CanvasModifierHint('Disable snapping while dragging', '$alt${sep}drag'),
         const CanvasModifierHint('Edit text', 'Double-click'),
       ]),

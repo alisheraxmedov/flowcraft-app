@@ -23,11 +23,12 @@ import 'package:flowcraft/models/sketch_element.dart';
 /// listing, never a user's work.
 class ProjectRepository {
   ProjectRepository({String? directoryPath})
-      : _directory = Directory(directoryPath ?? defaultDirectoryPath());
+    : _directory = Directory(directoryPath ?? defaultDirectoryPath());
 
   /// `~/.flowcraft/projects` (`%USERPROFILE%\.flowcraft\projects`).
   static String defaultDirectoryPath() {
-    final home = Platform.environment['HOME'] ??
+    final home =
+        Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
         '.';
     final sep = Platform.pathSeparator;
@@ -134,10 +135,9 @@ class ProjectRepository {
       throw StateError('No project with id "$id".');
     }
     final source = await file.readAsString();
-    final renamed = ProjectSerializer.decodeHeader(source).copyWith(
-      name: normalizeName(name),
-      updatedAt: DateTime.now(),
-    );
+    final renamed = ProjectSerializer.decodeHeader(
+      source,
+    ).copyWith(name: normalizeName(name), updatedAt: DateTime.now());
     await _writeAtomic(file, ProjectSerializer.replaceHeader(source, renamed));
     _headers[id] = renamed;
     await _upsertIndex(renamed);
@@ -152,9 +152,7 @@ class ProjectRepository {
     // treating "unreadable" as "nothing else exists" would blank the index
     // for every surviving project until the next self-heal.
     final known = await _readIndex() ?? await _rebuild(await _sceneIds());
-    await _writeIndex(
-      known.where((project) => project.id != id).toList(),
-    );
+    await _writeIndex(known.where((project) => project.id != id).toList());
   }
 
   /// Collapses whitespace and caps the length so a pasted paragraph can't
@@ -237,8 +235,9 @@ class ProjectRepository {
     final projects = <FlowProject>[];
     for (final id in ids) {
       try {
-        final header =
-            ProjectSerializer.decodeHeader(await _sceneFile(id).readAsString());
+        final header = ProjectSerializer.decodeHeader(
+          await _sceneFile(id).readAsString(),
+        );
         // The file name decides which project this is, never the header:
         // the header belongs to whoever wrote the file, and every later
         // `load`/`delete` turns this id straight back into a path. A header
@@ -344,7 +343,6 @@ class ProjectRepository {
   }
 
   static List<FlowProject> _sorted(List<FlowProject> projects) {
-    return [...projects]
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return [...projects]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 }

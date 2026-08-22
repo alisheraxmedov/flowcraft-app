@@ -8,8 +8,10 @@ void main() {
     test('accepts the real token', () {
       expect(constantTimeEquals(token, token), isTrue);
       // A fresh string, so this cannot be passing on identity alone.
-      expect(constantTimeEquals(String.fromCharCodes(token.codeUnits), token),
-          isTrue);
+      expect(
+        constantTimeEquals(String.fromCharCodes(token.codeUnits), token),
+        isTrue,
+      );
     });
 
     test('rejects wrong candidates whatever their length', () {

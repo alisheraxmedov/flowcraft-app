@@ -26,10 +26,7 @@ Widget _host(SketchController controller) {
 
 MenuItemButton _item(WidgetTester tester, String label) {
   return tester.widget<MenuItemButton>(
-    find.ancestor(
-      of: find.text(label),
-      matching: find.byType(MenuItemButton),
-    ),
+    find.ancestor(of: find.text(label), matching: find.byType(MenuItemButton)),
   );
 }
 
@@ -82,8 +79,9 @@ void main() {
     expect(front.shift, isTrue);
   });
 
-  testWidgets('greys out what a selectionless canvas cannot do',
-      (tester) async {
+  testWidgets('greys out what a selectionless canvas cannot do', (
+    tester,
+  ) async {
     final controller = SketchController(initialElements: [_rect('a')]);
     addTearDown(controller.dispose);
 
@@ -111,8 +109,9 @@ void main() {
     expect(_item(tester, 'Copy').onPressed, isNotNull);
   });
 
-  testWidgets('offers the reference sheet, since ? is unguessable',
-      (tester) async {
+  testWidgets('offers the reference sheet, since ? is unguessable', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
@@ -124,8 +123,9 @@ void main() {
     expect(find.byType(ShortcutsHelpDialog), findsOneWidget);
   });
 
-  testWidgets('leaves the tool keys out — the tool rail already has them',
-      (tester) async {
+  testWidgets('leaves the tool keys out — the tool rail already has them', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 

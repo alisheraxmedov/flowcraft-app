@@ -13,10 +13,7 @@ void main() {
 
   group('bounds', () {
     test('an expanded note occupies its rect', () {
-      expect(
-        StickyBubbleGeometry.boundsOf(rect, collapsed: false),
-        rect,
-      );
+      expect(StickyBubbleGeometry.boundsOf(rect, collapsed: false), rect);
     });
 
     test('a collapsed note occupies only its badge, anchored top-left', () {
@@ -60,7 +57,8 @@ void main() {
         (p) => (p.dx - midX).abs() < 2.0 && p.dy > body.bottom - 0.5,
       );
       expect(onTail, isNotEmpty);
-      final chordY = body.bottom +
+      final chordY =
+          body.bottom +
           (rect.bottom - body.bottom) * (1 - (midX - rect.left) / (28));
       for (final p in onTail) {
         expect(p.dy, lessThan(chordY), reason: 'tail edge is not concave');
@@ -101,8 +99,11 @@ void main() {
 
         // A large nominal radius must not invert a small body.
         final radius = StickyBubbleGeometry.radiusOf(r, 12);
-        expect(radius, lessThanOrEqualTo(body.shortestSide / 2 + 0.01),
-            reason: name);
+        expect(
+          radius,
+          lessThanOrEqualTo(body.shortestSide / 2 + 0.01),
+          reason: name,
+        );
 
         final inked = _inkedBounds(StickyBubbleGeometry.bubblePath(r, 12));
         expect(inked.left, greaterThanOrEqualTo(r.left - 0.01), reason: name);
@@ -182,7 +183,9 @@ List<Offset> _samples(Path path) {
 Rect _inkedBounds(Path path) {
   final points = _samples(path);
   expect(points, isNotEmpty, reason: 'nothing was drawn');
-  return points.skip(1).fold(
+  return points
+      .skip(1)
+      .fold(
         Rect.fromPoints(points.first, points.first),
         (box, p) => box.expandToInclude(Rect.fromPoints(p, p)),
       );
