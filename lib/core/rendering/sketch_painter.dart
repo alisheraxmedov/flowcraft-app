@@ -84,6 +84,9 @@ class SketchPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Before the empty check: a scene cleared to nothing is exactly when
+    // every cached painter has gone stale.
+    cache.sweep(elements, generation: paintGen);
     if (elements.isEmpty) return;
 
     final effectiveSize = canvasSize ?? size;
@@ -139,10 +142,25 @@ class SketchPainter extends CustomPainter {
           break;
         case FillStyle.hachure:
         case FillStyle.crossHatch:
+          if (SketchRenderCache.hatchFallsBackToSolid(element)) {
+            // Too large to hatch — the cache handed back the silhouette.
+            _fillPaint.color =
+                style.fillColor!.withValues(alpha: style.opacity);
+            canvas.drawPath(cache.fillPath(element), _fillPaint);
+            break;
+          }
           _hachurePaint
             ..color = style.fillColor!.withValues(alpha: style.opacity)
             ..strokeWidth = _scaleStroke(math.max(1.0, style.strokeWidth * 0.5));
+          // The hatch is generated over the bounding rect; clipping it to
+          // the outline is what keeps a hatched circle's corners empty.
+          final clipped = SketchRenderCache.hatchNeedsClip(element);
+          if (clipped) {
+            canvas.save();
+            canvas.clipPath(cache.outlinePath(element));
+          }
           canvas.drawPath(cache.fillPath(element), _hachurePaint);
+          if (clipped) canvas.restore();
           break;
         case FillStyle.none:
           break;
@@ -154,14 +172,9 @@ class SketchPainter extends CustomPainter {
       ..color = color
       ..strokeWidth = _scaleStroke(strokeWidth);
 
-    final pattern = style.strokeStyle.pattern;
-    final path = cache.strokePath(element);
-
-    if (pattern.isEmpty) {
-      canvas.drawPath(path, _strokePaint);
-    } else {
-      _drawDashedPath(canvas, path, _strokePaint, pattern);
-    }
+    // Already dashed/dotted by the cache when the style asks for it, so a
+    // patterned outline is one draw call like a solid one.
+    canvas.drawPath(cache.strokePath(element), _strokePaint);
 
     // ─── per-type extras ─────────────────────────────────────────────────
     final editing = element.id == editingElementId;
@@ -188,8 +201,7 @@ class SketchPainter extends CustomPainter {
       _ => null,
     };
     if (!editing && centeredLabel != null) {
-      _drawCenteredText(canvas, element.bounds, centeredLabel.$1,
-          centeredLabel.$2, style.strokeColor, style.opacity);
+      _drawCenteredText(canvas, element, centeredLabel.$1, centeredLabel.$2);
     }
     // A collapsed note shows its badge mark instead of its label; the text
     // is still there, it is just not what is on screen.
@@ -201,27 +213,39 @@ class SketchPainter extends CustomPainter {
     }
   }
 
+  /// Horizontal inset a centred shape label wraps inside of, per side ×2.
+  static const double _labelInset = 12.0;
+
+  /// Draws a shape's centred label, laid out once per element instance.
+  ///
+  /// Every input — text, size, colour, opacity, the width it wraps to — is
+  /// a field of [element], so the cache's identity key covers it all; a
+  /// restyle or resize is a new instance and lays out afresh. Laying out
+  /// here every frame was the single largest per-frame cost on a labelled
+  /// board (16 µs per label per pan step).
   void _drawCenteredText(
     Canvas canvas,
-    Rect bounds,
+    SketchElement element,
     String text,
     double fontSize,
-    Color color,
-    double opacity,
   ) {
-    final span = TextSpan(
-      text: text,
-      style: TextStyle(
-        color: color.withValues(alpha: opacity),
+    final bounds = element.bounds;
+    // The resize floor is 10 px, narrower than the inset — below it there
+    // is no room to wrap into, and a negative `maxWidth` trips
+    // `TextPainter.layout`'s clamp assertion in debug, every frame, until
+    // the shape is widened again.
+    if (bounds.width < _labelInset) return;
+    final tp = cache.textPainter(
+      element,
+      () => TextMetrics.layout(
+        text: text,
         fontSize: fontSize,
+        color: element.style.strokeColor
+            .withValues(alpha: element.style.opacity),
+        maxWidth: math.max(0.0, bounds.width - _labelInset),
+        textAlign: TextAlign.center,
       ),
     );
-    final tp = TextPainter(
-      text: span,
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-      maxLines: null,
-    )..layout(maxWidth: bounds.width - 12);
     final dx = bounds.left + (bounds.width - tp.width) / 2;
     final dy = bounds.top + (bounds.height - tp.height) / 2;
     tp.paint(canvas, Offset(dx, dy));
@@ -237,11 +261,15 @@ class SketchPainter extends CustomPainter {
     final box = StickyBubbleGeometry.textBoxOf(sticky.rect);
     // Same layout `SketchSticky.labelSize` measures with, so the height the
     // note grows to on commit is the height these glyphs actually take.
-    final tp = TextMetrics.layout(
-      text: sticky.text!,
-      fontSize: sticky.fontSize,
-      color: sticky.inkColor.withValues(alpha: sticky.style.opacity),
-      maxWidth: box.width,
+    // Cached per note instance; the cache owns the painter.
+    final tp = cache.textPainter(
+      sticky,
+      () => TextMetrics.layout(
+        text: sticky.text!,
+        fontSize: sticky.fontSize,
+        color: sticky.inkColor.withValues(alpha: sticky.style.opacity),
+        maxWidth: box.width,
+      ),
     );
     // A committed note grows to fit its text, so this clip rarely cuts
     // anything — it is for the note a user has since resized *smaller*
@@ -253,7 +281,6 @@ class SketchPainter extends CustomPainter {
     canvas.clipRect(StickyBubbleGeometry.bodyOf(sticky.rect));
     tp.paint(canvas, box.topLeft);
     canvas.restore();
-    tp.dispose();
   }
 
   void _drawArrowHead(Canvas canvas, SketchArrow arrow) {
@@ -268,38 +295,17 @@ class SketchPainter extends CustomPainter {
   void _drawText(Canvas canvas, SketchText text) {
     // Same layout path as `SketchText.bounds` — that shared call is what
     // keeps the painted glyphs and the hit-test box from drifting apart.
-    final tp = TextMetrics.layout(
-      text: text.text,
-      fontSize: text.fontSize,
-      fontFamily: text.fontFamily,
-      color: text.style.strokeColor.withValues(alpha: text.style.opacity),
+    // Cached per element instance; the cache owns the painter.
+    final tp = cache.textPainter(
+      text,
+      () => TextMetrics.layout(
+        text: text.text,
+        fontSize: text.fontSize,
+        fontFamily: text.fontFamily,
+        color: text.style.strokeColor.withValues(alpha: text.style.opacity),
+      ),
     );
     tp.paint(canvas, text.position);
-  }
-
-  void _drawDashedPath(
-    Canvas canvas,
-    Path path,
-    Paint paint,
-    List<double> pattern,
-  ) {
-    if (pattern.length < 2) {
-      canvas.drawPath(path, paint);
-      return;
-    }
-    for (final metric in path.computeMetrics()) {
-      double dist = 0;
-      var idx = 0;
-      while (dist < metric.length) {
-        final len = pattern[idx % pattern.length];
-        final end = (dist + len).clamp(0.0, metric.length);
-        if (idx.isEven) {
-          canvas.drawPath(metric.extractPath(dist, end), paint);
-        }
-        dist = end;
-        idx++;
-      }
-    }
   }
 
   void _paintSelectionOverlays(Canvas canvas, Size size) {

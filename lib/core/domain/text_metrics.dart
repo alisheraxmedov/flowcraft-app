@@ -1,5 +1,7 @@
 import 'package:flutter/painting.dart';
 
+import 'package:flowcraft/core/theme/app_typography.dart';
+
 /// The single place that decides how a [SketchText]'s glyphs are laid out.
 ///
 /// `SketchText.bounds` and `SketchPainter._drawText` both go through
@@ -22,6 +24,20 @@ class TextMetrics {
 
   static final Map<String, Size> _sizes = <String, Size>{};
 
+  /// Face used when an element carries no [SketchText.fontFamily] — Inter,
+  /// the bundled chrome face `AppTypography` documents as the canvas
+  /// default and the properties panel reports for a `null` family. Left to
+  /// `null`, the engine picked the OS face instead (SF / Segoe / DejaVu), so
+  /// the same file measured — and therefore hit-tested — differently on
+  /// each platform.
+  static const String defaultFontFamily = AppTypography.interFamily;
+
+  /// The face [layout] actually uses for [fontFamily]. Anything that lays
+  /// canvas text out *next to* the painter (the inline editor) should
+  /// resolve through this, or its glyphs reflow against the painted ones.
+  static String resolveFontFamily(String? fontFamily) =>
+      fontFamily ?? defaultFontFamily;
+
   /// Lays out [text] the way the painter draws it. The caller owns the
   /// returned painter.
   ///
@@ -34,6 +50,7 @@ class TextMetrics {
     String? fontFamily,
     Color color = const Color(0xFF000000),
     double maxWidth = double.infinity,
+    TextAlign textAlign = TextAlign.start,
   }) {
     return TextPainter(
       text: TextSpan(
@@ -41,9 +58,10 @@ class TextMetrics {
         style: TextStyle(
           color: color,
           fontSize: fontSize,
-          fontFamily: fontFamily,
+          fontFamily: resolveFontFamily(fontFamily),
         ),
       ),
+      textAlign: textAlign,
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: maxWidth);
   }

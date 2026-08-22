@@ -155,6 +155,8 @@ class GridPainter extends CustomPainter {
         viewport.zoom != oldDelegate.viewport.zoom ||
         gridType != oldDelegate.gridType ||
         gridColor != oldDelegate.gridColor ||
-        gridOpacity != oldDelegate.gridOpacity;
+        gridOpacity != oldDelegate.gridOpacity ||
+        gridSpacing != oldDelegate.gridSpacing ||
+        dotRadius != oldDelegate.dotRadius;
   }
 }

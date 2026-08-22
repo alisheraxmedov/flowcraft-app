@@ -1,10 +1,13 @@
 import 'dart:ui';
 
+import 'package:flutter/painting.dart' show TextPainter, TextSpan;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
+import 'package:flowcraft/core/rendering/rough_generator.dart';
 import 'package:flowcraft/core/rendering/sketch_render_cache.dart';
 import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
 
 /// The cache is what actually turns an element into the paths the painter
 /// draws, so it is where "what is drawn" can be measured against "what
@@ -121,6 +124,190 @@ void main() {
       final note = _sticky();
       expect(identical(cache.fillPath(note), cache.fillPath(note)), isTrue);
       expect(identical(cache.strokePath(note), cache.strokePath(note)), isTrue);
+    });
+  });
+
+  group('entries are keyed by element identity', () {
+    final box = SketchRectangle.create(
+      id: 'box',
+      rect: const Rect.fromLTWH(0, 0, 100, 50),
+      text: 'label',
+    );
+
+    test('a translated element gets its own entry; the sweep drops the old',
+        () {
+      final cache = SketchRenderCache();
+      final before = cache.strokePath(box);
+      final moved = box.translate(const Offset(10, 10));
+      final after = cache.strokePath(moved);
+      expect(identical(before, after), isFalse);
+      expect(after.getBounds().left, greaterThan(before.getBounds().left));
+
+      // Both are live until the scene no longer holds the original. The
+      // sweep is lazy up to `sweepSlack` stale entries, so it is exercised
+      // here by pushing past that slack.
+      final stale = List.generate(
+        SketchRenderCache.sweepSlack + 1,
+        (i) => box.translate(Offset(i.toDouble(), 0)),
+      );
+      for (final e in stale) {
+        cache.strokePath(e);
+      }
+      cache.sweep([moved], generation: 1);
+      expect(cache.strokeEntryCount, 1);
+      expect(identical(cache.strokePath(moved), after), isTrue,
+          reason: 'the live element must keep its entry across a sweep');
+    });
+
+    test('a restyled element gets a fresh dashed outline', () {
+      final cache = SketchRenderCache();
+      final solid = cache.strokePath(box);
+      final dashed = cache.strokePath(
+        box.copyWithStyle(box.style.copyWith(strokeStyle: StrokeStyle.dashed)),
+      );
+      expect(identical(solid, dashed), isFalse);
+      expect(dashed.computeMetrics().length,
+          greaterThan(solid.computeMetrics().length),
+          reason: 'a dashed outline is many short sub-paths');
+    });
+
+    test('the sweep only walks the maps when the generation changes', () {
+      final cache = SketchRenderCache();
+      for (var i = 0; i <= SketchRenderCache.sweepSlack; i++) {
+        cache.strokePath(box.translate(Offset(i.toDouble(), 0)));
+      }
+      cache.sweep(const [], generation: 7);
+      expect(cache.strokeEntryCount, 0);
+
+      // Same generation again: nothing to do, and nothing is lost.
+      cache.strokePath(box);
+      cache.sweep(const [], generation: 7);
+      expect(cache.strokeEntryCount, 1);
+    });
+  });
+
+  group('text painters', () {
+    final label = SketchText.create(
+      id: 'txt',
+      position: Offset.zero,
+      text: 'hello',
+    );
+
+    test('the same instance returns the same painter', () {
+      final cache = SketchRenderCache();
+      var builds = 0;
+      TextPainter build() {
+        builds++;
+        return TextPainter(
+          text: const TextSpan(text: 'hello'),
+          textDirection: TextDirection.ltr,
+        )..layout();
+      }
+
+      final a = cache.textPainter(label, build);
+      final b = cache.textPainter(label, build);
+      expect(identical(a, b), isTrue);
+      expect(builds, 1);
+      cache.dispose();
+    });
+
+    test('a copyWith instance lays out afresh and the stale one is swept',
+        () {
+      final cache = SketchRenderCache();
+      TextPainter build() => TextPainter(
+            text: const TextSpan(text: 'hello'),
+            textDirection: TextDirection.ltr,
+          )..layout();
+      final a = cache.textPainter(label, build);
+      final edited = label.copyWith(text: 'hello!');
+      final b = cache.textPainter(edited, build);
+      expect(identical(a, b), isFalse);
+      expect(cache.textEntryCount, 2);
+
+      for (var i = 0; i < SketchRenderCache.sweepSlack; i++) {
+        cache.textPainter(label.copyWith(text: '$i'), build);
+      }
+      cache.sweep([edited], generation: 1);
+      expect(cache.textEntryCount, 1);
+      expect(identical(cache.textPainter(edited, build), b), isTrue);
+      cache.dispose();
+    });
+  });
+
+  group('dashed strokes are built once', () {
+    test('a dotted rectangle is one path of short dashes', () {
+      final cache = SketchRenderCache();
+      final dotted = SketchRectangle.create(
+        id: 'dots',
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+        style: const SketchStyle(strokeStyle: StrokeStyle.dotted),
+      );
+      final path = cache.strokePath(dotted);
+      final metrics = path.computeMetrics().toList();
+      // Perimeter 400 × 2 passes on a (2 on, 4 off) pattern ≈ 133 dots.
+      expect(metrics.length, greaterThan(100));
+      for (final m in metrics) {
+        // Dashes are cut along the rough outline's cubics, where the
+        // metric's arc length is an approximation — allow a little slack.
+        expect(m.length, lessThanOrEqualTo(2.5));
+      }
+      expect(identical(cache.strokePath(dotted), path), isTrue);
+    });
+
+    test('a collapsed note keeps its badge mark solid whatever the style', () {
+      final cache = SketchRenderCache();
+      final note = SketchSticky.create(
+        id: 'n',
+        rect: _rect,
+        style: SketchSticky.defaultStyle
+            .copyWith(strokeStyle: StrokeStyle.dotted),
+        collapsed: true,
+      );
+      final glyph = StickyBubbleGeometry.glyphPath(note.rect);
+      expect(cache.strokePath(note).computeMetrics().length,
+          glyph.computeMetrics().length);
+    });
+  });
+
+  group('hatch fills', () {
+    test('the outline path is the solid silhouette for every closed shape',
+        () {
+      final cache = SketchRenderCache();
+      const rect = Rect.fromLTWH(10, 10, 100, 60);
+      final ellipse = SketchEllipse.create(id: 'e', rect: rect);
+      final diamond = SketchDiamond.create(id: 'd', rect: rect);
+      final triangle = SketchTriangle.create(id: 't', rect: rect);
+      for (final shape in [ellipse, diamond, triangle]) {
+        expect(cache.outlinePath(shape).getBounds(), rect);
+        expect(SketchRenderCache.hatchNeedsClip(shape), isTrue);
+      }
+      expect(
+        SketchRenderCache.hatchNeedsClip(
+            SketchRectangle.create(id: 'r', rect: rect)),
+        isFalse,
+      );
+      expect(cache.outlinePath(SketchLine.create(
+        id: 'l',
+        start: Offset.zero,
+        end: const Offset(10, 10),
+      )).getBounds(), Rect.zero);
+    });
+
+    test('a shape too large to hatch falls back to a solid fill', () {
+      final cache = SketchRenderCache();
+      final huge = SketchEllipse.create(
+        id: 'huge',
+        rect: const Rect.fromLTWH(0, 0, 100000, 100000),
+        style: const SketchStyle(
+          fillStyle: FillStyle.hachure,
+          fillColor: Color(0xFF000000),
+        ),
+      );
+      expect(RoughGenerator.hachureFits(huge.bounds), isFalse);
+      expect(SketchRenderCache.hatchFallsBackToSolid(huge), isTrue);
+      expect(cache.fillPath(huge).getBounds(), huge.bounds);
+      expect(cache.fillPath(huge).computeMetrics().length, 1,
+          reason: 'one closed oval, not thousands of hatch lines');
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show Theme;
+import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/core/canvas/grid_painter.dart';
@@ -55,6 +56,13 @@ class WhiteboardCanvas extends StatefulWidget {
   final double minZoom;
   final double maxZoom;
   final double initialZoom;
+
+  /// Zoom change per scroll unit when Ctrl/Cmd is held: 100 px of wheel
+  /// travel is a 20 % step. Multiplicative, like the pinch gesture
+  /// (`_lastZoom * details.scale`), so a step feels the same at 0.1× as at
+  /// 4× — the old fixed ±0.05 was a 50 % jump zoomed out and a 1 % nudge
+  /// zoomed in.
+  static const double wheelZoomRate = 0.002;
 
   @override
   State<WhiteboardCanvas> createState() => _WhiteboardCanvasState();
@@ -152,20 +160,37 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
     _lastZoom = null;
   }
 
+  /// Wheel / trackpad scroll: plain scroll pans, Ctrl/Cmd + scroll zooms
+  /// about the pointer.
+  ///
+  /// Every two-finger sideways swipe on a trackpad and every tilt-wheel
+  /// arrives with `dy == 0`; that used to take the "zoom in" branch and
+  /// jump several steps per flick. A horizontal scroll now moves the board
+  /// sideways and never touches the zoom.
   void _onPointerSignal(PointerSignalEvent event) {
-    // Mouse wheel zoom.
-    if (event is PointerScrollEvent) {
-      final delta = event.scrollDelta.dy;
-      final zoomFactor = delta > 0 ? -0.05 : 0.05;
-      final newZoom = _viewport.zoom + zoomFactor;
-      _setViewport(
-        ViewportTransform.zoomAtFocalPoint(
-          _viewport,
-          newZoom,
-          event.localPosition,
-        ),
-      );
+    if (event is! PointerScrollEvent) return;
+    final delta = event.scrollDelta;
+    final zoomModifier = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (!zoomModifier) {
+      // Scroll content the way the wheel moves a page: wheel-down (dy > 0)
+      // brings the board up, i.e. the viewport offset decreases.
+      _setViewport(_viewport.copyWith(offset: _viewport.offset - delta));
+      return;
     }
+    if (delta.dy == 0) return;
+    // One flung wheel event can report hundreds of pixels; bound a single
+    // step to halving / doubling so the factor can never go negative.
+    final factor =
+        (1 - delta.dy * WhiteboardCanvas.wheelZoomRate).clamp(0.5, 2.0);
+    final newZoom = _viewport.zoom * factor;
+    _setViewport(
+      ViewportTransform.zoomAtFocalPoint(
+        _viewport,
+        newZoom,
+        event.localPosition,
+      ),
+    );
   }
 
   @override
