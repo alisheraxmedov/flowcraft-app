@@ -13,7 +13,6 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.2
-  google_fonts: ^8.2.1
   material_symbols_icons: ^4.2960.0
 
 dev_dependencies:
@@ -25,3 +24,29 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo/my-logo.png
+
+  # Bundled rather than fetched through `google_fonts`: this app is
+  # local-first and must not reach the network on first run. Family names
+  # must match `AppTypography.interFamily` / `monoFamily`, which are also the
+  # values the properties panel writes onto a SketchText's `fontFamily`.
+  # Only the weights the app actually uses are shipped. Licenses (both SIL
+  # OFL 1.1) travel with the files.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
