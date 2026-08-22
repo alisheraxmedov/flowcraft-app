@@ -100,6 +100,25 @@ jobs:
       - name: Verify ad-hoc code signature
         run: codesign --verify --deep --strict --verbose=2 build/macos/Build/Products/Release/flowcraft.app
 
+      # The eraser glyph comes from material_symbols_icons, whose three fonts
+      # are 32 MB in the pub cache. Release builds tree-shake icon fonts down
+      # to the glyphs actually referenced (a few KB each); if that ever stops
+      # happening — a non-const IconData, a flag change — the app would grow
+      # by ~32 MB silently. Fail here instead.
+      - name: Assert icon fonts were tree-shaken
+        run: |
+          set -euo pipefail
+          assets=build/macos/Build/Products/Release/flowcraft.app/Contents/Frameworks/App.framework/Resources/flutter_assets
+          find "$assets" \( -name 'MaterialSymbols*.ttf' -o -name 'MaterialIcons-Regular.otf' \) -print0 \
+            | while IFS= read -r -d '' f; do
+                size=$(stat -f %z "$f")
+                echo "$size  $f"
+                if [ "$size" -gt 102400 ]; then
+                  echo "::error::$f is $size bytes — icon font was not tree-shaken" >&2
+                  exit 1
+                fi
+              done
+
       # Stage the app next to an /Applications symlink so the mounted image
       # offers the standard drag-to-install affordance instead of a lone
       # app users double-click from the read-only volume.

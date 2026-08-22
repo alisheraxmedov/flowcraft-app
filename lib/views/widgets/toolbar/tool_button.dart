@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
@@ -107,10 +108,11 @@ class ToolGlyph extends StatelessWidget {
       case SketchTool.text:
         return Icons.text_fields_rounded;
       case SketchTool.eraser:
-        // Material's own glyph set has no eraser; the brush-and-sweep reads
-        // as "wipe away" and costs nothing. The Symbols eraser it replaced
-        // pulled in a 32 MB font dependency for this one icon.
-        return Icons.cleaning_services_rounded;
+        // Material's own glyph set has no eraser. The Symbols font is 32 MB
+        // in the pub cache, but Flutter's icon tree-shaker keeps only the
+        // glyphs a `const IconData` references — verified in the release
+        // bundle — so this costs one glyph, not the font. Keep it const.
+        return Symbols.ink_eraser_rounded;
     }
   }
 
