@@ -187,4 +187,78 @@ void main() {
       );
     });
   });
+
+  group('collapsible sticky notes did not change the file format', () {
+    /// A scene exactly as a build before `SketchSticky.collapsed` existed
+    /// wrote it — same keys, same values, same version. Users have files
+    /// like this on disk in `~/.flowcraft/projects/`.
+    Map<String, dynamic> legacyScene() => <String, dynamic>{
+          'version': 1,
+          'elements': <Map<String, dynamic>>[
+            {
+              'type': 'sticky',
+              'id': 'note-1',
+              'style': const SketchStyle(
+                strokeColor: SketchSticky.defaultColor,
+                fillColor: SketchSticky.defaultColor,
+                fillStyle: FillStyle.solid,
+              ).toJson(),
+              'rect': {'l': 32.0, 't': 48.0, 'w': 160.0, 'h': 80.0},
+              'angle': 0.0,
+              'cornerRadius': 4.0,
+              'text': 'written last week',
+              'fontSize': 20.0,
+            },
+          ],
+        };
+
+    test('the schema version is still 1', () {
+      // Adding a field with a `fromJson` default must not bump this — a bump
+      // makes every already-saved file unreadable by the build that saved it.
+      expect(SketchSerializer.schemaVersion, 1);
+    });
+
+    test('a scene saved before the field existed still opens', () {
+      final loaded = SketchSerializer.load(legacyScene());
+      expect(loaded.isComplete, isTrue);
+      expect(loaded.errors, isEmpty);
+
+      final note = loaded.elements.single as SketchSticky;
+      expect(note.id, 'note-1');
+      expect(note.text, 'written last week');
+      expect(note.collapsed, isFalse);
+      // Opens exactly as it was drawn, not restyled by this build's defaults.
+      expect(note.bounds, const Rect.fromLTWH(32, 48, 160, 80));
+      expect(note.cornerRadius, 4.0);
+      expect(note.fontSize, 20.0);
+    });
+
+    test('re-saving it writes the same payload back', () {
+      // The other half of "compatible in both directions": an old file that
+      // is opened and saved must not gain a key an older build would then
+      // have to ignore.
+      final loaded = SketchSerializer.load(legacyScene());
+      final rewritten = SketchSerializer.toMap(loaded.elements);
+      expect(rewritten['version'], 1);
+      final element = (rewritten['elements'] as List).single
+          as Map<String, dynamic>;
+      expect(element.containsKey('collapsed'), isFalse);
+      expect(element, legacyScene()['elements']![0]);
+    });
+
+    test('a collapsed note survives a save-and-open cycle', () {
+      final collapsed = SketchSticky.create(
+        id: 'note-2',
+        rect: const Rect.fromLTWH(10, 10, 200, 90),
+        text: 'later',
+        collapsed: true,
+      );
+      final restored = SketchSerializer.deserialize(
+        SketchSerializer.serialize([collapsed]),
+      ).single as SketchSticky;
+      expect(restored.collapsed, isTrue);
+      expect(restored.rect, collapsed.rect);
+      expect(restored.bounds, collapsed.bounds);
+    });
+  });
 }

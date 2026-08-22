@@ -12,6 +12,27 @@ import 'package:flowcraft/models/sketch_style.dart';
 class SketchHitTest {
   SketchHitTest._();
 
+  /// Whether [element] offers the eight resize handles.
+  ///
+  /// One predicate for both sides of the handle: `SketchPainter` asks it
+  /// whether to *draw* them and `SketchGestureHandler` asks it whether to
+  /// *grab* them. Two copies is how this repo previously shipped handles
+  /// drawn 4px from where they could be caught — see
+  /// [SketchGeometry.handlePosition], which exists for the same reason.
+  ///
+  /// A collapsed sticky note is excluded: its badge is a fixed size, so a
+  /// handle there would either resize nothing visible or silently resize the
+  /// bubble hiding behind it.
+  static bool isResizable(SketchElement element) => switch (element) {
+        SketchSticky s => !s.collapsed,
+        SketchRectangle _ ||
+        SketchEllipse _ ||
+        SketchDiamond _ ||
+        SketchTriangle _ =>
+          true,
+        _ => false,
+      };
+
   /// Returns true if [point] hits [element], using the element's geometry
   /// and the given [tolerance] for strokes / linear shapes.
   static bool hit(SketchElement element, Offset point, double tolerance) {
@@ -37,7 +58,10 @@ class SketchHitTest {
         }
         return _hitStrokeTriangle(point, tri.rect, tri.angle, tolerance);
       case SketchSticky s:
-        return SketchGeometry.pointInRotatedRect(point, s.rect, s.angle);
+        // `bounds`, not `rect`: a collapsed note draws as a small badge, and
+        // hit-testing the bubble hiding behind it would claim clicks over a
+        // rectangle of empty canvas.
+        return SketchGeometry.pointInRotatedRect(point, s.bounds, s.angle);
       case SketchLine l:
         return SketchGeometry.distanceToSegment(point, l.start, l.end) <=
             tolerance;

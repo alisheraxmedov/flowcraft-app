@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/core/utils/id_generator.dart';
 import 'package:flowcraft/models/sketch_style.dart';
@@ -460,16 +461,92 @@ class SketchSticky extends _SketchBoundedShape {
     required super.style,
     required super.rect,
     super.text,
-    super.fontSize,
+    super.fontSize = defaultFontSize,
     super.angle,
     super.groupId,
-    this.cornerRadius = 4.0,
+    this.cornerRadius = defaultCornerRadius,
+    this.collapsed = false,
   });
 
   /// Default sticky-note background colour (Excalidraw-style yellow).
   static const Color defaultColor = Color(0xFFFFEC99);
 
+  /// Size a note takes when the gesture that created it didn't say — a press
+  /// with no real drag — and the floor a drag-created one is grown to.
+  ///
+  /// There was no default before: the sticky tool made a note exactly the
+  /// size of the drag rect, and a plain click produced a 0×0 rect that the
+  /// commit path then discarded, so clicking with the sticky tool did
+  /// nothing at all. Sized for two lines of [defaultFontSize] text inside
+  /// [StickyBubbleGeometry]'s insets and tail band.
+  static const Size defaultSize = Size(160, 72);
+
+  /// Label size. Was 20, against 16 for every other element's text; that
+  /// extra 25% is most of what made notes feel oversized, because a note has
+  /// to be dragged big enough to fit its own label.
+  static const double defaultFontSize = 16.0;
+
+  /// Body rounding. A chat bubble is round; the old 4px read as a rectangle
+  /// with softened corners.
+  static const double defaultCornerRadius = 12.0;
+
+  /// Glyph colour used for dark notes, matching `SketchStyle`'s default ink.
+  static const Color _darkInk = Color(0xFF1E1E1E);
+
+  /// Glyph colour used for dark-papered notes.
+  static const Color _lightInk = Color(0xFFF8F8F8);
+
   final double cornerRadius;
+
+  /// Whether the note is showing as its badge instead of its bubble.
+  ///
+  /// Only the presentation changes: [rect] keeps the expanded geometry
+  /// underneath, so expanding restores the size and position the user had
+  /// rather than a default. [bounds] is what moves — see below.
+  final bool collapsed;
+
+  /// The box this note actually occupies on the canvas.
+  ///
+  /// Overridden because a collapsed note draws as a small badge, and bounds
+  /// that disagree with what is drawn desynchronise selection rectangles,
+  /// hit-testing, marquee selection, viewport culling and PNG export all at
+  /// once — the same failure `SketchText.bounds` shipped when it guessed a
+  /// width the painter never used.
+  @override
+  Rect get bounds =>
+      StickyBubbleGeometry.boundsOf(rect, collapsed: collapsed);
+
+  /// Colour this note's glyphs take — its label, and its badge's mark.
+  ///
+  /// Not [SketchStyle.strokeColor] directly: for a sticky the stroke colour
+  /// *is* the paper colour ([create] sets stroke and fill to the same
+  /// [defaultColor]), so glyphs drawn in it are invisible against the note
+  /// they sit on. When the two agree, ink is derived from the paper's
+  /// luminance instead, which also keeps the badge's mark legible on a note
+  /// the user has painted some other colour. A stroke colour the user has
+  /// deliberately made *different* from the fill is honoured as-is.
+  Color get inkColor {
+    final paper = style.fillColor;
+    if (paper == null || paper != style.strokeColor) return style.strokeColor;
+    return paper.computeLuminance() > 0.5 ? _darkInk : _lightInk;
+  }
+
+  /// The rect a note dragged out as [drawn] actually gets.
+  ///
+  /// A note is a text container, not a free-form shape: below the size its
+  /// own label needs it is unusable, so each axis is floored at
+  /// [defaultSize]. That is also what makes a plain click work — a 0×0 drag
+  /// rect becomes a default-sized note at the press point instead of being
+  /// discarded, which is what used to happen.
+  ///
+  /// Shared by the commit path and the drag preview so the note that lands
+  /// is the note that was shown.
+  static Rect rectFor(Rect drawn) => Rect.fromLTWH(
+        drawn.left,
+        drawn.top,
+        math.max(drawn.width, defaultSize.width),
+        math.max(drawn.height, defaultSize.height),
+      );
 
   SketchSticky copyWith({
     String? id,
@@ -480,6 +557,7 @@ class SketchSticky extends _SketchBoundedShape {
     Object? text = _unset,
     double? fontSize,
     Object? groupId = _unset,
+    bool? collapsed,
   }) {
     return SketchSticky(
       id: id ?? this.id,
@@ -490,6 +568,7 @@ class SketchSticky extends _SketchBoundedShape {
       text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+      collapsed: collapsed ?? this.collapsed,
     );
   }
 
@@ -510,8 +589,9 @@ class SketchSticky extends _SketchBoundedShape {
     required Rect rect,
     SketchStyle? style,
     String? text,
-    double fontSize = 20.0,
-    double cornerRadius = 4.0,
+    double fontSize = defaultFontSize,
+    double cornerRadius = defaultCornerRadius,
+    bool collapsed = false,
   }) {
     return SketchSticky(
       id: id ?? IdGenerator.generate('sketch'),
@@ -525,6 +605,7 @@ class SketchSticky extends _SketchBoundedShape {
       text: text,
       fontSize: fontSize,
       cornerRadius: cornerRadius,
+      collapsed: collapsed,
     );
   }
 
@@ -539,6 +620,11 @@ class SketchSticky extends _SketchBoundedShape {
         if (text != null) 'text': text,
         'fontSize': fontSize,
         if (groupId != null) 'groupId': groupId,
+        // Written only when set, and defaulted on read, which is what keeps
+        // this a schema-version-1 payload in both directions: a scene with no
+        // collapsed notes serialises byte-for-byte as it did before the field
+        // existed, and a scene saved by an older build still loads here.
+        if (collapsed) 'collapsed': true,
       };
 
   factory SketchSticky.fromJson(Map<String, dynamic> json) {
@@ -547,10 +633,12 @@ class SketchSticky extends _SketchBoundedShape {
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
-      cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 4.0,
+      cornerRadius:
+          (json['cornerRadius'] as num?)?.toDouble() ?? defaultCornerRadius,
       text: json['text'] as String?,
-      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 20.0,
+      fontSize: (json['fontSize'] as num?)?.toDouble() ?? defaultFontSize,
       groupId: json['groupId'] as String?,
+      collapsed: json['collapsed'] as bool? ?? false,
     );
   }
 }

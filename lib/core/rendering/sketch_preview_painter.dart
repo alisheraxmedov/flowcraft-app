@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/core/interactions/sketch_drag_session.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -189,14 +190,21 @@ class SketchPreviewPainter extends CustomPainter {
     }
   }
 
+  /// Previews the note as the bubble it will become, not as the rectangle it
+  /// is being dragged out as — including the floor the commit applies, so a
+  /// press with no drag shows the note it is about to leave behind.
   void _paintStickyPreview(Canvas canvas, Rect rect) {
-    final rr = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    final settled = SketchSticky.rectFor(rect);
+    final bubble = StickyBubbleGeometry.fillPath(
+      settled,
+      SketchSticky.defaultCornerRadius,
+    );
     _marqueeFill.color = SketchSticky.defaultColor.withValues(alpha: 0.9);
-    canvas.drawRRect(rr, _marqueeFill);
+    canvas.drawPath(bubble, _marqueeFill);
     _strokePaint
       ..color = previewColor.withValues(alpha: 0.5)
       ..strokeWidth = 1.0;
-    canvas.drawRRect(rr, _strokePaint);
+    canvas.drawPath(bubble, _strokePaint);
   }
 
   void _paintArrowHead(Canvas canvas, Offset start, Offset end, double strokeWidth) {

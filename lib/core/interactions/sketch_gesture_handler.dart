@@ -178,7 +178,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         final textTarget = _topMostTextTarget(canvas);
         if (textTarget != null && _isDoubleTap(textTarget.id)) {
           _clearTapMemory();
-          _ctrl.beginTextEdit(elementId: textTarget.id);
+          _beginTextEditOn(textTarget);
           _setConsumed(true);
           return;
         }
@@ -255,6 +255,12 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
             style: _ctrl.currentStyle,
             additive: additive,
             moveStartBounds: _selectionBounds(),
+            // A press on a collapsed note may turn out to be a click (which
+            // opens it) or a drag (which moves it). Which one it was is only
+            // knowable at pointer-up, so the candidate rides along on the
+            // move session — see `_expandTappedSticky`.
+            collapsedStickyId:
+                hit is SketchSticky && hit.collapsed ? hit.id : null,
           ));
           _setConsumed(true);
           return;
@@ -316,7 +322,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         // on empty space to create a new free-floating SketchText.
         final target = _topMostTextTarget(canvas);
         if (target != null) {
-          _ctrl.beginTextEdit(elementId: target.id);
+          _beginTextEditOn(target);
         } else {
           _ctrl.beginTextEdit(canvasPosition: canvas);
         }
@@ -416,6 +422,9 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         _commitFreedraw(session);
         break;
       case SketchSessionKind.moveSelection:
+        _ctrl.endDragSession();
+        _expandTappedSticky(session);
+        break;
       case SketchSessionKind.resize:
       case SketchSessionKind.moveEndpoint:
         _ctrl.endDragSession();
@@ -450,6 +459,37 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     if (_interaction.session != null) _ctrl.endDragSession();
     _interaction.end();
     _setConsumed(false);
+  }
+
+  /// Opens the inline editor on [target].
+  ///
+  /// Shared by the select tool's double-tap-to-edit and the text tool's
+  /// tap-to-edit so both agree that a collapsed note has to open first: the
+  /// editor lays its glyphs out over the bubble's text box, and a badge does
+  /// not have one.
+  void _beginTextEditOn(SketchElement target) {
+    if (target is SketchSticky && target.collapsed) {
+      _ctrl.setStickyCollapsed(target.id, false);
+    }
+    _ctrl.beginTextEdit(elementId: target.id);
+  }
+
+  /// Opens a collapsed note that was clicked rather than dragged.
+  ///
+  /// Deferred to pointer-up, and gated on the move session never having
+  /// translated anything: the same press that opens a badge is also the one
+  /// that drags it, so acting on pointer-down would make a note impossible
+  /// to move without opening it first.
+  ///
+  /// A single click only *expands* — it does not drop into editing. That
+  /// keeps the note consistent with every other text-bearing element on the
+  /// canvas, where one click selects and a double-click edits; the second
+  /// click of that double then lands on the already-open bubble and takes
+  /// the existing double-tap path.
+  void _expandTappedSticky(SketchDragSession session) {
+    final id = session.collapsedStickyId;
+    if (id == null || session.moved) return;
+    _ctrl.setStickyCollapsed(id, false);
   }
 
   /// Shared by both text-edit entry points — the select tool's
@@ -494,7 +534,9 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     // boxes overlap, the one drawn on top owns the handle the user sees.
     for (var i = elements.length - 1; i >= 0; i--) {
       final el = elements[i];
-      if (!selected.contains(el.id) || !_isResizable(el)) continue;
+      if (!selected.contains(el.id) || !SketchHitTest.isResizable(el)) {
+        continue;
+      }
       final box = _selectionBoxOf(el, viewport);
       ResizeHandle? best;
       var bestDistance = double.infinity;
@@ -573,7 +615,12 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
 
     final settled = snap == null ? target : target.shift(snap.delta);
     final move = settled.topLeft - current.topLeft;
-    if (move != Offset.zero) _ctrl.translateSelected(move);
+    if (move != Offset.zero) {
+      _ctrl.translateSelected(move);
+      // This press has committed to being a drag, so it is no longer the
+      // click that would open a collapsed note.
+      session.moved = true;
+    }
     _interaction.notifyChanged();
   }
 
@@ -731,13 +778,6 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         _ => null,
       };
 
-  static bool _isResizable(SketchElement e) =>
-      e is SketchRectangle ||
-      e is SketchEllipse ||
-      e is SketchDiamond ||
-      e is SketchTriangle ||
-      e is SketchSticky;
-
   // ── Commits ──────────────────────────────────────────────────────────────
 
   void _commitBounded(SketchDragSession session) {
@@ -764,8 +804,11 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         element = SketchTriangle.create(rect: rect, style: session.style);
         break;
       case SketchTool.sticky:
-        if (rect.width < 1 && rect.height < 1) return;
-        final sticky = SketchSticky.create(rect: rect);
+        // No size guard, unlike the shapes above: a note is floored at
+        // `SketchSticky.rectFor`'s default rather than discarded, so a plain
+        // click drops a note instead of silently doing nothing — which is
+        // what a 0×0 drag rect used to do here.
+        final sticky = SketchSticky.create(rect: SketchSticky.rectFor(rect));
         _ctrl.add(sticky);
         _ctrl.beginTextEdit(elementId: sticky.id);
         return;

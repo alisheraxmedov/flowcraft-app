@@ -1059,7 +1059,242 @@ void main() {
     expect(await _alignmentRun(tester, zoom: 4.0, screenGap: 10),
         moreOrLessEquals(410, epsilon: 0.01));
   });
+
+  // ── Sticky notes ─────────────────────────────────────────────────────────
+
+  testWidgets('clicking a collapsed note opens it back to its bubble',
+      (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_collapsedNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    // Inside the badge, which is 36px square at the note's top-left.
+    await tester.tapAt(const Offset(118, 78));
+    await tester.pump();
+
+    final note = controller.elements.single as SketchSticky;
+    expect(note.collapsed, isFalse);
+    // Expanding restores the geometry the note had, not a default.
+    expect(note.rect, _noteRect);
+    expect(note.bounds, _noteRect);
+  });
+
+  testWidgets('a click outside the badge does not open it', (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_collapsedNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    // Well inside the *bubble* the badge is hiding, but outside the badge.
+    // Hit-testing the bubble here would claim a rectangle of empty canvas.
+    await tester.tapAt(const Offset(260, 78));
+    await tester.pump();
+
+    expect((controller.elements.single as SketchSticky).collapsed, isTrue);
+    expect(controller.hasSelection, isFalse);
+  });
+
+  testWidgets('dragging a collapsed note moves it instead of opening it',
+      (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_collapsedNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction, snap: false));
+
+    final gesture = await tester.startGesture(const Offset(118, 78));
+    await gesture.moveBy(const Offset(60, 40));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    final note = controller.elements.single as SketchSticky;
+    expect(note.collapsed, isTrue, reason: 'a drag is not a click');
+    expect(note.bounds.topLeft, const Offset(160, 100));
+  });
+
+  testWidgets('a collapsed note offers no resize handles', (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_collapsedNote()],
+    );
+    addTearDown(controller.dispose);
+    controller.select('note');
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction, snap: false));
+
+    // The badge's padded bottom-right corner — exactly where a resizable
+    // element puts a handle, and where the painter would draw one. The badge
+    // is a fixed size, so nothing is drawn there and nothing may be grabbed
+    // there either; the drag has to leave the note alone.
+    final corner = StickyBubbleGeometry.collapsedBounds(_noteRect)
+        .bottomRight
+        .translate(SketchGeometry.selectionPadding,
+            SketchGeometry.selectionPadding);
+    final gesture = await tester.startGesture(corner);
+    await gesture.moveBy(const Offset(50, 50));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    final note = controller.elements.single as SketchSticky;
+    expect(note.rect, _noteRect);
+    expect(note.collapsed, isTrue);
+  });
+
+  testWidgets('an expanded note still resizes', (tester) async {
+    // The guard above must be about being collapsed, not about being a note.
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [SketchSticky.create(id: 'note', rect: _noteRect)],
+    );
+    addTearDown(controller.dispose);
+    controller.select('note');
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction, snap: false));
+
+    final gesture = await tester.startGesture(
+      _noteRect.bottomRight.translate(
+        SketchGeometry.selectionPadding,
+        SketchGeometry.selectionPadding,
+      ),
+    );
+    await gesture.moveBy(const Offset(40, 20));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(
+      controller.elements.single.bounds,
+      const Rect.fromLTRB(100, 60, 360, 180),
+    );
+  });
+
+  testWidgets('double-clicking a collapsed note opens it and edits it',
+      (tester) async {
+    // Consistent with every other text-bearing element: one click selects
+    // (and here, opens), two edit. No third convention.
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_collapsedNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await tester.tapAt(const Offset(118, 78));
+    await tester.pump();
+    expect(controller.editingElementId, isNull, reason: 'one click only opens');
+
+    await tester.tapAt(const Offset(118, 78));
+    await tester.pump();
+    expect(controller.editingElementId, 'note');
+    expect((controller.elements.single as SketchSticky).collapsed, isFalse);
+  });
+
+  testWidgets('the text tool opens a collapsed note before typing into it',
+      (tester) async {
+    // The editor lays its glyphs out over the bubble's text box; a badge
+    // does not have one.
+    final controller = SketchController(
+      currentTool: SketchTool.text,
+      initialElements: [_collapsedNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await tester.tapAt(const Offset(118, 78));
+    await tester.pump();
+
+    expect(controller.editingElementId, 'note');
+    expect((controller.elements.single as SketchSticky).collapsed, isFalse);
+  });
+
+  testWidgets('a click with the sticky tool drops a default-sized note',
+      (tester) async {
+    // A 0x0 drag rect used to be discarded, so clicking did nothing at all.
+    final controller = SketchController(currentTool: SketchTool.sticky);
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await tester.tapAt(const Offset(80, 90));
+    await tester.pump();
+
+    expect(controller.elements, hasLength(1));
+    final note = controller.elements.single as SketchSticky;
+    expect(note.bounds, const Offset(80, 90) & SketchSticky.defaultSize);
+    // Dropped straight into the composer, as a dragged-out note already was.
+    expect(controller.editingElementId, note.id);
+  });
+
+  testWidgets('a sticky dragged smaller than a note can be is grown',
+      (tester) async {
+    final controller = SketchController(currentTool: SketchTool.sticky);
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    final gesture = await tester.startGesture(const Offset(10, 10));
+    await gesture.moveBy(const Offset(30, 12));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(
+      controller.elements.single.bounds,
+      const Offset(10, 10) & SketchSticky.defaultSize,
+    );
+  });
 }
+
+/// A note collapsed to its badge, sized well past the badge so the two boxes
+/// are distinguishable in a hit test.
+const Rect _noteRect = Rect.fromLTWH(100, 60, 220, 100);
+
+SketchSticky _collapsedNote() => SketchSticky.create(
+      id: 'note',
+      rect: _noteRect,
+      text: 'remember this',
+      collapsed: true,
+    );
 
 /// A filled box, so a tap anywhere inside it hits independently of
 /// stroke-hit tolerance.

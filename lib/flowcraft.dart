@@ -74,6 +74,7 @@ export 'core/canvas/viewport_transform.dart';
 export 'core/canvas/whiteboard_canvas.dart';
 export 'core/domain/sketch_geometry.dart';
 export 'core/domain/sketch_hit_test.dart';
+export 'core/domain/sticky_bubble_geometry.dart';
 export 'core/domain/stroke_simplifier.dart';
 export 'core/domain/text_metrics.dart';
 export 'core/interactions/sketch_drag_session.dart';

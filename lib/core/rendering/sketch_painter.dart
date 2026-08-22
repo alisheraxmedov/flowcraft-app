@@ -4,6 +4,8 @@ import 'package:flutter/rendering.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
 import 'package:flowcraft/core/domain/sketch_geometry.dart';
+import 'package:flowcraft/core/domain/sketch_hit_test.dart';
+import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -117,7 +119,14 @@ class SketchPainter extends CustomPainter {
 
   void _paintElement(Canvas canvas, SketchElement element) {
     final style = element.style;
-    final color = style.strokeColor.withValues(alpha: style.opacity);
+    // A collapsed sticky's only stroke work is its badge mark, which has to
+    // read *against* the paper it sits on — and a sticky's stroke colour is
+    // that paper (`SketchSticky.create` sets both from one colour). Its own
+    // `inkColor` resolves that; every other element strokes as it always did.
+    final strokeSource = element is SketchSticky && element.collapsed
+        ? element.inkColor
+        : style.strokeColor;
+    final color = strokeSource.withValues(alpha: style.opacity);
 
     // ─── fill (under stroke) ─────────────────────────────────────────────
     if (style.fillStyle != FillStyle.none && style.fillColor != null) {
@@ -180,9 +189,13 @@ class SketchPainter extends CustomPainter {
       _drawCenteredText(canvas, element.bounds, centeredLabel.$1,
           centeredLabel.$2, style.strokeColor, style.opacity);
     }
-    if (!editing && element is SketchSticky && element.text != null) {
-      _drawTopLeftText(canvas, element.bounds, element.text!,
-          element.fontSize, style.strokeColor, style.opacity);
+    // A collapsed note shows its badge mark instead of its label; the text
+    // is still there, it is just not what is on screen.
+    if (!editing &&
+        element is SketchSticky &&
+        !element.collapsed &&
+        element.text != null) {
+      _drawStickyLabel(canvas, element);
     }
   }
 
@@ -212,19 +225,19 @@ class SketchPainter extends CustomPainter {
     tp.paint(canvas, Offset(dx, dy));
   }
 
-  void _drawTopLeftText(
-    Canvas canvas,
-    Rect bounds,
-    String text,
-    double fontSize,
-    Color color,
-    double opacity,
-  ) {
+  /// Lays out a note's label inside the bubble's text box.
+  ///
+  /// The box comes from [StickyBubbleGeometry.textBoxOf] rather than from an
+  /// inset computed here, because `SketchTextEditor` positions the *editable*
+  /// glyphs from the same call. Two copies of that arithmetic is exactly how
+  /// the label used to jump the instant editing started.
+  void _drawStickyLabel(Canvas canvas, SketchSticky sticky) {
+    final box = StickyBubbleGeometry.textBoxOf(sticky.rect);
     final span = TextSpan(
-      text: text,
+      text: sticky.text,
       style: TextStyle(
-        color: color.withValues(alpha: opacity),
-        fontSize: fontSize,
+        color: sticky.inkColor.withValues(alpha: sticky.style.opacity),
+        fontSize: sticky.fontSize,
       ),
     );
     final tp = TextPainter(
@@ -232,8 +245,8 @@ class SketchPainter extends CustomPainter {
       textAlign: TextAlign.left,
       textDirection: TextDirection.ltr,
       maxLines: null,
-    )..layout(maxWidth: (bounds.width - 16).clamp(0.0, double.infinity));
-    tp.paint(canvas, Offset(bounds.left + 8, bounds.top + 8));
+    )..layout(maxWidth: box.width);
+    tp.paint(canvas, box.topLeft);
   }
 
   void _drawArrowHead(Canvas canvas, SketchArrow arrow) {
@@ -304,7 +317,7 @@ class SketchPainter extends CustomPainter {
 
       // Handles are placed and sized in screen-space, so they stay a
       // constant, grabbable size however far the canvas is zoomed.
-      if (_isResizable(element)) {
+      if (SketchHitTest.isResizable(element)) {
         for (final handle in ResizeHandle.values) {
           _drawResizeHandle(
             canvas,
@@ -350,13 +363,6 @@ class SketchPainter extends CustomPainter {
         SketchArrow a => (a.start, a.end),
         _ => null,
       };
-
-  static bool _isResizable(SketchElement e) =>
-      e is SketchRectangle ||
-      e is SketchEllipse ||
-      e is SketchDiamond ||
-      e is SketchTriangle ||
-      e is SketchSticky;
 
   double _scaleStroke(double base) =>
       scaleStrokeWithZoom ? base : base / viewport.zoom;

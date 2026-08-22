@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/core/rendering/rough_generator.dart';
@@ -64,7 +65,10 @@ class SketchRenderCache {
       case SketchTriangle t:
         return '$base|${t.rect.left},${t.rect.top},${t.rect.width},${t.rect.height}';
       case SketchSticky s:
-        return '$base|${s.rect.left},${s.rect.top},${s.rect.width},${s.rect.height}|${s.cornerRadius}';
+        // `collapsed` is part of the key, not just the geometry: a badge and
+        // a bubble are different silhouettes drawn from the same rect, so
+        // without it a toggled note would keep painting its previous shape.
+        return '$base|${s.rect.left},${s.rect.top},${s.rect.width},${s.rect.height}|${s.cornerRadius}|${s.collapsed}';
       case SketchLine l:
         return '$base|${l.start.dx},${l.start.dy},${l.end.dx},${l.end.dy}';
       case SketchArrow a:
@@ -90,7 +94,7 @@ class SketchRenderCache {
       case SketchTriangle t:
         return '$base|${t.rect.left},${t.rect.top},${t.rect.width},${t.rect.height}';
       case SketchSticky s:
-        return '$base|${s.rect.left},${s.rect.top},${s.rect.width},${s.rect.height}';
+        return '$base|${s.rect.left},${s.rect.top},${s.rect.width},${s.rect.height}|${s.cornerRadius}|${s.collapsed}';
       default:
         return base;
     }
@@ -127,11 +131,15 @@ class SketchRenderCache {
           seed: seed,
         );
       case SketchSticky s:
-        return RoughGenerator.rectangle(
-          s.rect,
+        // Collapsed, the only sketchy line work is the badge's speech-bubble
+        // mark: the badge itself is a solid rounded chip, and a square rough
+        // outline over a rounded fill would poke out at every corner.
+        return RoughGenerator.closedPolyline(
+          s.collapsed
+              ? StickyBubbleGeometry.glyphVertices(s.rect)
+              : StickyBubbleGeometry.outlineVertices(s.rect, s.cornerRadius),
           roughness: r,
           seed: seed,
-          cornerRadius: s.cornerRadius,
           doubleStroke: false,
         );
       case SketchLine l:
@@ -189,11 +197,9 @@ class SketchRenderCache {
             path.close();
             return path;
           case SketchSticky s:
-            path.addRRect(RRect.fromRectAndRadius(
-              s.rect,
-              Radius.circular(s.cornerRadius),
-            ));
-            return path;
+            return s.collapsed
+                ? StickyBubbleGeometry.badgeFillPath(s.rect)
+                : StickyBubbleGeometry.fillPath(s.rect, s.cornerRadius);
           default:
             return path;
         }

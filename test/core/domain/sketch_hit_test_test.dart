@@ -226,4 +226,65 @@ void main() {
       expect(hits, [wire]);
     });
   });
+
+  group('SketchHitTest.isResizable', () {
+    // One predicate, read by the painter to decide whether to *draw* the
+    // eight handles and by the gesture handler to decide whether to *grab*
+    // them. A second copy is how handles end up drawn where nothing can be
+    // caught.
+    const rect = Rect.fromLTWH(0, 0, 100, 60);
+
+    test('bounded shapes are', () {
+      expect(SketchHitTest.isResizable(SketchRectangle.create(rect: rect)),
+          isTrue);
+      expect(
+          SketchHitTest.isResizable(SketchEllipse.create(rect: rect)), isTrue);
+      expect(
+          SketchHitTest.isResizable(SketchDiamond.create(rect: rect)), isTrue);
+      expect(SketchHitTest.isResizable(SketchTriangle.create(rect: rect)),
+          isTrue);
+    });
+
+    test('an expanded sticky note is, a collapsed one is not', () {
+      expect(
+        SketchHitTest.isResizable(SketchSticky.create(rect: rect)),
+        isTrue,
+      );
+      // The badge is a fixed size: a handle on it would either resize
+      // nothing visible or silently resize the bubble behind it.
+      expect(
+        SketchHitTest.isResizable(
+          SketchSticky.create(rect: rect, collapsed: true),
+        ),
+        isFalse,
+      );
+    });
+
+    test('lines, arrows, freedraw and text are not', () {
+      expect(
+        SketchHitTest.isResizable(
+          SketchLine.create(start: Offset.zero, end: const Offset(9, 9)),
+        ),
+        isFalse,
+      );
+      expect(
+        SketchHitTest.isResizable(
+          SketchArrow.create(start: Offset.zero, end: const Offset(9, 9)),
+        ),
+        isFalse,
+      );
+      expect(
+        SketchHitTest.isResizable(
+          SketchFreedraw.create(points: const [Offset.zero, Offset(9, 9)]),
+        ),
+        isFalse,
+      );
+      expect(
+        SketchHitTest.isResizable(
+          SketchText.create(position: Offset.zero, text: 'hi'),
+        ),
+        isFalse,
+      );
+    });
+  });
 }

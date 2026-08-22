@@ -757,4 +757,136 @@ void main() {
       expect(notified, 1);
     });
   });
+
+  group('sticky notes collapse when the edit ends', () {
+    const rect = Rect.fromLTWH(20, 30, 200, 90);
+
+    SketchController withNote({String? text}) {
+      final c = SketchController();
+      c.add(SketchSticky.create(id: 'note', rect: rect, text: text));
+      return c;
+    }
+
+    SketchSticky noteIn(SketchController c) =>
+        c.elements.single as SketchSticky;
+
+    test('committing text collapses the note to its badge', () {
+      final c = withNote();
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit('buy milk');
+
+      final note = noteIn(c);
+      expect(note.text, 'buy milk');
+      expect(note.collapsed, isTrue);
+      // The bubble's geometry survives underneath, so reopening restores the
+      // size and position the user had.
+      expect(note.rect, rect);
+    });
+
+    test('collapse and text land in one undo entry', () {
+      final c = withNote();
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit('buy milk');
+      expect(noteIn(c).collapsed, isTrue);
+      expect(noteIn(c).text, 'buy milk');
+
+      // Both must come back together. Collapsing through a second mutation
+      // would leave the user undoing the collapse first and finding a bubble
+      // with text they had already undone away.
+      c.undo();
+      expect(noteIn(c).collapsed, isFalse);
+      expect(noteIn(c).text, isNull);
+    });
+
+    test('cancelling leaves the note exactly as it found it', () {
+      // Commit means "done with this note"; cancel means "forget I started".
+      final c = withNote(text: 'already here');
+      c.beginTextEdit(elementId: 'note');
+      c.cancelTextEdit();
+
+      expect(noteIn(c).collapsed, isFalse);
+      expect(noteIn(c).text, 'already here');
+    });
+
+    test('an empty note stays open rather than becoming a blank badge', () {
+      // A badge with nothing behind it is indistinguishable from a full one,
+      // which is worse clutter than a visibly-empty bubble.
+      final c = withNote();
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit('   ');
+
+      expect(c.elements, hasLength(1), reason: 'not deleted like a SketchText');
+      expect(noteIn(c).collapsed, isFalse);
+      expect(noteIn(c).text, isNull);
+    });
+
+    test('emptying an existing note reopens nothing and deletes nothing', () {
+      final c = withNote(text: 'was here');
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit('');
+
+      expect(c.elements, hasLength(1));
+      expect(noteIn(c).text, isNull);
+      expect(noteIn(c).collapsed, isFalse);
+    });
+
+    test('a shape label is untouched by any of this', () {
+      final c = SketchController();
+      c.add(_rect(id: 'box'));
+      c.beginTextEdit(elementId: 'box');
+      c.commitTextEdit('label');
+      expect((c.elements.single as SketchRectangle).text, 'label');
+    });
+  });
+
+  group('SketchController.setStickyCollapsed', () {
+    const rect = Rect.fromLTWH(0, 0, 200, 90);
+
+    SketchController withCollapsedNote() {
+      final c = SketchController();
+      c.add(SketchSticky.create(
+        id: 'note',
+        rect: rect,
+        text: 'hi',
+        collapsed: true,
+      ));
+      return c;
+    }
+
+    test('expanding restores the original geometry, not a default', () {
+      final c = withCollapsedNote();
+      c.setStickyCollapsed('note', false);
+      final note = c.elements.single as SketchSticky;
+      expect(note.collapsed, isFalse);
+      expect(note.rect, rect);
+      expect(note.bounds, rect);
+    });
+
+    test('is a no-op when the note is already in that state', () {
+      final c = withCollapsedNote();
+      final gen = c.paintGen;
+      c.setStickyCollapsed('note', true);
+      expect(c.paintGen, gen);
+
+      // An undo entry here would make the user's next Ctrl+Z do nothing
+      // visible — the same defect click-to-select once had. The only entry
+      // on the stack should still be the one `add` pushed, so a single undo
+      // takes the note off the canvas entirely.
+      c.undo();
+      expect(c.elements, isEmpty);
+    });
+
+    test('ignores ids that are missing or not notes', () {
+      final c = SketchController();
+      c.add(_rect(id: 'box'));
+      final gen = c.paintGen;
+      c.setStickyCollapsed('box', true);
+      c.setStickyCollapsed('nobody', true);
+      expect(c.paintGen, gen);
+      expect(c.elements.single, isA<SketchRectangle>());
+
+      c.undo();
+      expect(c.elements, isEmpty);
+    });
+  });
 }

@@ -206,6 +206,25 @@ class SketchController extends ChangeNotifier {
     _bumpPaint();
   }
 
+  /// Collapses a sticky note to its badge, or expands it back to its bubble.
+  ///
+  /// No-op for any other element type, and for a note already in that state
+  /// — so a click on an expanded note can call this unconditionally without
+  /// leaving an undo entry that undoes nothing visible.
+  ///
+  /// The note's `rect` is untouched, which is what makes expanding restore
+  /// the geometry the user had rather than a default.
+  void setStickyCollapsed(String id, bool collapsed) {
+    final idx = _indexOf(id);
+    if (idx < 0) return;
+    final el = _elements[idx];
+    if (el is! SketchSticky || el.collapsed == collapsed) return;
+    _pushHistory();
+    _elements[idx] = el.copyWith(collapsed: collapsed);
+    _invalidateCache();
+    _bumpPaint();
+  }
+
   /// Moves a linear element's (line/arrow) [start] and/or [end] point.
   /// No-op for anything else. Bracket a continuous endpoint drag with
   /// [beginDragSession] / [endDragSession], exactly like [resizeElement].
@@ -601,6 +620,11 @@ class SketchController extends ChangeNotifier {
   /// Commits [text] to the element currently being edited. Empty input
   /// removes the text from a bounded shape, or skips creation for a
   /// pending new [SketchText].
+  ///
+  /// Committing a sticky note also collapses it — see [_withText]. Note that
+  /// [cancelTextEdit] deliberately does not: commit is "I'm done with this
+  /// note", cancel is "forget I started", and a cancelled edit leaves the
+  /// note exactly as it found it.
   void commitTextEdit(String text) {
     final id = _editingElementId;
     final pos = _editingCanvasPosition;
@@ -652,6 +676,7 @@ class SketchController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [el] as committing [text] to it leaves it.
   SketchElement? _withText(SketchElement el, String? text) {
     switch (el) {
       case SketchRectangle r:
@@ -663,7 +688,26 @@ class SketchController extends ChangeNotifier {
       case SketchTriangle tri:
         return tri.copyWith(text: text);
       case SketchSticky s:
-        return s.copyWith(text: text);
+        // Finishing a note collapses it to its badge. That is the whole
+        // point of the note: it sits out of the way until wanted, so a board
+        // can carry many without them swamping the diagram — and it means
+        // there is no second gesture to learn, because clicking away is
+        // already how an edit ends.
+        //
+        // A note with nothing in it stays open. Collapsing it would hide the
+        // fact that it is blank behind a badge indistinguishable from a full
+        // one; an empty bubble is at least visibly empty, and can be selected
+        // and deleted. It is not removed outright the way an empty
+        // `SketchText` is, either: a `SketchText` *is* its text and has
+        // nothing left when emptied, while a note the user deliberately
+        // placed still has its colour, its position and its size.
+        //
+        // Collapse and text land in one `copyWith`, so the single history
+        // entry this commit pushes undoes both together.
+        return s.copyWith(
+          text: text,
+          collapsed: text == null ? s.collapsed : true,
+        );
       case SketchText t:
         if (text == null || text.isEmpty) {
           // Empty text on a SketchText → remove it.

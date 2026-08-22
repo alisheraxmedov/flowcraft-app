@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/core/theme/app_colors.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -153,15 +154,21 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
 
     if (el != null) {
       if (el is SketchSticky) {
-        // `SketchPainter._drawTopLeftText` insets a sticky's label by 8
-        // canvas px on every side; mirror that or the label shifts the
-        // moment editing starts.
-        final bounds = el.bounds.deflate(8.0);
-        final tl = ViewportTransform.canvasToScreen(bounds.topLeft, viewport);
+        // The same call `SketchPainter._drawStickyLabel` lays the committed
+        // label out with. Read from it rather than repeating its insets:
+        // the bubble's padding is not a number this file gets to hold a
+        // second copy of, or the glyphs shift the moment editing starts and
+        // shift back on commit.
+        //
+        // `rect`, not `bounds` — a note being edited is always expanded (the
+        // gesture layer opens one before it hands over), and `rect` is what
+        // the bubble is laid out from.
+        final box = StickyBubbleGeometry.textBoxOf(el.rect);
+        final tl = ViewportTransform.canvasToScreen(box.topLeft, viewport);
         return (
           screenPos: tl,
-          width: bounds.width * zoom,
-          height: bounds.height * zoom,
+          width: box.width * zoom,
+          height: box.height * zoom,
           fontSize: el.fontSize * zoom,
           // Shapes and stickies carry no font family — the painter renders
           // their labels in the default face too.
@@ -239,6 +246,10 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
     // Text drawn inside a shape (or as standalone text) inherits the
     // element's own stroke colour — that's also what the painter uses
     // when rendering the committed text, so the editor preview matches.
+    //
+    // A sticky is the exception the painter also makes: its stroke colour is
+    // its paper colour, so its glyphs take `inkColor` instead.
+    if (el is SketchSticky) return el.inkColor;
     if (el != null) return el.style.strokeColor;
     return widget.textColor;
   }
@@ -259,6 +270,13 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
         el is SketchDiamond ||
         el is SketchTriangle;
 
+    // A sticky is already a filled bubble on the canvas underneath — the
+    // painter keeps drawing it while only its text is suppressed — so the
+    // editor's own tinted box and border would be a grey rectangle sitting
+    // inside it. The bubble *is* the composer, which is the point of the
+    // chat-bubble shape; the chrome is dropped rather than doubled.
+    final onBubble = el is SketchSticky;
+
     final textColor = _resolveTextColor(el);
 
     return Positioned(
@@ -278,9 +296,17 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
               // ~6% black tint — a decorative edit-box background, not a
               // design-system chrome color, hence `Color.fromRGBO` rather
               // than an `AppColors` token.
-              color: const Color.fromRGBO(0, 0, 0, 0.0627),
+              color: onBubble
+                  ? const Color(0x00000000)
+                  : const Color.fromRGBO(0, 0, 0, 0.0627),
               border: Border.all(
-                color: widget.cursorColor.withValues(alpha: 0.6),
+                // Kept at width 1 even when invisible: `_editorInset`
+                // accounts for a 1px border, so dropping the border outright
+                // would move every glyph a pixel and reintroduce the jump
+                // this inset exists to prevent.
+                color: onBubble
+                    ? const Color(0x00000000)
+                    : widget.cursorColor.withValues(alpha: 0.6),
                 width: 1,
               ),
             ),
