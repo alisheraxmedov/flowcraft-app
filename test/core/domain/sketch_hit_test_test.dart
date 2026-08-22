@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -66,6 +67,161 @@ void main() {
       expect(SketchHitTest.hit(f, const Offset(25, 0), 3.0), isTrue);
       expect(SketchHitTest.hit(f, const Offset(50, 25), 3.0), isTrue);
       expect(SketchHitTest.hit(f, const Offset(100, 100), 3.0), isFalse);
+    });
+
+    // Triangles were unhittable outright — `pointInTriangle` had its
+    // winding sign inverted, and the stroke band is built from the same
+    // predicate, so neither the filled nor the unfilled case could be
+    // clicked, dragged, erased or given handles. Only a marquee reached one.
+    group('triangle', () {
+      const rect = Rect.fromLTWH(0, 0, 100, 100);
+
+      test('filled is hit at its centre', () {
+        final tri = SketchTriangle.create(
+          rect: rect,
+          style: const SketchStyle(
+            fillStyle: FillStyle.solid,
+            fillColor: Color(0xFF000000),
+          ),
+        );
+        expect(SketchHitTest.hit(tri, const Offset(50, 60), 8.0), isTrue);
+      });
+
+      test('unfilled is hit 1px inside the base', () {
+        final tri = SketchTriangle.create(rect: rect);
+        expect(SketchHitTest.hit(tri, const Offset(50, 99), 8.0), isTrue);
+      });
+
+      test('unfilled is hit on the slanted edges', () {
+        final tri = SketchTriangle.create(rect: rect);
+        // Left edge passes (25, 50); right edge (75, 50).
+        expect(SketchHitTest.hit(tri, const Offset(25, 50), 4.0), isTrue);
+        expect(SketchHitTest.hit(tri, const Offset(75, 50), 4.0), isTrue);
+      });
+
+      test('unfilled misses at its centre', () {
+        final tri = SketchTriangle.create(rect: rect);
+        expect(SketchHitTest.hit(tri, const Offset(50, 60), 8.0), isFalse);
+      });
+
+      test('both miss the empty bbox corner beside the apex', () {
+        final filled = SketchTriangle.create(
+          rect: rect,
+          style: const SketchStyle(
+            fillStyle: FillStyle.solid,
+            fillColor: Color(0xFF000000),
+          ),
+        );
+        final hollow = SketchTriangle.create(rect: rect);
+        expect(SketchHitTest.hit(filled, const Offset(2, 2), 1.0), isFalse);
+        expect(SketchHitTest.hit(hollow, const Offset(2, 2), 1.0), isFalse);
+      });
+    });
+
+    test('filled rectangle is also hit just outside its edge within tolerance',
+        () {
+      // The rough stroke wobbles a few px outside `rect`, and at 0.25× zoom
+      // the tolerance is 32 canvas px: the unfilled shape was hit there and
+      // the identical filled one was not.
+      final filled = SketchRectangle.create(
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+        style: const SketchStyle(
+          fillStyle: FillStyle.solid,
+          fillColor: Color(0xFF000000),
+        ),
+      );
+      expect(SketchHitTest.hit(filled, const Offset(-3, 50), 4.0), isTrue);
+      expect(SketchHitTest.hit(filled, const Offset(-6, 50), 4.0), isFalse);
+    });
+
+    test('filled ellipse is hit just outside its rim within tolerance', () {
+      final filled = SketchEllipse.create(
+        rect: const Rect.fromLTWH(0, 0, 100, 50),
+        style: const SketchStyle(
+          fillStyle: FillStyle.solid,
+          fillColor: Color(0xFF000000),
+        ),
+      );
+      expect(SketchHitTest.hit(filled, const Offset(102, 25), 4.0), isTrue);
+      expect(SketchHitTest.hit(filled, const Offset(50, 25), 4.0), isTrue);
+      expect(SketchHitTest.hit(filled, const Offset(110, 25), 4.0), isFalse);
+    });
+
+    group('rotated elements', () {
+      // `angle` is reserved — no tool sets it — but a file can carry it and
+      // the painter honours it, so the hit test has to agree with what is
+      // drawn. A quarter turn about the centre is the easiest to reason
+      // about: a horizontal line becomes a vertical one.
+      const quarter = math.pi / 2;
+
+      test('a rotated line is hit where it is drawn, not where it is stored',
+          () {
+        final line = SketchLine(
+          id: 'l',
+          style: const SketchStyle(),
+          start: const Offset(0, 100),
+          end: const Offset(200, 100),
+          angle: quarter,
+        );
+        // Pivot is (100,100); the line now runs from (100,0) to (100,200).
+        expect(SketchHitTest.hit(line, const Offset(100, 20), 4.0), isTrue);
+        expect(SketchHitTest.hit(line, const Offset(20, 100), 4.0), isFalse);
+      });
+
+      test('a rotated arrow follows the same rule', () {
+        final arrow = SketchArrow(
+          id: 'a',
+          style: const SketchStyle(),
+          start: const Offset(0, 100),
+          end: const Offset(200, 100),
+          angle: quarter,
+        );
+        expect(SketchHitTest.hit(arrow, const Offset(100, 180), 4.0), isTrue);
+        expect(SketchHitTest.hit(arrow, const Offset(180, 100), 4.0), isFalse);
+      });
+
+      test('a rotated freedraw follows the same rule', () {
+        final stroke = SketchFreedraw(
+          id: 'f',
+          style: const SketchStyle(),
+          points: const [Offset(0, 100), Offset(100, 100), Offset(200, 100)],
+          angle: quarter,
+        );
+        expect(SketchHitTest.hit(stroke, const Offset(100, 20), 4.0), isTrue);
+        expect(SketchHitTest.hit(stroke, const Offset(20, 100), 4.0), isFalse);
+      });
+
+      test('a rotated text box follows the same rule', () {
+        final text = SketchText(
+          id: 't',
+          style: const SketchStyle(),
+          position: Offset.zero,
+          text: 'Hello world, a reasonably long line',
+          fontSize: 16,
+          angle: quarter,
+        );
+        final box = text.unrotatedBounds;
+        expect(box.width, greaterThan(box.height * 3),
+            reason: 'wide enough that a quarter turn moves its far end');
+        final c = box.center;
+        // The glyphs' far end now sits below the pivot, not to its right.
+        final belowPivot = Offset(c.dx, c.dy + box.width / 2 - 4);
+        final rightOfPivot = Offset(c.dx + box.width / 2 - 4, c.dy);
+        expect(SketchHitTest.hit(text, belowPivot, 0.0), isTrue);
+        expect(SketchHitTest.hit(text, rightOfPivot, 0.0), isFalse);
+      });
+
+      test('a rotated unfilled rectangle is hit on its drawn stroke', () {
+        final box = SketchRectangle(
+          id: 'r',
+          style: const SketchStyle(),
+          rect: const Rect.fromLTWH(0, 0, 200, 50),
+          angle: quarter,
+        );
+        // 200×50 about (100,25) becomes 50×200: x in 75..125, y in -75..125.
+        expect(SketchHitTest.hit(box, const Offset(100, -73), 4.0), isTrue);
+        expect(SketchHitTest.hit(box, const Offset(2, 25), 4.0), isFalse);
+      });
     });
   });
 
@@ -185,10 +341,25 @@ void main() {
         start: const Offset(200, 100),
         end: const Offset(200, 300),
       );
+      // The shaft is a single edge; only the head's wings give the arrow's
+      // bounds any width at all, and a band starting on the shaft covers
+      // just half of them.
       const band = Rect.fromLTRB(200, 80, 260, 320);
-      expect(wire.bounds.width, 0);
-      expect(wire.bounds.overlaps(band), isFalse);
+      expect(wire.bounds.width, closeTo(2 * 12 * math.sin(0.5), 1e-9),
+          reason: 'two wings of the 12px default head');
+      expect(wire.bounds.center.dx, 200);
       expect(SketchHitTest.intersecting([wire], band), [wire]);
+    });
+
+    test('a band beside an arrow that only grazes its head wings misses', () {
+      // The wings widen `bounds`, but the marquee still tests the shaft.
+      final wire = SketchArrow.create(
+        start: const Offset(200, 100),
+        end: const Offset(200, 300),
+      );
+      const band = Rect.fromLTRB(203, 280, 260, 320);
+      expect(wire.bounds.overlaps(band), isTrue);
+      expect(SketchHitTest.intersecting([wire], band), isEmpty);
     });
 
     test('a band straddling an axis-aligned line keeps working', () {
@@ -224,6 +395,61 @@ void main() {
         const Rect.fromLTRB(90, 90, 110, 110),
       );
       expect(hits, [wire]);
+    });
+
+    test('a zero-size region catches nothing', () {
+      // The 0×0 rect a plain click leaves behind. With the inclusive bounds
+      // test it caught every element whose bounding box held the point —
+      // the unfilled frame the hit test had just rejected included.
+      final frame = SketchRectangle.create(
+        rect: const Rect.fromLTWH(0, 0, 300, 300),
+      );
+      final blob = SketchEllipse.create(
+        rect: const Rect.fromLTWH(0, 0, 300, 300),
+      );
+      final scribble = SketchFreedraw.create(
+        points: const [Offset(0, 0), Offset(300, 300)],
+      );
+      const click = Rect.fromLTWH(150, 150, 0, 0);
+      expect(frame.bounds.contains(click.topLeft), isTrue);
+      expect(
+        SketchHitTest.intersecting([frame, blob, scribble], click),
+        isEmpty,
+      );
+    });
+
+    test('a region with one zero dimension catches nothing either', () {
+      final frame = SketchRectangle.create(
+        rect: const Rect.fromLTWH(0, 0, 300, 300),
+      );
+      expect(
+        SketchHitTest.intersecting(
+            [frame], const Rect.fromLTWH(10, 150, 200, 0)),
+        isEmpty,
+      );
+    });
+
+    test('a rotated line is caught where it is drawn', () {
+      // Stored horizontal, drawn vertical through (100, 0)–(100, 200).
+      final wire = SketchLine(
+        id: 'l',
+        style: const SketchStyle(),
+        start: const Offset(0, 100),
+        end: const Offset(200, 100),
+        angle: math.pi / 2,
+      );
+      expect(wire.bounds.left, closeTo(100, 1e-9));
+      expect(wire.bounds.top, closeTo(0, 1e-9));
+      expect(
+        SketchHitTest.intersecting(
+            [wire], const Rect.fromLTRB(90, 10, 110, 30)),
+        [wire],
+      );
+      expect(
+        SketchHitTest.intersecting(
+            [wire], const Rect.fromLTRB(10, 90, 30, 110)),
+        isEmpty,
+      );
     });
   });
 

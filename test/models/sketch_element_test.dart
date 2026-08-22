@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
+import 'package:flowcraft/core/rendering/arrow_head.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 
@@ -71,6 +75,362 @@ void main() {
       );
       final moved = t.translate(const Offset(10, 20));
       expect(moved.bounds, t.bounds.shift(const Offset(10, 20)));
+    });
+
+    test('is computed once per instance', () {
+      // Read per element per frame by culling, and again per pointer event
+      // by hit-testing; measuring through the global string-keyed cache on
+      // every read fell off a cliff once a board held more distinct strings
+      // than that cache could. The same Rect object coming back is the
+      // proof that nothing is re-measured.
+      final t = SketchText.create(
+        position: Offset.zero,
+        text: 'Measured exactly once',
+        fontSize: 16,
+      );
+      expect(identical(t.bounds, t.bounds), isTrue);
+      expect(identical(t.unrotatedBounds, t.bounds), isTrue,
+          reason: 'unrotated: the very instance, not a copy');
+      // A new instance is a new measurement — that is what makes the cache
+      // safe: nothing an element is measured from can change under it.
+      final retyped = t.copyWith(text: 'Different');
+      expect(identical(retyped.bounds, t.bounds), isFalse);
+      expect(retyped.bounds.width, isNot(t.bounds.width));
+    });
+
+    test('copyWith(fontFamily: null) clears it', () {
+      // Every other nullable field used the sentinel; this one used `??`,
+      // so a family once set could never go back to the platform default.
+      final mono = SketchText.create(
+        position: Offset.zero,
+        text: 'Hello',
+        fontFamily: 'JetBrains Mono',
+      );
+      expect(mono.copyWith(fontFamily: null).fontFamily, isNull);
+      expect(mono.copyWith().fontFamily, 'JetBrains Mono');
+      expect(mono.copyWith(text: 'x').fontFamily, 'JetBrains Mono');
+      expect(mono.copyWith(fontFamily: 'Inter').fontFamily, 'Inter');
+    });
+  });
+
+  group('SketchSticky.labelSize', () {
+    test('is measured once per instance', () {
+      final note = SketchSticky.create(
+        rect: const Rect.fromLTWH(0, 0, 180, 72),
+        text: 'a label to lay out',
+      );
+      expect(identical(note.labelSize, note.labelSize), isTrue);
+      expect(note.labelSize.width, greaterThan(0));
+      // Zero for a note with no text, without touching the cache.
+      expect(
+        SketchSticky.create(rect: const Rect.fromLTWH(0, 0, 180, 72))
+            .labelSize,
+        Size.zero,
+      );
+    });
+  });
+
+  group('SketchArrow.bounds', () {
+    test('contain the head', () {
+      // An axis-aligned arrow's segment box is zero pixels tall, but the
+      // head's wings stick out sideways by headLength·sin(0.5) — ~5.75px at
+      // the default size, ~23px at the UI's thickest stroke. The selection
+      // box never enclosed them and export padding only just did.
+      final arrow = SketchArrow.create(
+        start: const Offset(0, 100),
+        end: const Offset(200, 100),
+        style: const SketchStyle(strokeWidth: 8),
+      );
+      final size = arrow.headLength;
+      expect(size, 48.0, reason: 'max(arrowSize 10, 8 × 6)');
+      final wing = size * math.sin(0.5);
+
+      expect(arrow.bounds.left, 0);
+      expect(arrow.bounds.right, 200);
+      expect(arrow.bounds.top, closeTo(100 - wing, 1e-9));
+      expect(arrow.bounds.bottom, closeTo(100 + wing, 1e-9));
+    });
+
+    test('match the painted head path', () {
+      // The formula is mirrored from ArrowHead.path; this is the check that
+      // the mirror stays true.
+      final arrow = SketchArrow.create(
+        start: const Offset(10, 20),
+        end: const Offset(-60, 130),
+        arrowSize: 30,
+      );
+      final head =
+          ArrowHead.path(arrow.start, arrow.end, arrow.headLength).getBounds();
+      final segment = Rect.fromPoints(arrow.start, arrow.end);
+      final expected = segment.expandToInclude(head);
+      expect(arrow.bounds.left, closeTo(expected.left, 1e-6));
+      expect(arrow.bounds.top, closeTo(expected.top, 1e-6));
+      expect(arrow.bounds.right, closeTo(expected.right, 1e-6));
+      expect(arrow.bounds.bottom, closeTo(expected.bottom, 1e-6));
+    });
+
+    test('a zero-length arrow is just its point', () {
+      final dot = SketchArrow.create(
+        start: const Offset(5, 5),
+        end: const Offset(5, 5),
+      );
+      expect(dot.bounds, const Rect.fromLTWH(5, 5, 0, 0));
+    });
+  });
+
+  group('SketchElement.bounds under rotation', () {
+    test('is the box of the rotated shape, sharing its centre', () {
+      // A 200×50 box a quarter-turn on is a 50×200 box about the same
+      // centre. This is what culling, marquee and the selection box see, so
+      // it has to be what the painter draws — and the painter rotates about
+      // `bounds.center`, which is why the centre must not move.
+      const rect = Rect.fromLTWH(0, 0, 200, 50);
+      final box = SketchRectangle(
+        id: 'r',
+        style: const SketchStyle(),
+        rect: rect,
+        angle: math.pi / 2,
+      );
+      expect(box.unrotatedBounds, rect);
+      expect(box.bounds.center.dx, closeTo(rect.center.dx, 1e-9));
+      expect(box.bounds.center.dy, closeTo(rect.center.dy, 1e-9));
+      expect(box.bounds.width, closeTo(50, 1e-9));
+      expect(box.bounds.height, closeTo(200, 1e-9));
+    });
+
+    test('is the unrotated box, same instance, at angle zero', () {
+      final box = SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 9, 9));
+      expect(identical(box.bounds, box.unrotatedBounds), isTrue);
+    });
+
+    test('grows a square by √2 at 45°', () {
+      final box = SketchDiamond(
+        id: 'd',
+        style: const SketchStyle(),
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+        angle: math.pi / 4,
+      );
+      expect(box.bounds.width, closeTo(100 * math.sqrt2, 1e-9));
+      expect(box.bounds.height, closeTo(100 * math.sqrt2, 1e-9));
+    });
+
+    test('round-trips the angle through JSON', () {
+      final box = SketchEllipse(
+        id: 'e',
+        style: const SketchStyle(),
+        rect: const Rect.fromLTWH(0, 0, 100, 40),
+        angle: 0.3,
+      );
+      expect(SketchElement.fromJson(box.toJson()).angle, 0.3);
+    });
+  });
+
+  group('SketchElement.fromJson geometry validation', () {
+    // `jsonDecode('1e999')` is `double.infinity`. An element with an infinite
+    // edge is invisible, unhittable — and unserialisable, so every autosave
+    // after it loads throws and the whole project silently stops saving.
+    // Refusing it here is what lets the tolerant loader drop and report the
+    // one element instead.
+    final huge = jsonDecode('1e999') as double;
+
+    test('a rect coordinate of 1e999 throws FormatException', () {
+      expect(huge.isInfinite, isTrue);
+      final json = _plain(SketchRectangle.create(
+        id: 'r',
+        rect: const Rect.fromLTWH(0, 0, 10, 10),
+      ));
+      (json['rect'] as Map<String, dynamic>)['l'] = huge;
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+
+    test('a negative-infinite width throws FormatException', () {
+      final json = _plain(SketchEllipse.create(
+        id: 'e',
+        rect: const Rect.fromLTWH(0, 0, 10, 10),
+      ));
+      (json['rect'] as Map<String, dynamic>)['w'] = -huge;
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+
+    test('an infinite line endpoint throws FormatException', () {
+      final json = _plain(SketchLine.create(
+        id: 'l',
+        start: Offset.zero,
+        end: const Offset(10, 10),
+      ));
+      (json['end'] as Map<String, dynamic>)['dy'] = huge;
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+
+    test('a NaN text position throws FormatException', () {
+      final json = _plain(SketchText.create(
+        id: 't',
+        position: Offset.zero,
+        text: 'hi',
+      ));
+      (json['position'] as Map<String, dynamic>)['dx'] = double.nan;
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+
+    test('one bad freedraw point throws FormatException for the stroke', () {
+      final json = _plain(SketchFreedraw.create(
+        id: 'f',
+        points: const [Offset(0, 0), Offset(5, 5), Offset(10, 0)],
+      ));
+      ((json['points'] as List)[1] as Map<String, dynamic>)['dx'] = huge;
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+
+    test('an empty freedraw throws FormatException, not an assertion', () {
+      final json = _plain(SketchFreedraw.create(
+        id: 'f',
+        points: const [Offset(0, 0), Offset(5, 5)],
+      ));
+      json['points'] = <dynamic>[];
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+
+    test('a non-numeric coordinate throws FormatException', () {
+      final json = _plain(SketchRectangle.create(
+        id: 'r',
+        rect: const Rect.fromLTWH(0, 0, 10, 10),
+      ));
+      (json['rect'] as Map<String, dynamic>)['t'] = 'ten';
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+
+    test('finite geometry still loads exactly', () {
+      for (final el in _oneOfEachSubtype()) {
+        final restored = SketchElement.fromJson(el.toJson());
+        expect(restored.bounds, el.bounds, reason: '${el.runtimeType}');
+      }
+    });
+  });
+
+  group('SketchElement.fromJson style-number clamping', () {
+    // Style numbers are clamped rather than refused: a font size of 1e6 is
+    // a file worth rescuing, a coordinate of 1e999 is not.
+    Map<String, dynamic> rectJson() => _plain(SketchRectangle.create(
+          id: 'r',
+          rect: const Rect.fromLTWH(0, 0, 10, 10),
+          text: 'label',
+        ));
+
+    test('fontSize is clamped to 1..512 on every text-bearing element', () {
+      final json = rectJson()..['fontSize'] = 1e6;
+      expect((SketchElement.fromJson(json) as SketchRectangle).fontSize, 512);
+
+      final tiny = rectJson()..['fontSize'] = -4;
+      expect((SketchElement.fromJson(tiny) as SketchRectangle).fontSize, 1);
+
+      final sticky = _plain(SketchSticky.create(
+        id: 's',
+        rect: const Rect.fromLTWH(0, 0, 180, 72),
+        text: 'note',
+      ))..['fontSize'] = 0;
+      expect((SketchElement.fromJson(sticky) as SketchSticky).fontSize, 1);
+
+      final text = _plain(SketchText.create(
+        id: 't',
+        position: Offset.zero,
+        text: 'hi',
+      ))..['fontSize'] = 9999;
+      expect((SketchElement.fromJson(text) as SketchText).fontSize, 512);
+    });
+
+    test('a non-finite fontSize takes the default', () {
+      final json = rectJson()..['fontSize'] = double.nan;
+      expect((SketchElement.fromJson(json) as SketchRectangle).fontSize, 16);
+    });
+
+    test('arrowSize is clamped to a sane range', () {
+      Map<String, dynamic> arrowJson(Object? size) => _plain(SketchArrow.create(
+            id: 'a',
+            start: Offset.zero,
+            end: const Offset(10, 10),
+          ))..['arrowSize'] = size;
+      expect(
+          (SketchElement.fromJson(arrowJson(-5)) as SketchArrow).arrowSize, 0);
+      expect(
+        (SketchElement.fromJson(arrowJson(1e9)) as SketchArrow).arrowSize,
+        512,
+      );
+      expect(
+        (SketchElement.fromJson(arrowJson(double.infinity)) as SketchArrow)
+            .arrowSize,
+        10,
+      );
+    });
+
+    test('a negative cornerRadius is floored at zero', () {
+      final json = rectJson()..['cornerRadius'] = -12;
+      expect(
+        (SketchElement.fromJson(json) as SketchRectangle).cornerRadius,
+        0,
+      );
+    });
+
+    test('a NaN angle takes zero rather than poisoning bounds', () {
+      final json = rectJson()..['angle'] = double.nan;
+      final restored = SketchElement.fromJson(json);
+      expect(restored.angle, 0);
+      expect(restored.bounds.isFinite, isTrue);
+    });
+
+    test('a wrongly typed style number is still an error', () {
+      final json = rectJson()..['fontSize'] = 'big';
+      expect(() => SketchElement.fromJson(json), throwsFormatException);
+    });
+  });
+
+  group('SketchStyle.seed on creation', () {
+    test('create gives each element a seed of its own', () {
+      // Every element used to ship with seed 1, so two same-sized shapes
+      // wobbled identically. A file's seeds are never touched — see below.
+      final seeds = <int>{
+        for (var i = 0; i < 8; i++)
+          SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 9, 9))
+              .style
+              .seed,
+      };
+      expect(seeds.length, greaterThan(1));
+      expect(seeds.contains(SketchStyle.defaultSeed), isFalse);
+    });
+
+    test('applies to every subtype', () {
+      for (final el in _oneOfEachSubtype()) {
+        expect(el.style.seed, isNot(SketchStyle.defaultSeed),
+            reason: '${el.runtimeType}');
+        expect(el.style.seed, inInclusiveRange(1, 0x7FFFFFFE),
+            reason: '${el.runtimeType}: inside the Park–Miller range');
+      }
+    });
+
+    test('an explicit seed is kept', () {
+      final el = SketchEllipse.create(
+        rect: const Rect.fromLTWH(0, 0, 9, 9),
+        style: const SketchStyle(seed: 42),
+      );
+      expect(el.style.seed, 42);
+    });
+
+    test('only the seed changes; the rest of the style is the caller\'s', () {
+      const style = SketchStyle(strokeWidth: 5, roughness: 0.2);
+      final el = SketchLine.create(
+        start: Offset.zero,
+        end: const Offset(1, 1),
+        style: style,
+      );
+      expect(el.style.copyWith(seed: style.seed), style);
+    });
+
+    test('fromJson keeps the file\'s seed, so a scene renders as saved', () {
+      final json = _plain(SketchRectangle.create(
+        id: 'r',
+        rect: const Rect.fromLTWH(0, 0, 9, 9),
+      ));
+      (json['style'] as Map<String, dynamic>)['seed'] = 1;
+      expect(SketchElement.fromJson(json).style.seed, 1);
     });
   });
 
@@ -426,6 +786,11 @@ void main() {
     });
   });
 }
+
+/// [el]'s JSON as a file would hand it back: plain `Map<String, dynamic>`
+/// all the way down, so a test can poke hostile values into any slot.
+Map<String, dynamic> _plain(SketchElement el) =>
+    jsonDecode(jsonEncode(el.toJson())) as Map<String, dynamic>;
 
 /// One instance of every [SketchElement] subtype, so a per-subtype rule can
 /// be asserted for all of them instead of whichever one the test author

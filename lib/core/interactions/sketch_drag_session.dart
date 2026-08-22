@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:flowcraft/core/domain/sketch_geometry.dart';
 import 'package:flowcraft/core/interactions/sketch_snapping.dart';
-import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
 
@@ -132,10 +131,6 @@ class SketchDragSession {
   /// Guides explaining the snap applied on the last pointer-move, in
   /// canvas-space. Empty whenever the drag is placing freely.
   List<AlignmentGuide> guides = const <AlignmentGuide>[];
-
-  /// In-progress preview element constructed from the current pointer
-  /// position. May be `null` for non-creating sessions.
-  SketchElement? previewElement;
 
   /// Returns the rect spanning [startCanvas]→[currentCanvas], normalised
   /// so width / height are positive.

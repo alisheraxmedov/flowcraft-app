@@ -228,7 +228,10 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
             startScreen: screen,
             style: _ctrl.currentStyle,
             resizeElementId: resizeTarget.element.id,
-            resizeStartRect: resizeTarget.element.bounds,
+            // The stored rect, not the (rotated) canvas box: the resize is
+            // written back as the element's `rect`, so it has to start from
+            // the same frame or a rotated shape grows by its own AABB.
+            resizeStartRect: resizeTarget.element.unrotatedBounds,
             resizeHandle: resizeTarget.handle,
           ));
           _setConsumed(true);
@@ -456,11 +459,18 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         _ctrl.endDragSession();
         break;
       case SketchSessionKind.marquee:
-        _ctrl.selectInRegion(
-          session.currentRect,
-          addToSelection: session.additive,
-        );
-        _expandSelectionToGroups();
+        // A band that never opened up is a click on empty canvas, and that
+        // click already did its work on the way down (cleared the
+        // selection, closed open notes). Committing the 0×0 rect it left
+        // behind selected everything whose *bounding box* held the point —
+        // the unfilled frame the hit test had just rejected, plus any
+        // freedraw or ellipse whose box happened to cover it — and Delete
+        // is one keypress away from there.
+        final band = session.currentRect;
+        if (!band.isEmpty) {
+          _ctrl.selectInRegion(band, addToSelection: session.additive);
+          _expandSelectionToGroups();
+        }
         break;
       case SketchSessionKind.erase:
       case SketchSessionKind.pan:
@@ -621,7 +631,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     for (var i = elements.length - 1; i >= 0; i--) {
       final el = elements[i];
       if (!selected.contains(el.id)) continue;
-      final ends = _endpointsOf(el);
+      final ends = SketchGeometry.endpointsOf(el);
       if (ends == null) continue;
       final toStart =
           (screen - ViewportTransform.canvasToScreen(ends.$1, viewport))
@@ -823,13 +833,6 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         .inflate(SketchGeometry.selectionPadding);
   }
 
-  /// Endpoints of a linear element, `null` for anything else.
-  static (Offset, Offset)? _endpointsOf(SketchElement e) => switch (e) {
-        SketchLine l => (l.start, l.end),
-        SketchArrow a => (a.start, a.end),
-        _ => null,
-      };
-
   // ── Commits ──────────────────────────────────────────────────────────────
 
   void _commitBounded(SketchDragSession session) {
@@ -837,22 +840,29 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     final tool = session.tool;
     if (tool == null) return;
 
+    // A shape needs both axes. `||`, not `&&`: a drag that stayed within a
+    // pixel vertically — easy with a mouse on a horizontal pull — used to
+    // commit a W×0 rect, which for an ellipse is an empty path: invisible,
+    // yet still hit-testable through its stroke band, still counted, still
+    // exported.
+    final degenerate = rect.width < 1 || rect.height < 1;
+
     SketchElement? element;
     switch (tool) {
       case SketchTool.rectangle:
-        if (rect.width < 1 && rect.height < 1) return;
+        if (degenerate) return;
         element = SketchRectangle.create(rect: rect, style: session.style);
         break;
       case SketchTool.ellipse:
-        if (rect.width < 1 && rect.height < 1) return;
+        if (degenerate) return;
         element = SketchEllipse.create(rect: rect, style: session.style);
         break;
       case SketchTool.diamond:
-        if (rect.width < 1 && rect.height < 1) return;
+        if (degenerate) return;
         element = SketchDiamond.create(rect: rect, style: session.style);
         break;
       case SketchTool.triangle:
-        if (rect.width < 1 && rect.height < 1) return;
+        if (degenerate) return;
         element = SketchTriangle.create(rect: rect, style: session.style);
         break;
       case SketchTool.sticky:

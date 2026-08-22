@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flowcraft/models/sketch_element.dart';
+
 /// One of the eight grab points on a selection box.
 ///
 /// Ordered clockwise from the top-left, so iterating [values] gives the
@@ -36,7 +38,8 @@ enum ResizeHandle {
 
 /// Pure geometric helpers used by hit-testing, gesture handling, and tests.
 ///
-/// All functions are deterministic and free of Flutter framework deps.
+/// All functions are deterministic and free of Flutter framework deps —
+/// `dart:ui` and the element model only.
 class SketchGeometry {
   SketchGeometry._();
 
@@ -211,13 +214,58 @@ class SketchGeometry {
     final a = Offset(centre.dx, rect.top);
     final b = Offset(rect.left, rect.bottom);
     final c = Offset(rect.right, rect.bottom);
-    return _cross(p, a, b) >= 0 && _cross(p, b, c) >= 0 && _cross(p, c, a) >= 0;
+    // Inside iff the point is on the same side of all three edges. Tested
+    // as sign *consistency* rather than "all positive": on a y-down canvas
+    // the apex/base-left/base-right order winds clockwise, so every
+    // interior cross product is negative, and demanding `>= 0` made the
+    // predicate false everywhere — no triangle could ever be clicked.
+    final d1 = _cross(p, a, b);
+    final d2 = _cross(p, b, c);
+    final d3 = _cross(p, c, a);
+    final hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+    final hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+    return !(hasNeg && hasPos);
   }
 
-  /// Signed cross product used by [pointInTriangle]. Positive when [p] is
-  /// to the left of the directed edge [a]→[b].
+  /// Signed cross product used by [pointInTriangle]. Its sign says which
+  /// side of the directed edge [a]→[b] the point [p] is on.
   static double _cross(Offset p, Offset a, Offset b) =>
       (p.dx - b.dx) * (a.dy - b.dy) - (a.dx - b.dx) * (p.dy - b.dy);
+
+  /// [point] expressed in the local frame of an element rotated by [angle]
+  /// radians around [centre] — i.e. unrotated, so it can be tested against
+  /// the element's unrotated geometry.
+  ///
+  /// The absolute-space counterpart of [_rotatedDelta]; a zero angle is the
+  /// identity and costs nothing.
+  static Offset toLocal(Offset point, Offset centre, double angle) {
+    if (angle == 0.0) return point;
+    return _rotatedDelta(point, centre, angle) + centre;
+  }
+
+  /// [point] rotated by [angle] radians around [centre] — the inverse of
+  /// [toLocal], taking an element's stored geometry into canvas-space.
+  static Offset rotateAbout(Offset point, Offset centre, double angle) {
+    if (angle == 0.0) return point;
+    final cos = math.cos(angle);
+    final sin = math.sin(angle);
+    final dx = point.dx - centre.dx;
+    final dy = point.dy - centre.dy;
+    return Offset(
+      centre.dx + dx * cos - dy * sin,
+      centre.dy + dx * sin + dy * cos,
+    );
+  }
+
+  /// Stored endpoints of a line or arrow, `null` for anything else.
+  ///
+  /// The geometry as the element holds it — before [SketchElement.angle] —
+  /// which is also what `SketchController.updateLinear` writes back.
+  static (Offset, Offset)? endpointsOf(SketchElement e) => switch (e) {
+        SketchLine l => (l.start, l.end),
+        SketchArrow a => (a.start, a.end),
+        _ => null,
+      };
 
   /// True iff [point] is within [tolerance] pixels of any segment in the
   /// polyline defined by [points].
@@ -303,20 +351,4 @@ class SketchGeometry {
         rect.right + margin,
         rect.bottom + margin,
       );
-
-  /// Computes the bounding rect of a list of points.
-  /// Returns [Rect.zero] for empty input.
-  static Rect boundsOfPoints(List<Offset> points) {
-    if (points.isEmpty) return Rect.zero;
-    double minX = points.first.dx, minY = points.first.dy;
-    double maxX = minX, maxY = minY;
-    for (var i = 1; i < points.length; i++) {
-      final p = points[i];
-      if (p.dx < minX) minX = p.dx;
-      if (p.dy < minY) minY = p.dy;
-      if (p.dx > maxX) maxX = p.dx;
-      if (p.dy > maxY) maxY = p.dy;
-    }
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
-  }
 }

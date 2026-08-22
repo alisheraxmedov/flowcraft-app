@@ -1,6 +1,12 @@
 import 'dart:ui';
 
 /// Represents the current pan/zoom state of the canvas viewport.
+///
+/// The constructor is `const` and does not validate: a caller building one
+/// directly is expected to keep [zoom] inside [minZoom]..[maxZoom] (the
+/// exporter widens the limits to fit the zoom it needs, for instance).
+/// [copyWith] is the path every interactive change takes, and it clamps —
+/// against the limits the copy will have, not the ones it had.
 class FlowViewport {
   /// Creates a [FlowViewport].
   const FlowViewport({
@@ -23,41 +29,24 @@ class FlowViewport {
   final double maxZoom;
 
   /// Creates a copy of this [FlowViewport] with the given fields replaced.
+  ///
+  /// [zoom] is clamped into the *new* range: a call that narrows the limits
+  /// and passes a zoom in the same breath used to clamp that zoom against
+  /// the old limits, and a call that only narrowed the limits left the
+  /// existing zoom outside them.
   FlowViewport copyWith({
     Offset? offset,
     double? zoom,
     double? minZoom,
     double? maxZoom,
   }) {
+    final lo = minZoom ?? this.minZoom;
+    final hi = maxZoom ?? this.maxZoom;
     return FlowViewport(
       offset: offset ?? this.offset,
-      zoom: zoom != null ? zoom.clamp(this.minZoom, this.maxZoom) : this.zoom,
-      minZoom: minZoom ?? this.minZoom,
-      maxZoom: maxZoom ?? this.maxZoom,
-    );
-  }
-
-  /// Serializes this [FlowViewport] to a JSON map.
-  Map<String, dynamic> toJson() {
-    return {
-      'offset': {'dx': offset.dx, 'dy': offset.dy},
-      'zoom': zoom,
-      'minZoom': minZoom,
-      'maxZoom': maxZoom,
-    };
-  }
-
-  /// Deserializes a [FlowViewport] from a JSON map.
-  factory FlowViewport.fromJson(Map<String, dynamic> json) {
-    final off = json['offset'] as Map<String, dynamic>;
-    return FlowViewport(
-      offset: Offset(
-        (off['dx'] as num).toDouble(),
-        (off['dy'] as num).toDouble(),
-      ),
-      zoom: (json['zoom'] as num).toDouble(),
-      minZoom: (json['minZoom'] as num?)?.toDouble() ?? 0.1,
-      maxZoom: (json['maxZoom'] as num?)?.toDouble() ?? 4.0,
+      zoom: (zoom ?? this.zoom).clamp(lo, hi),
+      minZoom: lo,
+      maxZoom: hi,
     );
   }
 

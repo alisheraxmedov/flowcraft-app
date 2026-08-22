@@ -46,38 +46,47 @@ void main() {
       ]);
       expect(() => out.add(Offset.zero), throwsUnsupportedError);
     });
-  });
 
-  group('StrokeSimplifier.smooth', () {
-    test('two-point input is returned unchanged', () {
-      final points = [const Offset(0, 0), const Offset(10, 0)];
-      expect(StrokeSimplifier.smooth(points), points);
-    });
-
-    test('output length scales with subdivisions', () {
-      final points = [
-        const Offset(0, 0),
-        const Offset(10, 5),
-        const Offset(20, 0),
-        const Offset(30, 5),
+    test('survives a 50 000-point stroke that splits one point at a time',
+        () {
+      // A spiral whose radius grows every step: the point farthest from any
+      // chord is always the one next to its end, so every split peels off a
+      // single point and the recursive form went as deep as the stroke is
+      // long. This is what a tight scribble at 120 Hz looks like.
+      const n = 50000;
+      final points = <Offset>[
+        for (var i = 0; i < n; i++)
+          Offset(
+            i * 0.02 * math.cos(i * 0.05),
+            i * 0.02 * math.sin(i * 0.05),
+          ),
       ];
-      final out2 = StrokeSimplifier.smooth(points, subdivisions: 2);
-      final out6 = StrokeSimplifier.smooth(points, subdivisions: 6);
-      expect(out6.length, greaterThan(out2.length));
-      expect(out2.first, points.first);
-      expect(out2.last, points.last);
-    });
 
-    test('output produces finite numbers only', () {
-      final points = [
-        for (var i = 0; i < 10; i++)
-          Offset(i.toDouble(), math.sin(i.toDouble())),
-      ];
-      final out = StrokeSimplifier.smooth(points);
+      final out = StrokeSimplifier.simplify(points, tolerance: 0.5);
+
+      expect(out.first, points.first);
+      expect(out.last, points.last);
+      expect(out.length, greaterThan(2), reason: 'a spiral is not a chord');
+      expect(out.length, lessThan(n), reason: 'and it does simplify');
+      // Every kept point is an original point, in order.
+      var cursor = 0;
       for (final p in out) {
-        expect(p.dx.isFinite, isTrue);
-        expect(p.dy.isFinite, isTrue);
+        cursor = points.indexOf(p, cursor);
+        expect(cursor, isNonNegative);
       }
+    });
+
+    test('a staircase keeps every corner and nothing else', () {
+      // The other pathological shape: monotone, farthest point adjacent to
+      // an endpoint at every level.
+      final points = <Offset>[];
+      for (var i = 0; i < 2000; i++) {
+        points.add(Offset(i.toDouble(), i.toDouble()));
+        points.add(Offset(i + 1.0, i.toDouble()));
+      }
+      final out = StrokeSimplifier.simplify(points, tolerance: 0.1);
+      expect(out.length, points.length,
+          reason: 'each tread is 1px from the chord, well past tolerance');
     });
   });
 }

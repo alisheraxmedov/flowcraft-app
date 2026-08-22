@@ -689,6 +689,101 @@ void main() {
     expect(controller.selectedIds, <String>{'wire'});
   });
 
+  testWidgets('a click in the interior of an unfilled shape selects nothing',
+      (tester) async {
+    // The hit test rejects the empty interior on purpose, so the press fell
+    // through to a marquee — and on release the 0×0 band it left behind
+    // selected everything whose *bounding box* held the point: the frame,
+    // plus any ellipse or scribble whose box happened to cover it. Delete
+    // is bound to `removeSelected`, so "click inside a frame, press Delete"
+    // removed the frame.
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [
+        SketchRectangle.create(
+          id: 'frame',
+          rect: const Rect.fromLTWH(0, 0, 300, 300),
+        ),
+        SketchEllipse.create(
+          id: 'ring',
+          rect: const Rect.fromLTWH(0, 0, 300, 300),
+        ),
+        SketchFreedraw.create(
+          id: 'scribble',
+          points: const [Offset(0, 0), Offset(300, 300)],
+        ),
+      ],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await tester.tapAt(const Offset(150, 100));
+    await tester.pump();
+
+    expect(controller.selectedIds, isEmpty);
+    expect(controller.canUndo, isFalse);
+  });
+
+  testWidgets('a click with Shift held inside an unfilled shape keeps the '
+      'existing selection and adds nothing', (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [
+        _box('a', const Rect.fromLTWH(400, 0, 100, 100)),
+        SketchRectangle.create(
+          id: 'frame',
+          rect: const Rect.fromLTWH(0, 0, 300, 300),
+        ),
+      ],
+    );
+    addTearDown(controller.dispose);
+    controller.select('a');
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await _holding(tester, LogicalKeyboardKey.shiftLeft, () async {
+      await tester.tapAt(const Offset(150, 150));
+      await tester.pump();
+    });
+
+    expect(controller.selectedIds, <String>{'a'});
+  });
+
+  testWidgets('a real marquee over the same unfilled shape still catches it',
+      (tester) async {
+    // The guard is about a band with no area, not about unfilled shapes.
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [
+        SketchRectangle.create(
+          id: 'frame',
+          rect: const Rect.fromLTWH(0, 0, 300, 300),
+        ),
+      ],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    final gesture = await tester.startGesture(const Offset(100, 100));
+    await gesture.moveTo(const Offset(200, 200));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(controller.selectedIds, <String>{'frame'});
+  });
+
   testWidgets('a marquee clipping only a diagonal line\'s empty corner misses',
       (tester) async {
     final controller = SketchController(
@@ -865,6 +960,44 @@ void main() {
         const Rect.fromLTRB(100, 100, 180, 160));
     expect(consumed, <bool>[true, false]);
   });
+
+  for (final tool in <SketchTool>[
+    SketchTool.rectangle,
+    SketchTool.ellipse,
+    SketchTool.diamond,
+    SketchTool.triangle,
+  ]) {
+    testWidgets('a zero-height drag with the ${tool.name} tool draws nothing',
+        (tester) async {
+      // The guard was `width < 1 && height < 1`, so a horizontal pull that
+      // stayed within a pixel vertically committed a W×0 shape — for an
+      // ellipse an empty path: invisible, but hit-testable through its
+      // stroke band, counted, and exported.
+      final controller = SketchController(currentTool: tool);
+      addTearDown(controller.dispose);
+
+      final interaction = SketchInteractionState();
+      addTearDown(interaction.dispose);
+
+      await tester.pumpWidget(_host(controller, interaction));
+
+      final flat = await tester.startGesture(const Offset(10, 50));
+      await flat.moveTo(const Offset(110, 50));
+      await tester.pump();
+      await flat.up();
+      await tester.pump();
+      expect(controller.elements, isEmpty, reason: 'zero height');
+
+      final thin = await tester.startGesture(const Offset(10, 50));
+      await thin.moveTo(const Offset(10, 150));
+      await tester.pump();
+      await thin.up();
+      await tester.pump();
+      expect(controller.elements, isEmpty, reason: 'zero width');
+
+      expect(controller.canUndo, isFalse);
+    });
+  }
 
   testWidgets('a trackpad-style touch drag still counts as primary',
       (tester) async {
