@@ -17,23 +17,78 @@ lib/
 │   ├── sketch_controller.dart   Canvas state (ChangeNotifier) + sketchControllerProvider
 │   ├── sketch_history.dart
 │   ├── theme_view_model.dart    Dark/light toggle
+│   ├── projects_view_model.dart Saved-project library + which one the canvas is editing
+│   ├── project_autosave.dart    Debounced write-behind for the active project
 │   └── mcp_view_model.dart      MCP control-server on/off, owns AppControlServer lifecycle
-├── views/                Screens + presentation widgets (whiteboard_view.dart + widgets/)
-├── services/              External I/O boundary — MCP control server, JSON→element parsing
+├── views/                Screens + presentation widgets (splash_view.dart,
+│                          whiteboard_view.dart + widgets/)
+├── services/              External I/O boundary — the MCP server, storage, JSON→element parsing
+│   ├── flowcraft_control_server.dart  Loopback HTTP router (dart:io), owns auth + token
+│   ├── mcp_http_handler.dart          MCP over Streamable HTTP: JSON-RPC on POST /mcp
+│   ├── mcp_tools.dart                 The three tools, as plain data + handlers
+│   ├── project_repository.dart        Saved projects in ~/.flowcraft/projects (io/stub split)
+│   ├── canvas_exporter.dart           Scene → PNG bytes / export file (io/stub split)
+│   └── diagram_spec.dart              JSON → SketchElement
 └── core/                  Framework-agnostic infra: canvas, domain, rendering, interactions,
                             serialization, utils
 ```
 
 `test/` mirrors `lib/` 1:1.
 
-`mcp_server/` is a **separate, isolated Dart package** (own `pubspec.yaml`), not part of
-the app. It's the actual MCP stdio server an AI CLI spawns; it talks to the app's
-`services/flowcraft_control_server.dart` over loopback HTTP (token-authenticated). It's
-isolated because `package:dart_mcp` only supports stdio (no HTTP/SSE), so it can't live in
-the same process as the long-lived GUI app. See `mcp_server/README.md`.
+**The MCP server lives inside the app.** `FlowcraftControlServer` binds one loopback
+`HttpServer` and serves `/mcp` — a spec-compliant MCP endpoint over the **Streamable HTTP**
+transport — straight into the live `SketchController`. Users register the running app with
+`claude mcp add --transport http flowcraft http://127.0.0.1:5199/mcp --header "X-Flowcraft-Token: <token>"`;
+the MCP card in `views/widgets/mcp_card.dart` copies that line (and shows per-CLI config)
+with the real port/token filled in. No second process, no extra download.
+
+The protocol is hand-rolled on `dart:io` + `dart:convert` — deliberately, and it must stay
+that way: `package:dart_mcp` is stdio-only, so it could not serve this endpoint even if the
+app took the dependency. Keep the app at **zero new pubspec dependencies**.
+
+**Any test that pumps the app must override `mcpServerPortProvider` with 0.** Reading
+`mcpViewModelProvider` — which `SplashView`/`WhiteboardView` do — starts a *real* `HttpServer`.
+`flutter test` runs test files in parallel, so a fixed port makes two files race each other
+and lose to the developer's own running FlowCraft window; that shows up as a red CI build
+that goes green on re-run. `ProviderScope(overrides: [mcpServerPortProvider.overrideWithValue(0)])`
+(or `ProviderContainer(overrides: ...)`) lets the OS pick a free port per test. Tests that
+need a *taken* port must bind one themselves on port 0 and inject the port they got back —
+never squat on 5199.
+
+**Port 5199 is fixed on purpose — don't add an ephemeral-port fallback.** Users paste the
+endpoint into a CLI config once; a port that changes per launch would silently break that
+saved config with no error anywhere. When the bind fails (almost always a stale FlowCraft
+instance), `McpViewModel` lands in `McpServerState.failed` with a reason and the card shows
+it plus a Retry — the endpoint and connect command are withheld, because a connect command
+pointing at a dead port fails later, elsewhere, and silently.
+
+`mcp_server/` is a **separate, isolated Dart package** (own `pubspec.yaml`), excluded from
+`flutter analyze` via `analysis_options.yaml`. It is now an **optional legacy stdio bridge**,
+kept only for MCP clients that can't speak HTTP; it drives the app's original REST endpoints
+(`/health`, `/draw`, `/clear`), which `FlowcraftControlServer` still serves alongside `/mcp`.
+Don't delete those endpoints or their tests. See `mcp_server/README.md`.
+
+**Projects persist to `~/.flowcraft/projects/`** — one JSON file per whiteboard, written
+atomically (temp file + rename), with `index.json` beside them as a *cache only*:
+`ProjectRepository.list()` cross-checks it against the scene files actually on disk and
+rebuilds it from their headers whenever they disagree, so a lost or corrupt index can never
+cost a user their work. Don't turn that index into the source of truth. Scene payloads go
+through `SketchSerializer`, inheriting its versioning and stroke simplification.
+
+**Opening a project must use `SketchController.loadScene`, not `replaceAll`.** `replaceAll`
+snapshots the outgoing scene into undo history, so a Ctrl+Z straight after a project switch
+would pull the *previous* project's elements onto this canvas — and autosave would then
+persist them into the wrong file. `loadScene` discards history and any in-flight drag or
+text edit along with it.
 
 ## Gotchas — read before touching these areas
 
+- **Zero Flutter plugins, and that is load-bearing.** It is what the macOS CocoaPods gotcha
+  below is about. It is also why export writes to `~/Documents/FlowCraft/` instead of showing
+  a native save dialog, and why `services/` uses `_io`/`_stub` conditional-import pairs
+  (`app_control`, `project_repository`, `export_file_sink`) rather than `path_provider`.
+  Adding `file_picker` / `file_selector` / `path_provider` changes the macOS build's
+  behaviour — don't, without deciding that tradeoff deliberately.
 - **Riverpod 3 has no public `ChangeNotifierProvider`.** `SketchController` stays a plain
   `ChangeNotifier`, exposed via a non-reactive `Provider<SketchController>` for DI only.
   Widgets that need to rebuild on canvas edits (`WhiteboardCanvas`, `SketchToolbarRich`)
@@ -74,9 +129,9 @@ flutter build linux --release
 
 `.github/workflows/build-desktop.yml`, triggered on push to `main`:
 - `test` job (`flutter analyze` + `flutter test`) gates all three build jobs via `needs:`.
-- `build-macos` / `build-windows` / `build-linux` each also cross-compile and publish a
-  pre-built `mcp_server` binary as a workflow artifact, so end users never need the Dart
-  SDK to use the MCP integration.
+- `build-macos` / `build-windows` / `build-linux` publish **only** the app installer. They
+  used to also cross-compile the `mcp_server` binary; that was dropped when the MCP server
+  moved in-process — the installer is now the single artifact an end user needs.
 
 ### Mandatory agent delegation
 When the user asks to **IMPLEMENT** or **RESEARCH** something, you MUST delegate the
