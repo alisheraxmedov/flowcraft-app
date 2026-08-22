@@ -123,6 +123,11 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   late Color _activeColor;
   late Color _iconColor;
 
+  /// Style fields the current selection disagrees about — resolved at the
+  /// top of [build] alongside the theme colors above, and read by the anchor
+  /// builders below. See [_resolveDisplayStyle].
+  late Set<_MixedField> _mixed;
+
   @override
   void initState() {
     super.initState();
@@ -150,26 +155,89 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
 
   // ── style updates ──────────────────────────────────────────────────────
 
-  void _updateStyle({
-    Color? strokeColor,
-    Object? fillColor = _sentinel,
-    double? strokeWidth,
-    double? roughness,
-    StrokeStyle? strokeStyle,
-    FillStyle? fillStyle,
-  }) {
-    final s = _ctrl.currentStyle;
-    _ctrl.currentStyle = s.copyWith(
-      strokeColor: strokeColor,
-      fillColor: identical(fillColor, _sentinel)
-          ? s.fillColor
-          : fillColor as Color?,
-      strokeWidth: strokeWidth,
-      roughness: roughness,
-      strokeStyle: strokeStyle,
-      fillStyle: fillStyle,
-    );
+  /// Applies a toolbar style pick.
+  ///
+  /// A pick has to land in two places: [SketchController.currentStyle], the
+  /// default the *next* element is drawn with, and — whenever there is a
+  /// selection — the selected elements themselves. Without the second half
+  /// the palette does nothing to the shape the user is looking at, which is
+  /// what made the colour controls read as broken (the properties panel has
+  /// always restyled the selection, so the two disagreed). The batch goes
+  /// through [SketchController.applyStyleToSelected] so one `undo()` reverts
+  /// the pick no matter how many elements were selected.
+  void _applyStyle(SketchStyle Function(SketchStyle) transform) {
+    _ctrl.applyStyleToSelected(transform);
+    _ctrl.currentStyle = transform(_ctrl.currentStyle);
   }
+
+  /// Brackets a continuous slider drag so the whole drag collapses into one
+  /// history entry instead of one per slider tick. Safe to call with no
+  /// selection: the session's snapshot is only pushed by a mutation that
+  /// actually happens, and a drag over an empty selection has none.
+  void _beginStyleDrag() => _ctrl.beginDragSession();
+
+  void _endStyleDrag() => _ctrl.endDragSession();
+
+  // ── displayed style ────────────────────────────────────────────────────
+
+  /// The style the toolbar should *display*, plus the fields a
+  /// multi-element selection disagrees about.
+  ///
+  /// With a selection the toolbar has to read the selection. Showing
+  /// `currentStyle` there means the swatches describe the next element the
+  /// user might draw rather than the one they are looking at — the toolbar
+  /// quietly lies about the canvas, and there is no way to read an
+  /// element's current style before changing it.
+  ///
+  /// With nothing selected it falls back to `currentStyle`, which is exactly
+  /// what the next element will be drawn with.
+  ///
+  /// Fields that differ across a multi-selection come back in `mixed` and
+  /// render as a neutral indicator: letting whichever element happens to be
+  /// first speak for all of them is the misleading option. The popovers
+  /// still *open* on that first element's value — a slider or a choice list
+  /// needs a concrete starting point — but nothing is marked as current
+  /// while the field is mixed, and any pick applies to the whole selection.
+  ///
+  /// Display only. Picks go through [_applyStyle], which derives the new
+  /// style from each element's own style and from `currentStyle`, never from
+  /// what is shown here, so this cannot feed back into the controller.
+  ({SketchStyle style, Set<_MixedField> mixed}) _resolveDisplayStyle() {
+    SketchStyle? first;
+    final mixed = <_MixedField>{};
+    for (final el in _ctrl.elements) {
+      if (!_ctrl.isSelected(el.id)) continue;
+      final s = el.style;
+      if (first == null) {
+        first = s;
+        continue;
+      }
+      if (s.strokeColor != first.strokeColor) {
+        mixed.add(_MixedField.strokeColor);
+      }
+      if (s.fillColor != first.fillColor) mixed.add(_MixedField.fillColor);
+      if (s.strokeWidth != first.strokeWidth) {
+        mixed.add(_MixedField.strokeWidth);
+      }
+      if (s.roughness != first.roughness) mixed.add(_MixedField.roughness);
+      if (s.strokeStyle != first.strokeStyle) {
+        mixed.add(_MixedField.strokeStyle);
+      }
+      if (s.fillStyle != first.fillStyle) mixed.add(_MixedField.fillStyle);
+      if (mixed.length == _MixedField.values.length) break;
+    }
+    return (style: first ?? _ctrl.currentStyle, mixed: mixed);
+  }
+
+  /// Neutral anchor glyph standing in for a field the selection disagrees
+  /// about.
+  Widget _mixedGlyph() =>
+      Icon(Icons.more_horiz_rounded, size: 18, color: _iconColor);
+
+  /// Anchor tooltip, flagged when the selection disagrees about [field] —
+  /// the neutral glyph on its own doesn't say *why* it went neutral.
+  String _tooltipFor(String label, _MixedField field) =>
+      _mixed.contains(field) ? '$label — mixed' : label;
 
   // ── build ───────────────────────────────────────────────────────────────
 
@@ -180,7 +248,9 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
     _iconColor = widget.iconColor ?? _colorScheme.onSurfaceVariant;
 
     final bg = widget.backgroundColor ?? _colorScheme.surfaceContainer;
-    final style = _ctrl.currentStyle;
+    final display = _resolveDisplayStyle();
+    _mixed = display.mixed;
+    final style = display.style;
     final vertical = widget.orientation == Axis.vertical;
 
     return LayoutBuilder(
@@ -419,11 +489,13 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   }
 
   Widget _strokeColorButton(SketchStyle style) {
+    final mixed = _mixed.contains(_MixedField.strokeColor);
     return PopoverButton(
-      tooltip: 'Stroke color',
+      tooltip: _tooltipFor('Stroke color', _MixedField.strokeColor),
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
       builder: (context, controller) {
+        if (mixed) return _mixedGlyph();
         return SwatchCircle(
           color: style.strokeColor,
           border: _colorScheme.outline,
@@ -432,9 +504,9 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       popoverBuilder: (context, close) {
         return PalettePopover(
           palette: widget.palette,
-          selected: style.strokeColor,
+          selected: mixed ? null : style.strokeColor,
           onPick: (c) {
-            _updateStyle(strokeColor: c);
+            _applyStyle((s) => s.copyWith(strokeColor: c));
             close();
           },
         );
@@ -443,11 +515,13 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   }
 
   Widget _fillColorButton(SketchStyle style) {
+    final mixed = _mixed.contains(_MixedField.fillColor);
     return PopoverButton(
-      tooltip: 'Fill color',
+      tooltip: _tooltipFor('Fill color', _MixedField.fillColor),
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
       builder: (context, controller) {
+        if (mixed) return _mixedGlyph();
         return SwatchCircle(
           color: style.fillColor,
           border: _colorScheme.outline,
@@ -458,8 +532,9 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
         return FillPalettePopover(
           palette: widget.fillPalette,
           selected: style.fillColor,
+          mixed: mixed,
           onPick: (c) {
-            _updateStyle(fillColor: c);
+            _applyStyle((s) => s.withFillColor(c));
             close();
           },
         );
@@ -469,13 +544,16 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
 
   Widget _strokeWidthButton(SketchStyle style) {
     return PopoverButton(
-      tooltip: 'Stroke width',
+      tooltip: _tooltipFor('Stroke width', _MixedField.strokeWidth),
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
-      builder: (context, controller) => StrokeWidthGlyph(
-        color: _iconColor,
-        width: style.strokeWidth,
-      ),
+      builder: (context, controller) =>
+          _mixed.contains(_MixedField.strokeWidth)
+              ? _mixedGlyph()
+              : StrokeWidthGlyph(
+                  color: _iconColor,
+                  width: style.strokeWidth,
+                ),
       popoverBuilder: (context, close) {
         return SliderPopover(
           label: 'Stroke width',
@@ -484,7 +562,9 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
           max: 12.0,
           divisions: 22,
           format: (v) => v.toStringAsFixed(1),
-          onChanged: (v) => _updateStyle(strokeWidth: v),
+          onChanged: (v) => _applyStyle((s) => s.copyWith(strokeWidth: v)),
+          onChangeStart: (_) => _beginStyleDrag(),
+          onChangeEnd: (_) => _endStyleDrag(),
         );
       },
     );
@@ -492,9 +572,11 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
 
   Widget _roughnessButton(SketchStyle style) {
     return PopoverButton(
-      tooltip: 'Roughness',
+      tooltip: _tooltipFor('Roughness', _MixedField.roughness),
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
+      // This anchor never previewed a value, so there is nothing for a mixed
+      // selection to make neutral — only the tooltip and the popover change.
       builder: (context, controller) => Icon(
         Icons.gesture_rounded,
         size: 18,
@@ -508,29 +590,34 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
           max: 2.5,
           divisions: 25,
           format: (v) => v.toStringAsFixed(1),
-          onChanged: (v) => _updateStyle(roughness: v),
+          onChanged: (v) => _applyStyle((s) => s.copyWith(roughness: v)),
+          onChangeStart: (_) => _beginStyleDrag(),
+          onChangeEnd: (_) => _endStyleDrag(),
         );
       },
     );
   }
 
   Widget _strokeStyleButton(SketchStyle style) {
+    final mixed = _mixed.contains(_MixedField.strokeStyle);
     return PopoverButton(
-      tooltip: 'Stroke style',
+      tooltip: _tooltipFor('Stroke style', _MixedField.strokeStyle),
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
-      builder: (context, controller) => StrokeStyleGlyph(
-        color: _iconColor,
-        style: style.strokeStyle,
-      ),
+      builder: (context, controller) => mixed
+          ? _mixedGlyph()
+          : StrokeStyleGlyph(
+              color: _iconColor,
+              style: style.strokeStyle,
+            ),
       popoverBuilder: (context, close) {
         return ChoicePopover<StrokeStyle>(
           label: 'Stroke style',
           options: StrokeStyle.values,
-          selected: style.strokeStyle,
+          selected: mixed ? null : style.strokeStyle,
           labelOf: (s) => s.name,
-          onPick: (s) {
-            _updateStyle(strokeStyle: s);
+          onPick: (picked) {
+            _applyStyle((s) => s.copyWith(strokeStyle: picked));
             close();
           },
         );
@@ -540,9 +627,10 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
 
   Widget _fillStyleButton(SketchStyle style) {
     return PopoverButton(
-      tooltip: 'Fill style',
+      tooltip: _tooltipFor('Fill style', _MixedField.fillStyle),
       activeColor: _activeColor,
       vertical: widget.orientation == Axis.vertical,
+      // Static icon, like the roughness anchor — nothing to neutralise.
       builder: (context, controller) => Icon(
         Icons.format_color_fill_rounded,
         size: 18,
@@ -552,10 +640,12 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
         return ChoicePopover<FillStyle>(
           label: 'Fill style',
           options: FillStyle.values,
-          selected: style.fillStyle,
+          selected: _mixed.contains(_MixedField.fillStyle)
+              ? null
+              : style.fillStyle,
           labelOf: (s) => s.name,
-          onPick: (s) {
-            _updateStyle(fillStyle: s);
+          onPick: (picked) {
+            _applyStyle((s) => s.withFillStyle(picked));
             close();
           },
         );
@@ -620,4 +710,14 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   }
 }
 
-const Object _sentinel = Object();
+/// A style field the toolbar's anchors display, used to mark the ones a
+/// multi-element selection disagrees about. See
+/// `_SketchToolbarRichState._resolveDisplayStyle`.
+enum _MixedField {
+  strokeColor,
+  fillColor,
+  strokeWidth,
+  roughness,
+  strokeStyle,
+  fillStyle,
+}

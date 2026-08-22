@@ -148,10 +148,12 @@ class SketchController extends ChangeNotifier {
   }
 
   /// Translates all selected elements by [delta]. Suitable for drag.
-  /// Calls *without* pushing history mid-drag — call [beginDragSession] /
-  /// [endDragSession] to bracket a continuous drag.
+  /// Bracket a continuous drag with [beginDragSession] / [endDragSession]:
+  /// the first call inside the session pushes the single history entry for
+  /// the whole drag, later calls push nothing.
   void translateSelected(Offset delta) {
     if (_selectedIds.isEmpty || delta == Offset.zero) return;
+    _commitDragHistory();
     for (var i = 0; i < _elements.length; i++) {
       final el = _elements[i];
       if (_selectedIds.contains(el.id)) {
@@ -163,11 +165,13 @@ class SketchController extends ChangeNotifier {
   }
 
   bool _dragInProgress = false;
+  SketchSnapshot? _pendingDragSnapshot;
 
   /// Resizes a bounded element (rectangle/ellipse/diamond/triangle/sticky)
-  /// by replacing its rect. No-op for non-bounded elements. History is NOT
-  /// pushed here — call [beginDragSession] / [endDragSession] around a
-  /// continuous resize drag.
+  /// by replacing its rect. No-op for non-bounded elements. Bracket a
+  /// continuous resize drag with [beginDragSession] / [endDragSession]: the
+  /// first call inside the session pushes the single history entry for the
+  /// whole drag, later calls push nothing.
   void resizeElement(String id, Rect newRect) {
     final idx = _indexOf(id);
     if (idx < 0) return;
@@ -179,21 +183,97 @@ class SketchController extends ChangeNotifier {
     if (el is SketchTriangle) updated = el.copyWith(rect: newRect);
     if (el is SketchSticky) updated = el.copyWith(rect: newRect);
     if (updated == null) return;
+    _commitDragHistory();
     _elements[idx] = updated;
     _invalidateCache();
     _bumpPaint();
   }
 
-  /// Pushes a single history snapshot at the start of a drag/resize.
-  void beginDragSession() {
-    if (_dragInProgress) return;
-    _pushHistory();
-    _dragInProgress = true;
+  /// Restyles every selected element by running [transform] over its current
+  /// style. Returns how many elements actually changed.
+  ///
+  /// The whole batch is a single history entry — [update] pushes one entry
+  /// per call, so undoing one palette pick across a multi-element selection
+  /// would otherwise take one `undo()` per element. Inside a drag session (a
+  /// style slider being dragged) it commits the snapshot [beginDragSession]
+  /// armed instead, so the whole drag collapses into that one entry — the
+  /// same contract [translateSelected] and [resizeElement] follow.
+  int applyStyleToSelected(SketchStyle Function(SketchStyle) transform) {
+    if (_selectedIds.isEmpty) return 0;
+
+    final restyled = <int, SketchElement>{};
+    for (var i = 0; i < _elements.length; i++) {
+      final el = _elements[i];
+      if (!_selectedIds.contains(el.id)) continue;
+      final style = transform(el.style);
+      if (style == el.style) continue;
+      restyled[i] = el.copyWithStyle(style);
+    }
+    if (restyled.isEmpty) return 0;
+
+    if (_dragInProgress) {
+      _commitDragHistory();
+    } else {
+      _pushHistory();
+    }
+    restyled.forEach((i, el) => _elements[i] = el);
+    _invalidateCache();
+    _bumpPaint();
+    return restyled.length;
   }
 
-  /// Marks the end of a drag session. No-op if none active.
+  /// Arms a single history snapshot for a drag/resize.
+  ///
+  /// The snapshot is taken now but only *pushed* by the first mutation the
+  /// drag actually performs (see [_commitDragHistory]). Pushing it eagerly
+  /// meant a plain click-to-select — which opens a move session that may
+  /// never move — left an entry behind, so `canUndo` flipped true and the
+  /// user's first undo visibly did nothing.
+  void beginDragSession() {
+    if (_dragInProgress) return;
+    _dragInProgress = true;
+    _pendingDragSnapshot = _currentSnapshot();
+  }
+
+  /// Marks the end of a drag session, discarding the armed snapshot when the
+  /// drag never changed anything. No-op if none active.
   void endDragSession() {
     _dragInProgress = false;
+    _pendingDragSnapshot = null;
+  }
+
+  /// Pushes the snapshot [beginDragSession] armed, the first time the drag
+  /// mutates something. Later calls in the same session are no-ops, so one
+  /// continuous drag stays exactly one history entry.
+  void _commitDragHistory() {
+    final pending = _pendingDragSnapshot;
+    if (pending == null) return;
+    _pendingDragSnapshot = null;
+    _history.push(pending);
+  }
+
+  /// Swaps in a whole new scene as the canvas's *starting* state, discarding
+  /// undo/redo history along with it.
+  ///
+  /// This is what opening a saved project uses, and the discard is the point:
+  /// [replaceAll] snapshots the outgoing scene, so an undo straight after a
+  /// project switch would pull the *previous* project's elements onto this
+  /// canvas — which autosave would then persist into the wrong file. Any
+  /// in-flight drag or text edit is abandoned too, since it belongs to a
+  /// scene that is no longer on screen.
+  void loadScene(Iterable<SketchElement> newElements) {
+    _elements
+      ..clear()
+      ..addAll(newElements);
+    _selectedIds.clear();
+    _history.clear();
+    _dragInProgress = false;
+    _pendingDragSnapshot = null;
+    _editingElementId = null;
+    _editingCanvasPosition = null;
+    _invalidateCache();
+    _cachedSelectedIds = null;
+    _bumpPaint();
   }
 
   /// Replaces the entire element list. Snapshots prior state.

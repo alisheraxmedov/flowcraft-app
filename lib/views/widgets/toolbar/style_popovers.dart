@@ -14,6 +14,8 @@ class SliderPopover extends StatefulWidget {
     required this.divisions,
     required this.format,
     required this.onChanged,
+    this.onChangeStart,
+    this.onChangeEnd,
   });
 
   final String label;
@@ -23,6 +25,12 @@ class SliderPopover extends StatefulWidget {
   final int divisions;
   final String Function(double) format;
   final ValueChanged<double> onChanged;
+
+  /// Drag-lifecycle hooks. The toolbar brackets the drag with them so a
+  /// continuous slide over a selection collapses into one undo entry
+  /// instead of one per tick.
+  final ValueChanged<double>? onChangeStart;
+  final ValueChanged<double>? onChangeEnd;
 
   @override
   State<SliderPopover> createState() => _SliderPopoverState();
@@ -61,6 +69,8 @@ class _SliderPopoverState extends State<SliderPopover> {
               setState(() => _value = v);
               widget.onChanged(v);
             },
+            onChangeStart: widget.onChangeStart,
+            onChangeEnd: widget.onChangeEnd,
           ),
         ],
       ),
@@ -82,7 +92,11 @@ class ChoicePopover<T> extends StatelessWidget {
 
   final String label;
   final List<T> options;
-  final T selected;
+
+  /// Chip to mark as current, or `null` to mark none — which is what the
+  /// toolbar passes when a multi-selection disagrees about this field.
+  final T? selected;
+
   final String Function(T) labelOf;
   final ValueChanged<T> onPick;
 

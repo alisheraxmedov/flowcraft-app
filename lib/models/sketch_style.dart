@@ -85,6 +85,44 @@ class SketchStyle {
     );
   }
 
+  /// Derives a style with [fillColor] applied, keeping [fillStyle] in step.
+  ///
+  /// `SketchPainter` only paints a fill when `fillStyle != none && fillColor
+  /// != null`, so the two fields have to move together: picking a colour out
+  /// of the fill palette while [fillStyle] is still [FillStyle.none] paints
+  /// nothing at all, which reads as "the colour tool is broken" long before
+  /// the user finds the separate fill-style popover. A concrete colour
+  /// therefore promotes a `none` style to [FillStyle.solid]; the palette's
+  /// "none" sentinel (`null`) drops it back to [FillStyle.none].
+  SketchStyle withFillColor(Color? fillColor) {
+    if (fillColor == null) {
+      return copyWith(fillColor: null, fillStyle: FillStyle.none);
+    }
+    return copyWith(
+      fillColor: fillColor,
+      fillStyle: fillStyle == FillStyle.none ? FillStyle.solid : fillStyle,
+    );
+  }
+
+  /// Derives a style with [fillStyle] applied, keeping [fillColor] in step —
+  /// the mirror of [withFillColor].
+  ///
+  /// A visible fill style with no fill colour is exactly as invisible as a
+  /// fill colour with [FillStyle.none], so it adopts [strokeColor]: the one
+  /// colour the user has actually picked, and one the fill swatch shows
+  /// immediately, so the pick is visible and correctable instead of a
+  /// silent no-op. [FillStyle.none] clears the colour in return, so "no
+  /// fill" reads the same way from either control.
+  SketchStyle withFillStyle(FillStyle fillStyle) {
+    if (fillStyle == FillStyle.none) {
+      return copyWith(fillColor: null, fillStyle: FillStyle.none);
+    }
+    return copyWith(
+      fillColor: fillColor ?? strokeColor,
+      fillStyle: fillStyle,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'strokeColor': strokeColor.toARGB32(),
         if (fillColor != null) 'fillColor': fillColor!.toARGB32(),

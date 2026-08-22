@@ -187,15 +187,14 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     final el = _selected;
     if (el == null) return;
     final text = _fillHexCtrl.text.trim();
-    if (text.isEmpty) {
-      if (el.style.fillColor != null) {
-        _ctrl.update(el.copyWithStyle(el.style.copyWith(fillColor: null)));
-      }
-      return;
-    }
-    final color = _hexToColor(text);
-    if (color == null || color == el.style.fillColor) return;
-    _ctrl.update(el.copyWithStyle(el.style.copyWith(fillColor: color)));
+    // Same `withFillColor` rule the toolbar's fill palette uses, so a fill
+    // set from here is just as visible as one set from there: a colour
+    // promotes `FillStyle.none` to solid, an empty field clears both.
+    final color = text.isEmpty ? null : _hexToColor(text);
+    if (color == null && text.isNotEmpty) return;
+    final style = el.style.withFillColor(color);
+    if (style == el.style) return;
+    _ctrl.update(el.copyWithStyle(style));
   }
 
   // ── build ──────────────────────────────────────────────────────────────

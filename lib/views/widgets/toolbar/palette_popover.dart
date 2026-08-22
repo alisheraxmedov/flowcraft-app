@@ -10,7 +10,11 @@ class PalettePopover extends StatelessWidget {
   });
 
   final List<Color> palette;
-  final Color selected;
+
+  /// Swatch to ring as current, or `null` to ring none — which is what the
+  /// toolbar passes when a multi-selection disagrees about this colour.
+  final Color? selected;
+
   final ValueChanged<Color> onPick;
 
   @override
@@ -63,15 +67,22 @@ class FillPalettePopover extends StatelessWidget {
     required this.palette,
     required this.selected,
     required this.onPick,
+    this.mixed = false,
   });
 
   final List<Color?> palette;
   final Color? selected;
   final ValueChanged<Color?> onPick;
 
+  /// When true no swatch is ringed as current. `selected` can't express that
+  /// here the way it can in [PalettePopover] — `null` is a real fill value
+  /// ("none"), so "mixed" needs its own flag.
+  final bool mixed;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    bool isCurrent(Color? c) => !mixed && selected == c;
     return Container(
       width: 200,
       padding: const EdgeInsets.all(10),
@@ -95,8 +106,8 @@ class FillPalettePopover extends StatelessWidget {
                       color: c ?? Colors.transparent,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        width: selected == c ? 2.5 : 1.0,
-                        color: selected == c
+                        width: isCurrent(c) ? 2.5 : 1.0,
+                        color: isCurrent(c)
                             ? colorScheme.primary
                             : colorScheme.outline,
                       ),
