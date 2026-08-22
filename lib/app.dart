@@ -16,7 +16,10 @@ class FlowCraftWhiteboardApp extends ConsumerWidget {
     final isDark = ref.watch(themeViewModelProvider);
 
     return MaterialApp(
-      title: 'FlowCraft Whiteboard',
+      // `FlowCraft`, matching the native window titles on every platform —
+      // on Linux the GTK embedder puts this string in the Alt-Tab switcher
+      // beside the header bar's own title.
+      title: 'FlowCraft',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

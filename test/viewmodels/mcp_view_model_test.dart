@@ -156,6 +156,43 @@ void main() {
       expect(seen, [McpServerState.starting, McpServerState.off]);
     });
 
+    test('a superseded transition does not publish its state', () async {
+      // on→off while the initial start is still binding: the queue runs
+      // start then stop, and the start used to publish `running` — with
+      // an endpoint and token — on a switch the user had already turned
+      // off, for as long as the stop behind it took.
+      final container = makeContainer();
+      final seen = <McpServerState>[];
+      container.listen<McpServerStatus>(
+        mcpViewModelProvider,
+        (previous, next) => seen.add(next.state),
+        fireImmediately: true,
+      );
+      final notifier = container.read(mcpViewModelProvider.notifier);
+
+      notifier.toggle(); // off, while the start is in flight
+      notifier.toggle(); // on again
+      notifier.toggle(); // and off
+      await notifier.settled;
+
+      expect(seen, isNot(contains(McpServerState.running)));
+      expect(seen.last, McpServerState.off);
+      expect(container.read(mcpViewModelProvider).isOn, isFalse);
+    });
+
+    test('the newest request still publishes its outcome', () async {
+      final container = makeContainer();
+      final notifier = container.read(mcpViewModelProvider.notifier);
+
+      notifier.toggle(); // off
+      notifier.toggle(); // on — newest, must land as running
+      await notifier.settled;
+
+      final status = container.read(mcpViewModelProvider);
+      expect(status.isRunning, isTrue);
+      expect(status.port, isNotNull);
+    });
+
     test('turning the server off drops the connection details', () {
       final container = makeContainer();
 

@@ -78,18 +78,25 @@ class CanvasExporter {
       Paint()..color = background.withValues(alpha: 1.0),
     );
 
-    SketchPainter(
-      elements: elements,
-      // Empty selection + null edit target so selection handles and
-      // half-finished inline text never leak into an exported file.
-      selectedIds: const <String>{},
-      viewport: viewport,
-      paintGen: 0,
-      cache: SketchRenderCache(),
-      selectionColor: _unusedSelectionColor,
-      editingElementId: null,
-      canvasSize: imageRect.size,
-    ).paint(canvas, imageRect.size);
+    // A throwaway cache: the export paints once, and the cache owns native
+    // `TextPainter`s that must be released rather than left to the GC.
+    final cache = SketchRenderCache();
+    try {
+      SketchPainter(
+        elements: elements,
+        // Empty selection + null edit target so selection handles and
+        // half-finished inline text never leak into an exported file.
+        selectedIds: const <String>{},
+        viewport: viewport,
+        paintGen: 0,
+        cache: cache,
+        selectionColor: _unusedSelectionColor,
+        editingElementId: null,
+        canvasSize: imageRect.size,
+      ).paint(canvas, imageRect.size);
+    } finally {
+      cache.dispose();
+    }
 
     final picture = recorder.endRecording();
     try {
@@ -140,9 +147,11 @@ class CanvasExporter {
   static Future<bool> revealInFileManager(String path) =>
       ExportFileSink.reveal(path);
 
-  /// Builds a collision-free, filesystem-safe name like
-  /// `my-diagram-20260822-1435.png`. Timestamped because there is no save
-  /// dialog to warn about overwriting a previous export.
+  /// Builds a filesystem-safe name like `my-diagram-20260822-143501.png`.
+  /// Timestamped because there is no save dialog to warn about overwriting
+  /// a previous export; two exports inside the same second are told apart
+  /// by [ExportFileSink.write], which suffixes `-2`, `-3`, … rather than
+  /// overwrite.
   static String timestampedFileName(
     String baseName,
     String extension, {

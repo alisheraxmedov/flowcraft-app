@@ -1,6 +1,7 @@
 import 'dart:ui';
 
-import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/models/sketch_style.dart';
 
 /// Translates the simplified JSON diagram shapes accepted by the MCP
 /// bridge's `/draw` endpoint into real [SketchElement]s, using each
@@ -39,6 +40,21 @@ const double maxDiagramCoordinate = 1000000;
 /// short of the values that turn one glyph into a full-screen raster.
 const double maxDiagramFontSize = 512;
 
+/// Longest `text` one element may carry, in UTF-16 code units.
+///
+/// The request body is capped at 8 MiB, but nothing else stood between one
+/// `{"type":"text","text":"<7 MB>"}` element and the canvas — where it
+/// would be laid out by the painter every frame, autosaved to disk and
+/// rasterised by the PNG exporter. A label or a sticky note runs to a
+/// sentence or a paragraph; 4,096 characters is a page.
+const int maxDiagramTextLength = 4096;
+
+/// Hex colour as the schema documents it: `RRGGBB` or `AARRGGBB`, with an
+/// optional leading `#`. Anything else — a sign, three-digit shorthand, a
+/// named colour — is refused rather than guessed at, because `int.tryParse`
+/// accepted `"#-1"` and `"#FFF"` became a nearly transparent black.
+final RegExp _hexColor = RegExp(r'^#?[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$');
+
 List<SketchElement> parseDiagramElements(List<dynamic> raw) {
   if (raw.length > maxDiagramElements) {
     throw DiagramSpecException(
@@ -54,7 +70,7 @@ SketchElement _parseOne(dynamic entry) {
     throw DiagramSpecException('Element must be an object, got: $entry');
   }
   final map = entry.cast<String, dynamic>();
-  final type = map['type'] as String?;
+  final type = _string(map, 'type');
   if (type == null) {
     throw DiagramSpecException('Element is missing a "type" field.');
   }
@@ -63,7 +79,13 @@ SketchElement _parseOne(dynamic entry) {
     strokeColor: _color(map['strokeColor']) ?? const Color(0xFF1E1E1E),
     fillColor: _color(map['fillColor']),
   );
-  final text = map['text'] as String?;
+  final text = _string(map, 'text');
+  if (text != null && text.length > maxDiagramTextLength) {
+    throw DiagramSpecException(
+      '"text" is too long: ${text.length} characters (max '
+      '$maxDiagramTextLength). Split it across several elements.',
+    );
+  }
   final fontSize = _fontSize(map);
 
   switch (type) {
@@ -131,6 +153,21 @@ SketchElement _parseOne(dynamic entry) {
   }
 }
 
+/// Reads one string field, or `null` when it is absent.
+///
+/// Checked, not cast: `map['text'] as String?` on `{"text": 5}` throws a
+/// `TypeError`, which is not a [DiagramSpecException] — on the REST path
+/// that surfaced as a 500 "internal server error", on MCP as the raw Dart
+/// cast message, neither of which tells the caller what to change.
+String? _string(Map<String, dynamic> map, String key) {
+  final raw = map[key];
+  if (raw == null) return null;
+  if (raw is! String) {
+    throw DiagramSpecException('"$key" must be a string, got: $raw');
+  }
+  return raw;
+}
+
 Rect _rect(Map<String, dynamic> map) {
   return Rect.fromLTWH(
     _number(map, 'x', 0),
@@ -191,12 +228,17 @@ double _fontSize(Map<String, dynamic> map) {
 }
 
 Color? _color(dynamic hex) {
-  if (hex is! String || hex.isEmpty) return null;
+  if (hex == null) return null;
+  if (hex is! String) {
+    throw DiagramSpecException('Color must be a hex string, got: $hex');
+  }
+  if (hex.isEmpty) return null;
+  if (!_hexColor.hasMatch(hex)) {
+    throw DiagramSpecException(
+      'Invalid hex color: "$hex" (expected "#RRGGBB" or "#AARRGGBB")',
+    );
+  }
   var value = hex.startsWith('#') ? hex.substring(1) : hex;
   if (value.length == 6) value = 'FF$value';
-  final parsed = int.tryParse(value, radix: 16);
-  if (parsed == null) {
-    throw DiagramSpecException('Invalid hex color: "$hex"');
-  }
-  return Color(parsed);
+  return Color(int.parse(value, radix: 16));
 }

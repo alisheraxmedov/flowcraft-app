@@ -156,8 +156,9 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
 
   Future<void> _renameProject(String id, String name) async {
     try {
-      // Flush first: `rename` rewrites the scene file from what is on disk,
-      // so an unwritten edit would be rolled back by the rename.
+      // Flush first, so the file the rename stamps with a fresh `updatedAt`
+      // already holds the pending edit rather than receiving it a moment
+      // later as a second write.
       if (state.activeId == id) await _autosave.flush();
       await _repository.rename(id, name);
       _set(state.copyWith(clearError: true));
@@ -177,7 +178,10 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
       await _repository.delete(id);
       if (wasActive) _set(state.copyWith(clearActive: true, clearError: true));
     } catch (error) {
-      if (wasActive) _autosave.bind(id);
+      // `rebind`, not `bind`: the edits the detach abandoned are still on
+      // the canvas and still unsaved, and a plain bind would adopt the
+      // canvas as already written.
+      if (wasActive) _autosave.rebind(id);
       _fail('Could not delete project', error);
       return;
     }

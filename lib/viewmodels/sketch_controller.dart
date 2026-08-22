@@ -329,12 +329,28 @@ class SketchController extends ChangeNotifier {
   void endDragSession() {
     _dragInProgress = false;
     _pendingDragSnapshot = null;
+    _rearmDragSnapshot = false;
   }
+
+  /// Set when a history entry from *outside* the drag — an MCP draw landing
+  /// while the pointer is down — was pushed after [beginDragSession] armed
+  /// its snapshot. That snapshot predates the foreign change, so pushing it
+  /// would make the first undo after the drag rewind past the agent's
+  /// elements; instead the drag re-snapshots at its first move.
+  bool _rearmDragSnapshot = false;
 
   /// Pushes the snapshot [beginDragSession] armed, the first time the drag
   /// mutates something. Later calls in the same session are no-ops, so one
   /// continuous drag stays exactly one history entry.
   void _commitDragHistory() {
+    if (_rearmDragSnapshot) {
+      // Called before the mutation, so this is the scene as the foreign
+      // change left it and the drag found it.
+      _rearmDragSnapshot = false;
+      _pendingDragSnapshot = null;
+      _history.push(_currentSnapshot());
+      return;
+    }
     final pending = _pendingDragSnapshot;
     if (pending == null) return;
     _pendingDragSnapshot = null;
@@ -367,6 +383,7 @@ class SketchController extends ChangeNotifier {
     _history.clear();
     _dragInProgress = false;
     _pendingDragSnapshot = null;
+    _rearmDragSnapshot = false;
     _editingElementId = null;
     _editingCanvasPosition = null;
     _invalidateCache();
@@ -375,12 +392,25 @@ class SketchController extends ChangeNotifier {
   }
 
   /// Replaces the entire element list. Snapshots prior state.
+  ///
+  /// Selection and any text edit survive only for elements that are still
+  /// on the canvas by id afterwards. Leaving a stale selection behind let
+  /// Delete report "2 removed", push an undo entry and trigger an autosave
+  /// while removing nothing, after an MCP `replace` had swapped the scene
+  /// under it.
   void replaceAll(Iterable<SketchElement> newElements) {
     _pushHistory();
     _elements
       ..clear()
       ..addAll(newElements);
+    _selectedIds.removeWhere((id) => _indexOf(id) < 0);
+    final editing = _editingElementId;
+    if (editing != null && _indexOf(editing) < 0) {
+      _editingElementId = null;
+      _editingCanvasPosition = null;
+    }
     _invalidateCache();
+    _cachedSelectedIds = null;
     _bumpPaint();
   }
 
@@ -450,9 +480,20 @@ class SketchController extends ChangeNotifier {
     } catch (_) {
       return 0;
     }
-    if (parsed.isEmpty) return 0;
+    return pasteElements(parsed, offset: offset);
+  }
+
+  /// [pasteFromJson] for elements a caller has already decoded: fresh ids,
+  /// remapped groups, one history entry, the copies selected. Returns how
+  /// many were added.
+  ///
+  /// Exists so a file import that has *already* parsed its payload — to
+  /// count what it could not read — doesn't hand the same text over to be
+  /// parsed a second time on the UI isolate.
+  int pasteElements(List<SketchElement> elements, {Offset? offset}) {
+    if (elements.isEmpty) return 0;
     _pushHistory();
-    return _addCopies(parsed, offset ?? const Offset(16, 16));
+    return _addCopies(elements, offset ?? const Offset(16, 16));
   }
 
   // ── Z-order ────────────────────────────────────────────────────────────
@@ -589,9 +630,21 @@ class SketchController extends ChangeNotifier {
 
   // ── Selection (NOT history-tracked) ────────────────────────────────────
 
+  /// Selects [id], replacing the current selection unless [clearExisting]
+  /// is false. An id that is not on the canvas selects nothing — but still
+  /// clears, exactly as [selectMany] with no valid id does, so the three
+  /// views of the selection ([selectedIds], [isSelected], [hasSelection])
+  /// never disagree about what just happened.
   void select(String id, {bool clearExisting = true}) {
+    final had = _selectedIds.isNotEmpty;
     if (clearExisting) _selectedIds.clear();
-    if (!_elements.any((e) => e.id == id)) return;
+    if (_indexOf(id) < 0) {
+      if (clearExisting && had) {
+        _cachedSelectedIds = null;
+        notifyListeners();
+      }
+      return;
+    }
     _selectedIds.add(id);
     _cachedSelectedIds = null;
     notifyListeners();
@@ -755,16 +808,29 @@ class SketchController extends ChangeNotifier {
 
   // ── Undo / redo ────────────────────────────────────────────────────────
 
+  /// Undo and redo both drop a snapshot armed by [beginDragSession]: it was
+  /// taken against the scene *before* this jump, and letting the drag's
+  /// next move push it would stack a stale pre-undo scene on top of the
+  /// restored one — the first Ctrl+Z after the drag would then rewind to
+  /// a state the user never saw. A drag still in progress re-snapshots at
+  /// its next move instead, so it keeps an entry of its own.
   void undo() {
     final snap = _history.popUndo(_currentSnapshot());
     if (snap == null) return;
+    _dropArmedSnapshot();
     _applySnapshot(snap);
   }
 
   void redo() {
     final snap = _history.popRedo(_currentSnapshot());
     if (snap == null) return;
+    _dropArmedSnapshot();
     _applySnapshot(snap);
+  }
+
+  void _dropArmedSnapshot() {
+    _pendingDragSnapshot = null;
+    _rearmDragSnapshot = _dragInProgress;
   }
 
   // ── internal ───────────────────────────────────────────────────────────
@@ -920,6 +986,12 @@ class SketchController extends ChangeNotifier {
 
   void _pushHistory() {
     _history.push(_currentSnapshot());
+    if (_pendingDragSnapshot != null) {
+      // A foreign entry landed under an armed drag — see
+      // [_rearmDragSnapshot].
+      _pendingDragSnapshot = null;
+      _rearmDragSnapshot = true;
+    }
   }
 
   SketchSnapshot _currentSnapshot() {

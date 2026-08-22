@@ -206,6 +206,24 @@ void main() {
       expect(path.startsWith(nested), isTrue);
     });
 
+    test('a second export in the same second gets a distinct name', () async {
+      Future<String> export(List<int> bytes) => CanvasExporter.writeExport(
+            fileName: 'scene-20260822-143501.flowcraft.json',
+            bytes: bytes,
+            directoryPath: tempDir.path,
+          );
+
+      final first = await export([1]);
+      final second = await export([2]);
+      final third = await export([3]);
+
+      expect(first, endsWith('scene-20260822-143501.flowcraft.json'));
+      expect(second, endsWith('scene-20260822-143501-2.flowcraft.json'));
+      expect(third, endsWith('scene-20260822-143501-3.flowcraft.json'));
+      expect(File(first).readAsBytesSync(), [1], reason: 'never overwritten');
+      expect(File(second).readAsBytesSync(), [2]);
+    });
+
     test('surfaces write failures instead of swallowing them', () async {
       final blocked = File('${tempDir.path}${Platform.pathSeparator}blocked')
         ..writeAsStringSync('not a directory');

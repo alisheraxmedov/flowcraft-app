@@ -162,6 +162,88 @@ void main() {
       expect(rect.style.strokeColor, const Color(0xFF2E7D32));
     });
 
+    test('parses an 8-digit hex color with its alpha', () {
+      final elements = parseDiagramElements([
+        {'type': 'rectangle', 'fillColor': '#802E7D32'},
+      ]);
+
+      expect(
+        (elements.single as SketchRectangle).style.fillColor,
+        const Color(0x802E7D32),
+      );
+    });
+
+    test('refuses hex colors that only look like colors', () {
+      // `int.tryParse` took a sign, and a 3-digit shorthand became a
+      // nearly transparent black rather than the grey it was meant to be.
+      for (final bad in ['#-1', '#FFF', 'FFF', '#12345', '#1234567',
+          '#123456789', '#GGGGGG', 'red']) {
+        expect(
+          () => parseDiagramElements([
+            {'type': 'rectangle', 'strokeColor': bad},
+          ]),
+          throwsA(
+            isA<DiagramSpecException>()
+                .having((e) => e.message, 'message', contains('RRGGBB')),
+          ),
+          reason: bad,
+        );
+      }
+    });
+
+    test('non-string type/text/color fields are spec errors, not crashes',
+        () {
+      for (final (field, value) in [
+        ('type', 5),
+        ('text', 5),
+        ('text', <String>[]),
+        ('strokeColor', 0xFF0000),
+        ('fillColor', true),
+      ]) {
+        expect(
+          () => parseDiagramElements([
+            {'type': 'rectangle', field: value},
+          ]),
+          throwsA(
+            isA<DiagramSpecException>().having(
+              (e) => e.message,
+              'message',
+              allOf(contains('must be'), contains('$value')),
+            ),
+          ),
+          reason: '$field = $value',
+        );
+      }
+    });
+
+    test('text longer than the cap is refused', () {
+      final atCap = 'x' * maxDiagramTextLength;
+      expect(
+        (parseDiagramElements([
+          {'type': 'text', 'text': atCap},
+        ]).single as SketchText)
+            .text,
+        atCap,
+        reason: 'the limit is inclusive',
+      );
+
+      for (final type in ['text', 'rectangle', 'sticky']) {
+        expect(
+          () => parseDiagramElements([
+            {'type': type, 'text': '${atCap}x'},
+          ]),
+          throwsA(
+            isA<DiagramSpecException>().having(
+              (e) => e.message,
+              'message',
+              allOf(contains('too long'), contains('$maxDiagramTextLength')),
+            ),
+          ),
+          reason: type,
+        );
+      }
+    });
+
     test('refuses the non-finite numbers JSON can smuggle in', () {
       // `1e999` is the reachable spelling — there is no Infinity literal,
       // so a payload that looks like plain JSON produces one anyway.

@@ -8,6 +8,15 @@ import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/services/mcp_http_handler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// A controller whose draw path fails with a message that names a local
+/// path — what a bug on our side of the HTTP boundary can look like.
+class _ExplodingController extends SketchController {
+  @override
+  void addAll(Iterable<SketchElement> elements) {
+    throw StateError('boom at /Users/secret/flowcraft');
+  }
+}
+
 void main() {
   late Directory tempConfigDir;
   late SketchController controller;
@@ -88,13 +97,28 @@ void main() {
     return readJson(response);
   }
 
-  test('GET /health reports element count without auth', () async {
+  test('GET /health reports liveness and version without auth', () async {
     final request = await client.getUrl(base.replace(path: '/health'));
     final response = await request.close();
     expect(response.statusCode, 200);
     final json = await readJson(response);
     expect(json['status'], 'ok');
-    expect(json['elements'], 0);
+    expect(json['version'], appVersion);
+    // What is on the canvas is the user's; an unauthenticated probe learns
+    // only that the app is up.
+    expect(json.containsKey('elements'), isFalse);
+  });
+
+  test('GET /health includes the element count for a valid token', () async {
+    controller.add(
+      SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 10, 10)),
+    );
+    final request = await client.getUrl(base.replace(path: '/health'));
+    request.headers.set('X-Flowcraft-Token', server.token);
+    final response = await request.close();
+
+    expect(response.statusCode, 200);
+    expect((await readJson(response))['elements'], 1);
   });
 
   test('POST /draw without a token is rejected', () async {
@@ -263,22 +287,55 @@ void main() {
     expect(controller.elements, isEmpty);
   });
 
+  test('/draw answers 400 for a wrongly-typed field', () async {
+    // `{"text": 42}` used to reach a cast inside the parser rather than one
+    // of its own checks, and came back as 500 "internal server error" —
+    // untrue, and unfixable from the caller's side.
+    for (final bad in [
+      {'type': 'rectangle', 'text': 42},
+      {'type': 5},
+      {'type': 'rectangle', 'strokeColor': 7},
+    ]) {
+      final response = await post(
+        '/draw',
+        {'elements': [bad]},
+        token: server.token,
+      );
+
+      expect(response.statusCode, 400, reason: '$bad');
+      expect((await readJson(response))['error'], contains('must be'));
+    }
+    expect(controller.elements, isEmpty);
+  });
+
   test('an unexpected failure is not echoed back to the caller', () async {
-    // A wrong-typed `text` reaches a cast inside the parser rather than one
-    // of its own checks — the class of bug whose message can carry local
-    // filesystem paths.
-    final response = await post(
-      '/draw',
-      {
-        'elements': [
-          {'type': 'rectangle', 'text': 42},
-        ],
-      },
-      token: server.token,
+    // Nothing a caller can send reaches the generic handler any more, so
+    // the failure is planted on our side of the boundary — the class of
+    // bug whose message can carry local filesystem paths.
+    final exploding = _ExplodingController();
+    final other = FlowcraftControlServer(
+      controller: exploding,
+      port: 0,
+      configDir: tempConfigDir,
     );
+    await other.start();
+    addTearDown(other.stop);
+    final request = await client.postUrl(
+      base.replace(port: other.boundPort, path: '/draw'),
+    );
+    request.headers.contentType = ContentType.json;
+    request.headers.set('X-Flowcraft-Token', other.token);
+    request.write(jsonEncode({
+      'elements': [
+        {'type': 'rectangle'},
+      ],
+    }));
+    final response = await request.close();
 
     expect(response.statusCode, 500);
-    expect((await readJson(response))['error'], 'internal server error');
+    final body = await response.transform(utf8.decoder).join();
+    expect(body, isNot(contains('/Users/secret')));
+    expect(jsonDecode(body), {'error': 'internal server error'});
   });
 
   test('a foreign Origin is refused on the REST endpoints too', () async {
@@ -343,10 +400,6 @@ void main() {
           : null);
 
   group('MCP endpoint', () {
-    test('exposes its URL once a port is bound', () {
-      expect(server.mcpEndpoint, 'http://127.0.0.1:${server.boundPort}/mcp');
-    });
-
     test('initialize echoes a protocol version we support', () async {
       final body = await rpc(
         'initialize',
@@ -366,6 +419,7 @@ void main() {
         result['serverInfo'],
         containsPair('name', isA<String>()),
       );
+      expect(result['serverInfo'], containsPair('version', appVersion));
       expect(result['instructions'], contains('flowcraft_draw'));
     });
 
@@ -494,8 +548,35 @@ void main() {
       expect(result['isError'], isFalse);
       expect(
         (result['content'] as List).single,
-        containsPair('text', contains('1 element(s)')),
+        containsPair(
+          'text',
+          allOf(contains('1 element(s)'), contains('version $appVersion')),
+        ),
       );
+    });
+
+    test('a wrongly-typed field is a tool error the model can act on',
+        () async {
+      final body = await rpc(
+        'tools/call',
+        params: {
+          'name': 'flowcraft_draw',
+          'arguments': {
+            'elements': [
+              {'type': 'text', 'text': 5},
+            ],
+          },
+        },
+      );
+
+      expect(body['error'], isNull);
+      final result = body['result'] as Map<String, dynamic>;
+      expect(result['isError'], isTrue);
+      expect(
+        (result['content'] as List).single,
+        containsPair('text', contains('"text" must be a string')),
+      );
+      expect(controller.elements, isEmpty);
     });
 
     test('an unknown tool is a JSON-RPC error', () async {

@@ -59,6 +59,7 @@ export 'views/widgets/toolbar/toolbar.dart';
 
 // Services — external I/O boundary (MCP control server)
 export 'services/app_control.dart';
+export 'services/app_version.dart';
 export 'services/canvas_exporter.dart';
 export 'services/diagram_spec.dart';
 export 'services/export_file_sink.dart';
@@ -66,6 +67,7 @@ export 'services/flowcraft_control_server.dart';
 export 'services/importable_scene.dart';
 export 'services/mcp_tools.dart';
 export 'services/project_repository.dart';
+export 'services/scene_import_exception.dart';
 export 'services/scene_import_source.dart';
 
 // Core — framework-agnostic infrastructure

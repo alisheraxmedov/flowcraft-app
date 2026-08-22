@@ -1,5 +1,6 @@
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
+import 'app_version.dart';
 import 'diagram_spec.dart';
 
 /// The tools the app's built-in MCP server exposes, in `tools/list` order.
@@ -141,15 +142,22 @@ const Map<String, Object?> _drawSchema = {
           'fromY': {'type': 'number', 'description': 'Start Y (arrow/line).'},
           'toX': {'type': 'number', 'description': 'End X (arrow/line).'},
           'toY': {'type': 'number', 'description': 'End Y (arrow/line).'},
-          'text': {'type': 'string', 'description': 'Label text, if any.'},
+          'text': {
+            'type': 'string',
+            'maxLength': maxDiagramTextLength,
+            'description': 'Label text, if any. At most 4096 characters; '
+                'split longer text across several elements.',
+          },
           'fontSize': {'type': 'number', 'description': 'Label font size.'},
           'strokeColor': {
             'type': 'string',
-            'description': 'Hex color, e.g. "#1E1E1E". Defaults to black.',
+            'description': 'Hex color as "#RRGGBB" or "#AARRGGBB", e.g. '
+                '"#1E1E1E". Defaults to black.',
           },
           'fillColor': {
             'type': 'string',
-            'description': 'Hex color, optional. No fill if omitted.',
+            'description': 'Hex color as "#RRGGBB" or "#AARRGGBB", '
+                'optional. No fill if omitted.',
           },
         },
         'required': ['type'],
@@ -160,16 +168,16 @@ const Map<String, Object?> _drawSchema = {
 };
 
 /// Reaching this handler at all proves the app is up — the server running
-/// it *is* the app — so the only interesting part of the answer is how
-/// much is currently on the canvas.
+/// it *is* the app — so the interesting parts of the answer are which
+/// build this is and how much is currently on the canvas.
 McpToolResult _runStatus(
   SketchController controller,
   Map<String, Object?> arguments,
 ) {
   final count = controller.elements.length;
   return McpToolResult(
-    'FlowCraft app is running and reachable. The canvas currently holds '
-    '$count element(s).',
+    'FlowCraft app (version $appVersion) is running and reachable. The '
+    'canvas currently holds $count element(s).',
   );
 }
 

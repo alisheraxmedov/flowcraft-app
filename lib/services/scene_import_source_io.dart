@@ -2,6 +2,9 @@ import 'dart:io';
 
 import 'package:flowcraft/services/export_file_sink.dart';
 import 'package:flowcraft/services/importable_scene.dart';
+import 'package:flowcraft/services/scene_import_exception.dart';
+
+export 'package:flowcraft/services/scene_import_exception.dart';
 
 /// Finds and reads scene files to import.
 ///
@@ -57,17 +60,37 @@ class SceneImportSource {
   }
 
   /// Reads [path] as UTF-8. Throws [FileSystemException] with the real
-  /// reason — the dialog shows it rather than saying "import failed".
-  static Future<String> read(String path) =>
-      File(expandHome(path)).readAsString();
+  /// reason — the dialog shows it rather than saying "import failed" — or
+  /// [SceneImportTooLargeException] for a file over [maxSceneImportBytes].
+  ///
+  /// The size is checked with a `stat` *before* anything is read: the
+  /// refusal must cost nothing, or a typed path to a multi-gigabyte file
+  /// would have already frozen the window by the time it was refused.
+  static Future<String> read(String path) async {
+    final file = File(expandHome(path));
+    final size = (await file.stat()).size;
+    if (size > maxSceneImportBytes) {
+      throw SceneImportTooLargeException(sizeBytes: size);
+    }
+    return file.readAsString();
+  }
 
   /// Turns a leading `~` into the user's home directory.
   ///
   /// Typed paths come from humans, and a human writing a path by hand
   /// writes `~/Documents/…`. Leaving that unexpanded produces a
   /// "no such file" for a path that plainly exists.
+  ///
+  /// Only the bare `~` and `~/…` (`~\…` on Windows) forms are expanded.
+  /// `~bob/…` names *another* user's home, which this deliberately does not
+  /// resolve — substituting our own home for the `~` alone turned it into
+  /// `/Users/alicebob/…`, a path that exists for nobody.
   static String expandHome(String path) {
-    if (!path.startsWith('~')) return path;
+    if (path != '~' &&
+        !path.startsWith('~/') &&
+        !(Platform.isWindows && path.startsWith(r'~\'))) {
+      return path;
+    }
     final home =
         Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
     if (home == null) return path;

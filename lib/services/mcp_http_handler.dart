@@ -4,6 +4,7 @@ import 'dart:typed_data' show BytesBuilder;
 
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
+import 'app_version.dart';
 import 'mcp_tools.dart';
 
 /// Path the MCP endpoint is served from, relative to the control server's
@@ -163,10 +164,9 @@ class McpHttpHandler {
         _tools = tools;
 
   /// Identifies this server in the `initialize` handshake. The version is
-  /// pinned by hand against `pubspec.yaml` — reading the real one at
-  /// runtime needs a plugin, and this app ships zero plugins on purpose.
+  /// the app's own — see [appVersion] for where a release build gets it.
   static const String serverName = 'flowcraft';
-  static const String serverVersion = '1.0.0';
+  static const String serverVersion = appVersion;
 
   /// Server-level guidance handed to the model at handshake time. Carried
   /// over from the stdio bridge so agents behave the same as before, minus

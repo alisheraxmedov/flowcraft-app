@@ -11,6 +11,25 @@ SketchRectangle _rect(String id, {double x = 0}) {
 String _scene(List<SketchElement> elements) =>
     SketchSerializer.serialize(elements);
 
+/// Fails the test if the importer hands the raw text back to be parsed a
+/// second time, and counts what it hands over instead.
+class _SpyController extends SketchController {
+  _SpyController() : super(initialElements: [_rect('on-canvas')]);
+
+  int pastedBatches = 0;
+
+  @override
+  int pasteFromJson(String json, {Offset? offset}) {
+    fail('add mode must paste the already-decoded elements, not re-parse');
+  }
+
+  @override
+  int pasteElements(List<SketchElement> elements, {Offset? offset}) {
+    pastedBatches++;
+    return super.pasteElements(elements, offset: offset);
+  }
+}
+
 void main() {
   late SketchController controller;
 
@@ -28,6 +47,24 @@ void main() {
       expect(result.succeeded, isTrue);
       expect(result.imported, 1);
       expect(controller.elements, hasLength(2));
+    });
+
+    test('parses the payload once', () {
+      // A multi-megabyte file was decoded in `loadJson` to count the drops
+      // and then decoded *again* inside `pasteFromJson` — both on the UI
+      // isolate.
+      final spy = _SpyController();
+      addTearDown(spy.dispose);
+
+      final result = SceneImporter.import(
+        spy,
+        _scene([_rect('imported'), _rect('also', x: 40)]),
+        mode: SceneImportMode.add,
+      );
+
+      expect(result.imported, 2);
+      expect(spy.pastedBatches, 1);
+      expect(spy.elements, hasLength(3));
     });
 
     test('re-identifies, so a file exported from this board can come back',

@@ -306,6 +306,154 @@ void main() {
     });
   });
 
+  group('replaceAll', () {
+    test('prunes the selection of elements it removed', () {
+      // An MCP `flowcraft_draw` with mode "replace" while something is
+      // selected: the properties panel thought there was a selection, and
+      // Delete reported "2 removed", pushed an undo entry and bumped
+      // `paintGen` (an autosave write) while removing nothing.
+      final c = SketchController()
+        ..add(_rect(id: 'x'))
+        ..add(_rect(id: 'y'));
+      c.selectMany({'x', 'y'});
+
+      c.replaceAll([_rect(id: 'z')]);
+
+      expect(c.hasSelection, isFalse);
+      expect(c.selectedIds, isEmpty);
+      expect(c.isSelected('x'), isFalse);
+      final gen = c.paintGen;
+      expect(c.removeSelected(), 0);
+      expect(c.paintGen, gen);
+      expect(c.elements.single.id, 'z');
+    });
+
+    test('keeps a selected element that survives by id', () {
+      final c = SketchController()
+        ..add(_rect(id: 'x'))
+        ..add(_rect(id: 'y'));
+      c.selectMany({'x', 'y'});
+
+      c.replaceAll([_rect(id: 'y', rect: const Rect.fromLTWH(5, 5, 5, 5))]);
+
+      expect(c.selectedIds, {'y'});
+    });
+
+    test('abandons a text edit whose element vanished', () {
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.beginTextEdit(elementId: 'x');
+
+      c.replaceAll([_rect(id: 'z')]);
+
+      expect(c.editingElementId, isNull);
+      expect(c.editingCanvasPosition, isNull);
+    });
+
+    test('keeps a pending new-text edit — it references no element', () {
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.beginTextEdit(canvasPosition: const Offset(3, 4));
+
+      c.replaceAll([_rect(id: 'z')]);
+
+      expect(c.editingCanvasPosition, const Offset(3, 4));
+    });
+  });
+
+  group('select', () {
+    test('selecting an unknown id clears the selection consistently', () {
+      // The clear happened before the id was validated, and the early
+      // return skipped the cache invalidation — so `selectedIds` kept
+      // answering {x} while `isSelected`/`hasSelection` said nothing was.
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.select('x');
+      expect(c.selectedIds, {'x'});
+      var notified = 0;
+      c.addListener(() => notified++);
+
+      c.select('does-not-exist');
+
+      expect(c.isSelected('x'), isFalse);
+      expect(c.hasSelection, isFalse);
+      expect(c.selectedIds, isEmpty);
+      expect(notified, 1);
+    });
+
+    test('an unknown id with clearExisting false changes nothing', () {
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.select('x');
+      var notified = 0;
+      c.addListener(() => notified++);
+
+      c.select('does-not-exist', clearExisting: false);
+
+      expect(c.selectedIds, {'x'});
+      expect(notified, 0);
+    });
+  });
+
+  group('undo during a drag session', () {
+    test('does not leave a stale snapshot', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      c.select('a');
+      c.add(_rect(id: 'b'));
+
+      // Ctrl+Z with the pointer still down, then the pointer moves.
+      c.beginDragSession();
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+      c.translateSelected(const Offset(5, 0));
+      c.endDragSession();
+
+      // The drag got its own entry, taken *after* the undo — so undoing it
+      // lands on the post-undo scene, never on the pre-undo one.
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.elements.single.bounds, const Rect.fromLTWH(0, 0, 10, 10));
+      expect(c.canRedo, isTrue);
+    });
+
+    test('an MCP draw landing mid-drag survives the first undo after it', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      c.select('a');
+
+      c.beginDragSession();
+      c.addAll([_rect(id: 'agent')]); // flowcraft_draw, pointer still down
+      c.translateSelected(const Offset(5, 0));
+      c.endDragSession();
+
+      c.undo(); // the drag
+      expect(c.elements.map((e) => e.id), ['a', 'agent']);
+      expect(c.elements.first.bounds, const Rect.fromLTWH(0, 0, 10, 10));
+      c.undo(); // the agent's draw
+      expect(c.elements.map((e) => e.id), ['a']);
+    });
+  });
+
+  group('pasteElements', () {
+    test('mints fresh ids, selects the copies, one history entry', () {
+      final c = SketchController()..add(_rect(id: 'a'));
+
+      final added = c.pasteElements(
+        [_rect(id: 'a'), _rect(id: 'b')],
+        offset: Offset.zero,
+      );
+
+      expect(added, 2);
+      expect(c.elements, hasLength(3));
+      expect(c.elements.map((e) => e.id).toSet(), hasLength(3));
+      expect(c.selectedIds, hasLength(2));
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+    });
+
+    test('an empty list is a no-op with no history entry', () {
+      final c = SketchController()..add(_rect(id: 'a'));
+      final gen = c.paintGen;
+      expect(c.pasteElements(const []), 0);
+      expect(c.paintGen, gen);
+    });
+  });
+
   group('SketchController.updateLinear', () {
     SketchLine line() => SketchLine.create(
           id: 'l',

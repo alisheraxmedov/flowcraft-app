@@ -76,6 +76,38 @@ void main() {
       final encoded = (map['elements'] as List).first as Map<String, dynamic>;
       final encodedPoints = encoded['points'] as List;
       expect(encodedPoints.length, lessThan(points.length));
+      // Everything but the points survives the simplified copy.
+      expect(encoded['id'], original.id);
+      expect(encoded['style'], original.style.toJson());
+    });
+
+    test('a zero tolerance writes freedraw points verbatim', () {
+      final points = <Offset>[
+        for (var i = 0; i < 50; i++) Offset(i.toDouble(), 0),
+      ];
+      final map = SketchSerializer.toMap(
+        [SketchFreedraw.create(points: points)],
+        simplificationTolerance: 0,
+      );
+      final encoded = (map['elements'] as List).first as Map<String, dynamic>;
+      expect(encoded['points'], hasLength(points.length));
+    });
+
+    test('a double version field is accepted', () {
+      final loaded = SketchSerializer.load({
+        'version': 1.0,
+        'elements': [
+          SketchRectangle.create(
+            id: 'a',
+            rect: const Rect.fromLTWH(0, 0, 10, 10),
+          ).toJson(),
+        ],
+      });
+      expect(loaded.elements.single.id, 'a');
+      expect(
+        SketchSerializer.fromMap({'version': 1.0, 'elements': const []}),
+        isEmpty,
+      );
     });
 
     test('round-trips groupId without a schema bump', () {

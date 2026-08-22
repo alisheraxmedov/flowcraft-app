@@ -72,12 +72,14 @@ class SceneImporter {
     }
 
     final imported = switch (mode) {
-      // Through `pasteFromJson`, not `addAll`: it mints fresh ids, and a
+      // Through `pasteElements`, not `addAll`: it mints fresh ids, and a
       // file exported from *this* board carries the ids already on it —
       // two elements sharing an id would hand selection, hit-testing and
-      // MCP addressing a single handle for both.
-      SceneImportMode.add => controller.pasteFromJson(
-        json,
+      // MCP addressing a single handle for both. The already-decoded list
+      // goes in, not [json]: the payload was parsed once above, and a
+      // multi-megabyte file must not be parsed twice on the UI isolate.
+      SceneImportMode.add => controller.pasteElements(
+        load.elements,
         offset: Offset.zero,
       ),
       // `replaceAll`, not `loadScene`: this is an edit of the open project,

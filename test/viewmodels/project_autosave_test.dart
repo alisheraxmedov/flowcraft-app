@@ -16,14 +16,41 @@ Future<void> _pastDebounce() =>
 /// Stretches a save long enough to still be in flight when `detach` is
 /// called, which is the window a delete has to race.
 class _SlowRepository extends ProjectRepository {
-  _SlowRepository({super.directoryPath});
+  _SlowRepository({
+    super.directoryPath,
+    this.delay = const Duration(milliseconds: 300),
+  });
+
+  final Duration delay;
 
   @override
   Future<FlowProject> save({
     required String id,
     required List<SketchElement> elements,
   }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await Future<void>.delayed(delay);
+    return super.save(id: id, elements: elements);
+  }
+}
+
+/// Fails the first [failures] saves, then behaves — a disk that was full
+/// for a moment, an antivirus holding the temp file during the rename.
+class _FlakyRepository extends ProjectRepository {
+  _FlakyRepository({super.directoryPath, this.failures = 1});
+
+  int failures;
+  int attempts = 0;
+
+  @override
+  Future<FlowProject> save({
+    required String id,
+    required List<SketchElement> elements,
+  }) async {
+    attempts++;
+    if (failures > 0) {
+      failures--;
+      throw const FileSystemException('disk full');
+    }
     return super.save(id: id, elements: elements);
   }
 }
@@ -222,6 +249,172 @@ void main() {
       final saved = await repository.load(project.id);
       expect(saved.elements.map((e) => e.id), ['a', 'c']);
     });
+  });
+
+  group('convergence', () {
+    test("an edit drawn while unbind's write is in flight still reaches the "
+        'outgoing project', () async {
+      // Production shape: an 800ms debounce against a ~35ms write. With the
+      // debounce *longer* than the write, the timer an in-flight edit arms
+      // is still pending when unbind finishes — and used to fire after the
+      // canvas had been swapped to the next project, writing nothing of
+      // the outgoing one's last stroke anywhere.
+      final slow = _SlowRepository(
+        directoryPath: tempDir.path,
+        delay: const Duration(milliseconds: 150),
+      );
+      final saver = ProjectAutosave(
+        repository: slow,
+        controller: controller,
+        debounce: const Duration(milliseconds: 500),
+      );
+      addTearDown(saver.dispose);
+      autosave.dispose();
+
+      final a = await slow.create('A');
+      final b = await slow.create('B');
+      saver.bind(a.id);
+      controller.add(_rect('a1'));
+
+      final unbinding = saver.unbind(); // a1's write is now on disk
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      controller.add(_rect('a2')); // lands while that write is in flight
+      await unbinding;
+
+      controller.loadScene(const []);
+      saver.bind(b.id);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      await saver.flush();
+
+      expect((await slow.load(a.id)).elements.map((e) => e.id), ['a1', 'a2']);
+      expect((await slow.load(b.id)).elements, isEmpty);
+    });
+
+    test('flush converges, not just drains: a stroke during every write '
+        'still ends up on disk', () async {
+      final slow = _SlowRepository(
+        directoryPath: tempDir.path,
+        delay: const Duration(milliseconds: 60),
+      );
+      final saver = ProjectAutosave(
+        repository: slow,
+        controller: controller,
+        debounce: const Duration(seconds: 10), // never fires on its own
+      );
+      addTearDown(saver.dispose);
+      autosave.dispose();
+
+      final project = await slow.create('A');
+      saver.bind(project.id);
+      controller.add(_rect('e0'));
+
+      final flushing = saver.flush();
+      for (var i = 1; i <= 3; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        controller.add(_rect('e$i'));
+      }
+      await flushing;
+
+      expect(
+        (await slow.load(project.id)).elements.map((e) => e.id),
+        ['e0', 'e1', 'e2', 'e3'],
+      );
+      expect(saver.hasPendingWrite, isFalse,
+          reason: 'nothing left to write once flush has converged');
+    });
+  });
+
+  group('failed writes', () {
+    test('flush retries a scene whose last write failed', () async {
+      final flaky = _FlakyRepository(directoryPath: tempDir.path);
+      final errors = <Object>[];
+      final saver = ProjectAutosave(
+        repository: flaky,
+        controller: controller,
+        debounce: _debounce,
+        retryDelay: const Duration(minutes: 1), // keep the timer out of it
+        onError: errors.add,
+      );
+      addTearDown(saver.dispose);
+      autosave.dispose();
+
+      final project = await flaky.create('A');
+      saver.bind(project.id);
+      controller.add(_rect('a'));
+      await _pastDebounce(); // first write: thrown away by the disk
+      expect(errors, hasLength(1), reason: 'precondition: the write failed');
+      expect((await flaky.load(project.id)).elements, isEmpty);
+
+      // No further edit — the user stepped away, or this is the exit hook.
+      await saver.flush();
+
+      expect((await flaky.load(project.id)).elements.single.id, 'a');
+      expect(flaky.attempts, 2);
+    });
+
+    test('a transient failure is retried on its own, with backoff',
+        () async {
+      final flaky = _FlakyRepository(directoryPath: tempDir.path, failures: 2);
+      final saver = ProjectAutosave(
+        repository: flaky,
+        controller: controller,
+        debounce: _debounce,
+        retryDelay: const Duration(milliseconds: 30),
+        maxRetryDelay: const Duration(milliseconds: 40),
+      );
+      addTearDown(saver.dispose);
+      autosave.dispose();
+
+      final project = await flaky.create('A');
+      saver.bind(project.id);
+      controller.add(_rect('a'));
+      await _pastDebounce();
+      expect(saver.hasPendingRetry, isTrue);
+
+      // 30ms, then 40ms (capped) — comfortably inside this wait.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      expect(flaky.attempts, 3);
+      expect(saver.hasPendingRetry, isFalse);
+      expect((await flaky.load(project.id)).elements.single.id, 'a');
+    });
+
+    test('flush does not spin against a disk that keeps refusing', () async {
+      final errors = <Object>[];
+      final saver = ProjectAutosave(
+        repository: repository,
+        controller: controller,
+        debounce: _debounce,
+        retryDelay: const Duration(minutes: 1),
+        onError: errors.add,
+      );
+      addTearDown(saver.dispose);
+      autosave.dispose();
+
+      saver.bind('proj_does_not_exist');
+      controller.add(_rect('a'));
+
+      await saver.flush().timeout(const Duration(seconds: 5));
+
+      expect(errors, hasLength(1));
+    });
+  });
+
+  test('rebind keeps the unsaved edits a detach abandoned', () async {
+    // A delete that failed after `detach()`: the canvas still holds what
+    // was unsaved, and binding afresh would adopt it as already written.
+    final project = await repository.create('A');
+    autosave.bind(project.id);
+    controller.add(_rect('a'));
+    await autosave.detach();
+    expect((await repository.load(project.id)).elements, isEmpty);
+
+    autosave.rebind(project.id);
+    expect(autosave.hasPendingWrite, isTrue);
+    await _pastDebounce();
+    await autosave.flush();
+
+    expect((await repository.load(project.id)).elements.single.id, 'a');
   });
 
   test('reports write failures instead of throwing into the caller',

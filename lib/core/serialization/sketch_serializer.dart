@@ -49,8 +49,10 @@ class SketchSerializer {
   }) {
     final out = <Map<String, dynamic>>[];
     for (final element in elements) {
-      final encoded = element.toJson();
-      // Simplify freedraw strokes on write to keep payload small.
+      // Simplify freedraw strokes on write to keep payload small. The
+      // simplified copy is what gets encoded — encoding the full stroke
+      // first and then overwriting its `points` did the expensive half of
+      // the work twice.
       if (element is SketchFreedraw &&
           simplificationTolerance > 0 &&
           element.points.length > 4) {
@@ -58,11 +60,10 @@ class SketchSerializer {
           element.points,
           tolerance: simplificationTolerance,
         );
-        encoded['points'] = [
-          for (final p in simplified) {'dx': p.dx, 'dy': p.dy},
-        ];
+        out.add(element.copyWith(points: simplified).toJson());
+        continue;
       }
-      out.add(encoded);
+      out.add(element.toJson());
     }
     return {
       'version': schemaVersion,
@@ -107,7 +108,9 @@ class SketchSerializer {
     Map<String, dynamic> map, {
     required bool tolerant,
   }) {
-    final version = map['version'] as int? ?? 0;
+    // `num`, not `int`: a payload that has been through a tool that writes
+    // every number as a double (`1.0`) is still this schema, not a crash.
+    final version = (map['version'] as num?)?.toInt() ?? 0;
     if (version > schemaVersion) {
       throw StateError(
         'Unsupported sketch schema version: $version '

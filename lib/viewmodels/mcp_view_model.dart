@@ -118,6 +118,13 @@ class McpViewModel extends Notifier<McpServerStatus> {
   /// busy port the user never actually had.
   Future<void> _pending = Future<void>.value();
 
+  /// Counts every start/stop the user has asked for. A transition publishes
+  /// its outcome only if it is still the newest request: the queue runs
+  /// them in order, so a fast on→off flip used to have the *start* land
+  /// first and flash "running" — endpoint and all — for as long as the
+  /// `stop()` behind it took, on a switch the user had already turned off.
+  int _intent = 0;
+
   /// The transition currently in flight, or an already-completed future
   /// when idle. [toggle] and [retry] are fire-and-forget because the UI
   /// calls them from a callback; tests need something to await.
@@ -166,34 +173,38 @@ class McpViewModel extends Notifier<McpServerStatus> {
   }
 
   Future<void> _apply({required bool start}) {
+    final intent = ++_intent;
     // The `catchError` keeps the chain healthy: anything escaping [_run]
     // would otherwise leave `_pending` in a failed state, and every later
     // toggle would short-circuit on it for the rest of the session.
-    _pending = _pending.then((_) => _run(start: start)).catchError(
+    _pending = _pending
+        .then((_) => _run(start: start, intent: intent))
+        .catchError(
           (Object e) =>
               debugPrint('FlowCraft control server transition failed: $e'),
         );
     return _pending;
   }
 
-  Future<void> _run({required bool start}) async {
+  Future<void> _run({required bool start, required int intent}) async {
     try {
       await (start ? _server.start() : _server.stop());
     } catch (e) {
-      debugPrint('FlowCraft control server ${start ? 'start' : 'stop'} '
-          'failed: $e');
+      debugPrint(
+        'FlowCraft control server ${start ? 'start' : 'stop'} '
+        'failed: $e',
+      );
       // A failed *stop* still leaves the user where they asked to be
       // (switch off, nothing to connect to), and offering "retry" for it
       // would only try to start the server again. Only a failed start
       // becomes a visible error state.
-      if (!ref.mounted) return;
-      state = start ? McpServerStatus.failed('$e') : const McpServerStatus.off();
+      if (!_mayPublish(intent)) return;
+      state = start
+          ? McpServerStatus.failed('$e')
+          : const McpServerStatus.off();
       return;
     }
-    // The provider can be disposed while the socket work is in flight
-    // (a container torn down mid-test, the app closing); writing state
-    // after that throws.
-    if (!ref.mounted) return;
+    if (!_mayPublish(intent)) return;
     final port = _server.boundPort;
     final token = _server.token;
     if (!start) {
@@ -206,6 +217,14 @@ class McpViewModel extends Notifier<McpServerStatus> {
       state = McpServerStatus.running(port: port, token: token);
     }
   }
+
+  /// Whether a transition that was requested as [intent] may still write
+  /// state. Two things say no: the provider was disposed while the socket
+  /// work was in flight (a container torn down mid-test, the app closing —
+  /// writing state after that throws), or a newer request has superseded
+  /// it, in which case the newer one will publish the state that matches
+  /// what the user last asked for.
+  bool _mayPublish(int intent) => ref.mounted && intent == _intent;
 }
 
 final mcpViewModelProvider = NotifierProvider<McpViewModel, McpServerStatus>(
