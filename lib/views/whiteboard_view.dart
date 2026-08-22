@@ -11,8 +11,11 @@ import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/viewmodels/projects_view_model.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/viewmodels/theme_view_model.dart';
+import 'package:flowcraft/views/widgets/canvas_shortcuts.dart';
+import 'package:flowcraft/views/widgets/edit_menu_button.dart';
 import 'package:flowcraft/views/widgets/export_menu_button.dart';
 import 'package:flowcraft/views/widgets/mcp_card.dart';
+import 'package:flowcraft/views/widgets/partial_scene_banner.dart';
 import 'package:flowcraft/views/widgets/project_drawer.dart';
 import 'package:flowcraft/views/widgets/project_title_field.dart';
 import 'package:flowcraft/views/widgets/properties_panel.dart';
@@ -46,57 +49,73 @@ class _WhiteboardViewState extends ConsumerState<WhiteboardView> {
     final isDark = ref.watch(themeViewModelProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      // The saved-project sidebar. `Scaffold.drawer` rather than a panel in
-      // the body Stack: it has to overlay the tool rail, which already owns
-      // the left gutter.
-      drawer: const ProjectDrawer(),
-      appBar: _TopBar(
-        controller: sketch,
-        showGrid: _showGrid,
-        isDark: isDark,
-        onToggleGrid: () => setState(() => _showGrid = !_showGrid),
-        onToggleTheme: () =>
-            ref.read(themeViewModelProvider.notifier).toggle(),
-      ),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: WhiteboardCanvas(
-              sketchController: sketch,
-              gridType: _showGrid ? GridType.dots : GridType.none,
-              backgroundColor: colorScheme.surface,
-              gridColor: colorScheme.outline,
-            ),
-          ),
-          // `Scaffold.body`'s origin already starts below the app bar, so
-          // this rail only needs to span the body's own height — no
-          // `_topBarHeight` offset here (unlike the pre-AppBar layout).
-          Positioned(
-            left: AppSpacing.gutter,
-            top: 0,
-            bottom: 0,
-            child: Center(
-              child: SketchToolbarRich(
-                controller: sketch,
-                orientation: Axis.vertical,
+    // Wrapped around the whole Scaffold, not the canvas: the shortcut layer
+    // has to keep working while focus sits in the toolbar, a properties
+    // field or the drawer, which is exactly what the old canvas-scoped key
+    // handler could not do.
+    return CanvasShortcuts(
+      controller: sketch,
+      child: Scaffold(
+        backgroundColor: colorScheme.surface,
+        // The saved-project sidebar. `Scaffold.drawer` rather than a panel in
+        // the body Stack: it has to overlay the tool rail, which already owns
+        // the left gutter.
+        drawer: const ProjectDrawer(),
+        appBar: _TopBar(
+          controller: sketch,
+          showGrid: _showGrid,
+          isDark: isDark,
+          onToggleGrid: () => setState(() => _showGrid = !_showGrid),
+          onToggleTheme: () =>
+              ref.read(themeViewModelProvider.notifier).toggle(),
+        ),
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: WhiteboardCanvas(
+                sketchController: sketch,
+                gridType: _showGrid ? GridType.dots : GridType.none,
+                backgroundColor: colorScheme.surface,
+                gridColor: colorScheme.outline,
               ),
             ),
-          ),
-          // Same reasoning, but this one keeps its `gutter` margin below
-          // the (now implicit) app bar boundary.
-          Positioned(
-            top: AppSpacing.gutter,
-            right: AppSpacing.gutter,
-            child: PropertiesPanel(controller: sketch),
-          ),
-          const Positioned(
-            right: AppSpacing.gutter,
-            bottom: AppSpacing.gutter,
-            child: McpCard(),
-          ),
-        ],
+            // `Scaffold.body`'s origin already starts below the app bar, so
+            // this rail only needs to span the body's own height — no
+            // `_topBarHeight` offset here (unlike the pre-AppBar layout).
+            Positioned(
+              left: AppSpacing.gutter,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: SketchToolbarRich(
+                  controller: sketch,
+                  orientation: Axis.vertical,
+                ),
+              ),
+            ),
+            // Same reasoning, but this one keeps its `gutter` margin below
+            // the (now implicit) app bar boundary.
+            Positioned(
+              top: AppSpacing.gutter,
+              right: AppSpacing.gutter,
+              child: PropertiesPanel(controller: sketch),
+            ),
+            const Positioned(
+              right: AppSpacing.gutter,
+              bottom: AppSpacing.gutter,
+              child: McpCard(),
+            ),
+            // Above everything, because it says the user's edits are not
+            // being saved — the one message on this screen that must not sit
+            // behind a floating panel.
+            Positioned(
+              top: AppSpacing.toolbarGap,
+              left: 0,
+              right: 0,
+              child: Center(child: PartialSceneBanner(controller: sketch)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -229,6 +248,10 @@ class _TopBarState extends State<_TopBar> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // The mouse route to the shortcut layer — every command it
+                // binds, with its key printed beside it.
+                EditMenuButton(controller: ctrl),
+                const _HeaderDivider(),
                 _HeaderIconButton(
                   icon: widget.showGrid
                       ? Icons.grid_on_rounded

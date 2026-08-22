@@ -1,6 +1,5 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show Theme;
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/core/canvas/grid_painter.dart';
@@ -27,6 +26,12 @@ import 'package:flowcraft/views/widgets/sketch_layer.dart';
 /// Pan/zoom is handled automatically: while a drawing tool is active the
 /// canvas pan is suppressed so sketching doesn't fight the gesture arena;
 /// switch to [SketchTool.hand] (or use pinch / mouse-wheel) to navigate.
+///
+/// Keyboard shortcuts are *not* handled here. They used to be, on this
+/// widget's own focus node, which meant they died the moment focus moved to
+/// a toolbar popover or a properties field. They now live in
+/// `CanvasShortcuts`, wrapped around the whole screen; this widget only
+/// keeps a focus node so the key events have somewhere to start from.
 class WhiteboardCanvas extends StatefulWidget {
   const WhiteboardCanvas({
     super.key,
@@ -39,7 +44,6 @@ class WhiteboardCanvas extends StatefulWidget {
     this.minZoom = 0.1,
     this.maxZoom = 4.0,
     this.initialZoom = 1.0,
-    this.enableKeyboardShortcuts = true,
   });
 
   final SketchController sketchController;
@@ -51,7 +55,6 @@ class WhiteboardCanvas extends StatefulWidget {
   final double minZoom;
   final double maxZoom;
   final double initialZoom;
-  final bool enableKeyboardShortcuts;
 
   @override
   State<WhiteboardCanvas> createState() => _WhiteboardCanvasState();
@@ -119,46 +122,6 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
     setState(() => _viewport = viewport);
   }
 
-  KeyEventResult _handleKey(KeyEvent event) {
-    if (!widget.enableKeyboardShortcuts) return KeyEventResult.ignored;
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-
-    final ctrl = HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
-    final shift = HardwareKeyboard.instance.isShiftPressed;
-    final key = event.logicalKey;
-    final sketch = widget.sketchController;
-
-    // Delete / Backspace → remove selected
-    if (key == LogicalKeyboardKey.delete ||
-        key == LogicalKeyboardKey.backspace) {
-      if (sketch.hasSelection) sketch.removeSelected();
-      return KeyEventResult.handled;
-    }
-
-    if (ctrl) {
-      if (key == LogicalKeyboardKey.keyZ) {
-        if (shift ? sketch.canRedo : sketch.canUndo) {
-          shift ? sketch.redo() : sketch.undo();
-        }
-        return KeyEventResult.handled;
-      }
-      if (key == LogicalKeyboardKey.keyY) {
-        if (sketch.canRedo) sketch.redo();
-        return KeyEventResult.handled;
-      }
-    }
-
-    if (key == LogicalKeyboardKey.escape) {
-      sketch.clearSelection();
-      return KeyEventResult.handled;
-    }
-
-    return KeyEventResult.ignored;
-  }
-
   void _onScaleStart(ScaleStartDetails details) {
     _lastFocalPoint = details.localFocalPoint;
     _lastZoom = _viewport.zoom;
@@ -207,15 +170,13 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
 
   @override
   Widget build(BuildContext context) {
+    // A focusable node, not a key handler: shortcuts live one layer up in
+    // `CanvasShortcuts`, which needs *something* inside it to hold focus so
+    // key events walk up through it. Autofocus is what makes the keyboard
+    // work on a freshly-opened window with nothing clicked yet.
     return Focus(
       focusNode: _focusNode,
       autofocus: true,
-      onKeyEvent: (_, event) {
-        // While the inline sketch text editor is active, let it own every
-        // key — including plain characters — so typing works.
-        if (_sketchEditing()) return KeyEventResult.ignored;
-        return _handleKey(event);
-      },
       child: GestureDetector(
         onTap: () {
           if (_sketchEditing()) return;
