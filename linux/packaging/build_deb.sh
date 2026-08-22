@@ -25,8 +25,7 @@ mkdir -p \
   "$STAGE/DEBIAN" \
   "$STAGE/usr/lib/$PKG_NAME" \
   "$STAGE/usr/bin" \
-  "$STAGE/usr/share/applications" \
-  "$STAGE/usr/share/icons/hicolor/256x256/apps"
+  "$STAGE/usr/share/applications"
 
 cp -r "$BUNDLE_DIR"/. "$STAGE/usr/lib/$PKG_NAME/"
 
@@ -38,8 +37,14 @@ LAUNCHER
 chmod +x "$STAGE/usr/bin/$PKG_NAME"
 
 cp linux/packaging/flowcraft.desktop "$STAGE/usr/share/applications/flowcraft.desktop"
-cp macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_256.png \
-  "$STAGE/usr/share/icons/hicolor/256x256/apps/flowcraft.png"
+# Launcher icons. Generated from assets/branding/flowcraft-icon-1024.png by
+# `python3 tool/generate_icons.py`; the name must match Icon= in the .desktop
+# file and the gtk_window_set_icon_name() call in linux/runner/my_application.cc.
+for size in 128 256 512; do
+  mkdir -p "$STAGE/usr/share/icons/hicolor/${size}x${size}/apps"
+  cp "linux/packaging/icons/flowcraft-${size}.png" \
+    "$STAGE/usr/share/icons/hicolor/${size}x${size}/apps/flowcraft.png"
+done
 
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: $PKG_NAME
