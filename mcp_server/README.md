@@ -1,5 +1,24 @@
 # flowcraft_mcp_server
 
+> **⚠️ Optional / legacy.** FlowCraft now ships its own MCP server *inside
+> the app*, over the Streamable HTTP transport — nothing to download, no
+> second binary, no `FLOWCRAFT_APP_PATH`. Flip the **MCP Server** switch in
+> the app and register it in one line:
+>
+> ```bash
+> claude mcp add --transport http flowcraft http://127.0.0.1:5199/mcp \
+>   --header "X-Flowcraft-Token: <token>"
+> ```
+>
+> The app's MCP card has a **Copy connect** button that fills in your real
+> port and token, and a **Setup** dialog with the equivalent config for
+> Codex CLI and Gemini CLI. See the [root README](../README.md).
+>
+> This stdio bridge is kept only for MCP clients that *can't* speak HTTP.
+> It exposes one extra tool the in-app server has no use for
+> (`flowcraft_launch`), because only an out-of-process bridge can find the
+> app closed.
+
 Isolated MCP bridge for FlowCraft. Lets Claude Code, Codex CLI, Gemini CLI
 (or any MCP-capable client) draw diagrams live on a running **FlowCraft**
 desktop app, by analyzing your codebase and calling a tool instead of
@@ -27,22 +46,17 @@ FlowCraft desktop app's embedded control server
 SketchController  →  repaints the canvas
 ```
 
-The FlowCraft app itself has no `dart_mcp` dependency and knows nothing
-about MCP — it only exposes a plain HTTP control endpoint. All MCP-specific
-code lives here, in this isolated package.
+The FlowCraft app still has no `dart_mcp` dependency — its own MCP server
+is hand-rolled on top of `dart:io` (see `lib/services/mcp_http_handler.dart`),
+because `dart_mcp` couldn't have served HTTP anyway. This bridge keeps
+talking to the same plain REST endpoints (`/health`, `/draw`, `/clear`) it
+always did, which the app keeps serving alongside `/mcp`.
 
-## Get the binary
+## Build the binary
 
-Most people don't need to build this at all: `.github/workflows/build-desktop.yml`
-already compiles a native executable for macOS, Windows, and Linux on every
-push and uploads it as a workflow artifact —
-`flowcraft-mcp-server-{macos,windows,linux}` — right next to the app
-installer. Download it, `chmod +x` on macOS/Linux, and skip straight to
-[Register with an AI CLI](#register-with-an-ai-cli). No Dart SDK required.
-
-### Build from source
-
-Only needed if you're changing this package's code.
+CI no longer publishes a pre-compiled bridge — the app installer is now the
+only artifact end users need. If you actually want this bridge, build it
+yourself (Dart SDK required):
 
 ```bash
 cd mcp_server
