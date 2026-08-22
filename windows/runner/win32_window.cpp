@@ -29,6 +29,20 @@ constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme"
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
+// Minimum window size in logical (96-dpi) pixels, scaled per monitor in the
+// WM_GETMINMAXINFO handler. The same 980x640 is set on macOS (minSize in
+// MainMenu.xib) and Linux (gtk_widget_set_size_request in my_application.cc).
+// Width: the top bar's natural width in lib/views/whiteboard_view.dart is
+// ~892 logical px (56 leading + 24 title spacing + title row 384 [icon 24 +
+// 12 + "FlowCraft" at 24px ~111 + divider 17 + ProjectTitleField 220] + 24 +
+// actions 404 [Edit ~43 + 3 dividers 51 + five 36px buttons 180 + 12 +
+// Export ~94 + 24 gutter]); +10% and rounded = 980. Height: not derivable
+// from the layout — the properties panel (maxHeight 640) and the MCP card
+// already overlap at the 720 default, and both it and the tool rail scroll
+// rather than overflow — so 640 is the audit's fallback value.
+constexpr int kMinWindowWidth = 980;
+constexpr int kMinWindowHeight = 640;
+
 using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 
 // Scale helper to convert logical scaler values to physical using passed in
@@ -186,6 +200,18 @@ Win32Window::MessageHandler(HWND hwnd,
         PostQuitMessage(0);
       }
       return 0;
+
+    case WM_GETMINMAXINFO: {
+      // Clamp the resize drag so the window cannot be shrunk below the size
+      // the top bar and side panels are laid out for. ptMinTrackSize is in
+      // physical pixels, so scale by the window's current DPI.
+      UINT dpi = FlutterDesktopGetDpiForHWND(hwnd);
+      double scale_factor = dpi / 96.0;
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      info->ptMinTrackSize.x = Scale(kMinWindowWidth, scale_factor);
+      info->ptMinTrackSize.y = Scale(kMinWindowHeight, scale_factor);
+      return 0;
+    }
 
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);

@@ -59,8 +59,10 @@ trust:
 
 - The control server binds `127.0.0.1` only — nothing on your network can reach
   it.
-- Every request must carry a 256-bit token generated with `Random.secure()`,
-  stored owner-readable-only at `~/.flowcraft/control.token`.
+- Every request except the unauthenticated `GET /health` liveness probe (which
+  reveals only that the app is running and its element count) must carry a
+  256-bit token generated with `Random.secure()`, stored owner-readable-only
+  at `~/.flowcraft/control.token`.
 - Requests carrying a non-local `Origin` header are refused before auth is even
   considered — the DNS-rebinding defence the MCP transport spec requires of
   local servers. There are no CORS headers anywhere.
@@ -73,5 +75,7 @@ trust:
 
 ## Supported versions
 
-FlowCraft has not cut a tagged release yet. Fixes land on `main`; until releases
-exist, the latest `main` is the supported version.
+The latest 1.0.x release on the
+[Releases page](https://github.com/alisheraxmedov/flowcraft-app/releases) is
+the supported version. Fixes land on `main` and ship in the next tagged
+release; older releases are not patched.

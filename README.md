@@ -40,23 +40,43 @@ FlowCraft is also a perfectly ordinary whiteboard. If you never connect an AI ag
 
 ## Install
 
-Installers for all three desktop platforms are built by GitHub Actions on every push to `main`
-([`.github/workflows/build-desktop.yml`](.github/workflows/build-desktop.yml)) and published as
-**workflow artifacts**. Open the repository's **Actions** tab, pick the latest successful
-*Build Desktop Installers* run, and download the artifact for your platform:
+Download the installer for your platform from the
+[**latest release**](https://github.com/alisheraxmedov/flowcraft-app/releases/latest):
 
-| Platform | Artifact name | Contents |
+| Platform | File | Minimum OS |
 | --- | --- | --- |
-| macOS | `flowcraft-macos-installer` | `FlowCraft-macOS-<version>.dmg` |
-| Windows | `flowcraft-windows-installer` | Inno Setup installer (`.exe`) |
-| Linux | `flowcraft-linux-installer` | Debian package (`.deb`) |
+| macOS (Apple Silicon and Intel) | `FlowCraft-macOS-<version>.dmg` | macOS 10.15 Catalina |
+| Windows (x64) | `FlowCraft-Windows-Setup-<version>.exe` | Windows 10 |
+| Linux (Debian / Ubuntu, x64) | `flowcraft_<version>_amd64.deb` | Ubuntu 22.04 or any distro with GTK 3 |
 
-GitHub requires you to be signed in to download workflow artifacts.
+FlowCraft is free software built by one person, and the binaries are **not signed with a
+paid Apple or Microsoft certificate**. Both operating systems will object the first time you
+open it. This is expected; here is how to get past it.
 
-> **Note on macOS:** the `.dmg` is not yet code-signed or notarized, so Gatekeeper will warn
-> the first time you open it. Signing and notarization are on the [roadmap](#roadmap).
+**macOS.** Open the `.dmg` and drag **flowcraft** into **Applications**. The first launch will
+say *"Apple could not verify 'flowcraft' is free of malware"* and offer only **Done**. Click
+Done, then open **System Settings → Privacy & Security**, scroll to the *Security* section and
+click **Open Anyway** next to the FlowCraft message, then confirm. You only do this once. If
+you prefer the terminal:
 
-Prefer to build it yourself? See [Build from source](#build-from-source).
+```bash
+xattr -d com.apple.quarantine /Applications/flowcraft.app
+```
+
+On macOS 13 and earlier, Control-click the app → **Open** → **Open** does the same thing.
+
+**Windows.** SmartScreen shows *"Windows protected your PC"*. Click **More info**, then
+**Run anyway**. The installer offers an install-for-me-only option that needs no administrator
+password.
+
+**Linux.** `sudo apt install ./flowcraft_<version>_amd64.deb` (this also pulls in GTK 3 if
+it is missing). It installs to `/usr/lib/flowcraft` with a `flowcraft` launcher on your PATH
+and an entry in your application menu.
+
+Every release is built from a tagged commit by the public
+[GitHub Actions workflow](.github/workflows/build-desktop.yml); you can compare the checksum
+of what you downloaded against the build log, or [build it yourself](#build-from-source).
+Code signing and notarization are on the [roadmap](#roadmap).
 
 ---
 
@@ -374,7 +394,8 @@ Yes — MIT licensed. See [LICENSE](LICENSE).
 
 ### Which platforms does FlowCraft run on?
 
-macOS, Windows and Linux. Installers are built for all three by CI. The repository also contains
+macOS, Windows and Linux. Installers for all three are published on the
+[Releases page](https://github.com/alisheraxmedov/flowcraft-app/releases). The repository also contains
 iOS, Android and web runners, but the desktop platforms are the supported targets — the MCP server
 needs `dart:io` sockets and a filesystem, which the web build does not have.
 
@@ -523,7 +544,6 @@ Honest about what is not there yet. No dates — this is an ordering, not a sche
 **Packaging and distribution**
 
 - macOS code signing and notarization; a signed Windows installer.
-- Published GitHub Releases instead of CI workflow artifacts.
 
 ---
 
