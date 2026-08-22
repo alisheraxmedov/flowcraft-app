@@ -32,27 +32,39 @@ void main() {
   });
 
   group('the bubble stays inside the element rect', () {
-    test('the tail is drawn within the rect, never hanging off it', () {
+    test('the outline never escapes the rect, tail included', () {
       // A tail outside the rect would make bounds wider than rect, and the
       // gesture handler seeds a resize from bounds — so every handle grab
       // would silently grow the note by the tail.
-      final vertices =
-          StickyBubbleGeometry.outlineVertices(rect, 12).toList();
-      for (final v in vertices) {
-        expect(rect.contains(v) || _onEdge(rect, v), isTrue,
-            reason: '$v escapes $rect');
-      }
-      // …and it does reach the bottom edge, which is what makes it read as
-      // a tail rather than a notch.
-      expect(vertices.map((v) => v.dy), contains(rect.bottom));
+      final inked = _inkedBounds(StickyBubbleGeometry.bubblePath(rect, 12));
+      expect(inked.left, greaterThanOrEqualTo(rect.left - 0.01));
+      expect(inked.top, greaterThanOrEqualTo(rect.top - 0.01));
+      expect(inked.right, lessThanOrEqualTo(rect.right + 0.01));
+      expect(inked.bottom, lessThanOrEqualTo(rect.bottom + 0.01));
+      // …and it does reach the bottom-left corner, which is what makes it
+      // read as a tail rather than a notch. Tolerance is the sampling
+      // pitch of `_samples`, not a geometric allowance.
+      expect(inked.bottom, closeTo(rect.bottom, 2.5));
+      expect(inked.left, closeTo(rect.left, 2.5));
     });
 
-    test('the fill path never escapes the rect', () {
-      final bounds = StickyBubbleGeometry.fillPath(rect, 12).getBounds();
-      expect(bounds.left, greaterThanOrEqualTo(rect.left - 0.01));
-      expect(bounds.top, greaterThanOrEqualTo(rect.top - 0.01));
-      expect(bounds.right, lessThanOrEqualTo(rect.right + 0.01));
-      expect(bounds.bottom, lessThanOrEqualTo(rect.bottom + 0.01));
+    test('the tail scoops: its outer edge bows toward the body', () {
+      // The difference between a curled messenger tail and a triangle
+      // bolted on. Midway along the tail's outer edge, the path must sit
+      // *above* the straight chord from base to tip.
+      final body = StickyBubbleGeometry.bodyOf(rect);
+      final samples = _samples(StickyBubbleGeometry.bubblePath(rect, 12));
+      final midX = rect.left + (body.left + 12 + 16 - rect.left) / 2;
+      // Points on the outer edge near midX, below the body.
+      final onTail = samples.where(
+        (p) => (p.dx - midX).abs() < 2.0 && p.dy > body.bottom - 0.5,
+      );
+      expect(onTail, isNotEmpty);
+      final chordY = body.bottom +
+          (rect.bottom - body.bottom) * (1 - (midX - rect.left) / (28));
+      for (final p in onTail) {
+        expect(p.dy, lessThan(chordY), reason: 'tail edge is not concave');
+      }
     });
 
     test('the badge fill matches the collapsed bounds exactly', () {
@@ -92,12 +104,11 @@ void main() {
         expect(radius, lessThanOrEqualTo(body.shortestSide / 2 + 0.01),
             reason: name);
 
-        for (final v in StickyBubbleGeometry.outlineVertices(r, 12)) {
-          expect(v.dx, greaterThanOrEqualTo(r.left - 0.01), reason: name);
-          expect(v.dx, lessThanOrEqualTo(r.right + 0.01), reason: name);
-          expect(v.dy, greaterThanOrEqualTo(r.top - 0.01), reason: name);
-          expect(v.dy, lessThanOrEqualTo(r.bottom + 0.01), reason: name);
-        }
+        final inked = _inkedBounds(StickyBubbleGeometry.bubblePath(r, 12));
+        expect(inked.left, greaterThanOrEqualTo(r.left - 0.01), reason: name);
+        expect(inked.top, greaterThanOrEqualTo(r.top - 0.01), reason: name);
+        expect(inked.right, lessThanOrEqualTo(r.right + 0.01), reason: name);
+        expect(inked.bottom, lessThanOrEqualTo(r.bottom + 0.01), reason: name);
       });
     }
   });
@@ -118,29 +129,61 @@ void main() {
         StickyBubbleGeometry.textBoxOf(rect).shift(delta),
       );
     });
+
+    test('heightFor is the inverse of textBoxOf at nominal size', () {
+      // What `SketchSticky.fittedToText` relies on: a note grown to
+      // `heightFor(h)` has a text box exactly `h` tall.
+      const textHeight = 57.0;
+      final grown = Rect.fromLTWH(
+        0,
+        0,
+        180,
+        StickyBubbleGeometry.heightFor(textHeight),
+      );
+      expect(
+        StickyBubbleGeometry.textBoxOf(grown).height,
+        closeTo(textHeight, 0.001),
+      );
+    });
   });
 
   test('the badge mark is a smaller copy of the same bubble', () {
     // Evocative of a messaging app without reproducing anyone's icon: the
-    // mark is this app's own bubble silhouette, in miniature.
+    // mark is this app's own bubble silhouette, in miniature, and it stays
+    // inside the badge with room to breathe.
     final glyph = StickyBubbleGeometry.glyphRectOf(rect);
     final badge = StickyBubbleGeometry.collapsedBounds(rect);
-    expect(badge.contains(glyph.topLeft), isTrue);
-    expect(badge.contains(glyph.bottomRight), isTrue);
+    expect(badge.deflate(4).contains(glyph.topLeft), isTrue);
+    expect(badge.deflate(4).contains(glyph.bottomRight), isTrue);
 
-    final marks = StickyBubbleGeometry.glyphVertices(rect);
-    final bubble = StickyBubbleGeometry.outlineVertices(glyph, 12);
-    expect(marks.length, bubble.length);
-    for (final v in marks) {
-      expect(glyph.contains(v) || _onEdge(glyph, v), isTrue);
-    }
+    final inked = _inkedBounds(StickyBubbleGeometry.glyphPath(rect));
+    expect(inked.left, greaterThanOrEqualTo(glyph.left - 0.01));
+    expect(inked.top, greaterThanOrEqualTo(glyph.top - 0.01));
+    expect(inked.right, lessThanOrEqualTo(glyph.right + 0.01));
+    expect(inked.bottom, lessThanOrEqualTo(glyph.bottom + 0.01));
   });
 }
 
-/// [Rect.contains] excludes the right and bottom edges, which is where a
-/// bubble's own outline lives.
-bool _onEdge(Rect rect, Offset p) =>
-    p.dx >= rect.left - 0.01 &&
-    p.dx <= rect.right + 0.01 &&
-    p.dy >= rect.top - 0.01 &&
-    p.dy <= rect.bottom + 0.01;
+/// Points along every contour of [path].
+List<Offset> _samples(Path path) {
+  final points = <Offset>[];
+  for (final metric in path.computeMetrics()) {
+    const samples = 256;
+    for (var i = 0; i <= samples; i++) {
+      final t = metric.getTangentForOffset(metric.length * i / samples);
+      if (t != null) points.add(t.position);
+    }
+  }
+  return points;
+}
+
+/// Bounds of the points a path actually passes through — not
+/// [Path.getBounds], which reports the hull of the curves' control points.
+Rect _inkedBounds(Path path) {
+  final points = _samples(path);
+  expect(points, isNotEmpty, reason: 'nothing was drawn');
+  return points.skip(1).fold(
+        Rect.fromPoints(points.first, points.first),
+        (box, p) => box.expandToInclude(Rect.fromPoints(p, p)),
+      );
+}

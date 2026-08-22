@@ -131,17 +131,14 @@ class SketchRenderCache {
           seed: seed,
         );
       case SketchSticky s:
-        // Collapsed, the only sketchy line work is the badge's speech-bubble
-        // mark: the badge itself is a solid rounded chip, and a square rough
-        // outline over a rounded fill would poke out at every corner.
-        return RoughGenerator.closedPolyline(
-          s.collapsed
-              ? StickyBubbleGeometry.glyphVertices(s.rect)
-              : StickyBubbleGeometry.outlineVertices(s.rect, s.cornerRadius),
-          roughness: r,
-          seed: seed,
-          doubleStroke: false,
-        );
+        // Clean on purpose, whatever the element's roughness — see
+        // `StickyBubbleGeometry`. Expanded, the stroke is the very path the
+        // fill is painted from, so the outline hugs the fill exactly;
+        // collapsed, the only line work is the badge's bubble mark, as the
+        // badge itself is a solid chip.
+        return s.collapsed
+            ? StickyBubbleGeometry.glyphPath(s.rect)
+            : StickyBubbleGeometry.bubblePath(s.rect, s.cornerRadius);
       case SketchLine l:
         return RoughGenerator.line(
           l.start,
@@ -199,7 +196,7 @@ class SketchRenderCache {
           case SketchSticky s:
             return s.collapsed
                 ? StickyBubbleGeometry.badgeFillPath(s.rect)
-                : StickyBubbleGeometry.fillPath(s.rect, s.cornerRadius);
+                : StickyBubbleGeometry.bubblePath(s.rect, s.cornerRadius);
           default:
             return path;
         }

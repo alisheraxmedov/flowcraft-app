@@ -119,14 +119,16 @@ class SketchPainter extends CustomPainter {
 
   void _paintElement(Canvas canvas, SketchElement element) {
     final style = element.style;
-    // A collapsed sticky's only stroke work is its badge mark, which has to
-    // read *against* the paper it sits on — and a sticky's stroke colour is
-    // that paper (`SketchSticky.create` sets both from one colour). Its own
-    // `inkColor` resolves that; every other element strokes as it always did.
-    final strokeSource = element is SketchSticky && element.collapsed
-        ? element.inkColor
-        : style.strokeColor;
+    // A collapsed sticky's only stroke work is its badge mark, which is a
+    // glyph: it takes the note's ink rather than its outline colour so it
+    // reads against the paper, and a fixed weight rather than the style's
+    // stroke width so it stays an icon. Every other element strokes as it
+    // always did.
+    final badgeMark = element is SketchSticky && element.collapsed;
+    final strokeSource = badgeMark ? element.inkColor : style.strokeColor;
     final color = strokeSource.withValues(alpha: style.opacity);
+    final strokeWidth =
+        badgeMark ? StickyBubbleGeometry.glyphStrokeWidth : style.strokeWidth;
 
     // ─── fill (under stroke) ─────────────────────────────────────────────
     if (style.fillStyle != FillStyle.none && style.fillColor != null) {
@@ -150,7 +152,7 @@ class SketchPainter extends CustomPainter {
     // ─── stroke ─────────────────────────────────────────────────────────
     _strokePaint
       ..color = color
-      ..strokeWidth = _scaleStroke(style.strokeWidth);
+      ..strokeWidth = _scaleStroke(strokeWidth);
 
     final pattern = style.strokeStyle.pattern;
     final path = cache.strokePath(element);
@@ -233,20 +235,25 @@ class SketchPainter extends CustomPainter {
   /// the label used to jump the instant editing started.
   void _drawStickyLabel(Canvas canvas, SketchSticky sticky) {
     final box = StickyBubbleGeometry.textBoxOf(sticky.rect);
-    final span = TextSpan(
-      text: sticky.text,
-      style: TextStyle(
-        color: sticky.inkColor.withValues(alpha: sticky.style.opacity),
-        fontSize: sticky.fontSize,
-      ),
+    // Same layout `SketchSticky.labelSize` measures with, so the height the
+    // note grows to on commit is the height these glyphs actually take.
+    final tp = TextMetrics.layout(
+      text: sticky.text!,
+      fontSize: sticky.fontSize,
+      color: sticky.inkColor.withValues(alpha: sticky.style.opacity),
+      maxWidth: box.width,
     );
-    final tp = TextPainter(
-      text: span,
-      textAlign: TextAlign.left,
-      textDirection: TextDirection.ltr,
-      maxLines: null,
-    )..layout(maxWidth: box.width);
+    // A committed note grows to fit its text, so this clip rarely cuts
+    // anything — it is for the note a user has since resized *smaller*
+    // than its text, where glyphs running out through the tail and past
+    // the bottom edge read as a broken element. Clipped to the body rather
+    // than the text box so a descender on the last line isn't sliced off
+    // by the inset.
+    canvas.save();
+    canvas.clipRect(StickyBubbleGeometry.bodyOf(sticky.rect));
     tp.paint(canvas, box.topLeft);
+    canvas.restore();
+    tp.dispose();
   }
 
   void _drawArrowHead(Canvas canvas, SketchArrow arrow) {

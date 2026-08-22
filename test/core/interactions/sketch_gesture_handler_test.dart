@@ -1283,11 +1283,225 @@ void main() {
       const Offset(10, 10) & SketchSticky.defaultSize,
     );
   });
+
+  // ── Click away closes an open note — every time ─────────────────────────
+
+  testWidgets('a note opened from its badge closes on the next click away, '
+      'and keeps doing so', (tester) async {
+    // The exact sequence the user reported: the first round worked because
+    // collapse hung off the text commit; the second time there was no edit
+    // to commit, so the bubble stayed put.
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_collapsedNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    SketchSticky note() => controller.elements.single as SketchSticky;
+
+    for (var round = 1; round <= 3; round++) {
+      // Spaced past the double-tap window, or the second round's open
+      // would read as a double-click on the badge and start an edit.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tapAt(const Offset(118, 78));
+      await tester.pump();
+      expect(note().collapsed, isFalse, reason: 'round $round: opens');
+      expect(note().rect, _noteRect, reason: 'round $round: same geometry');
+
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tapAt(const Offset(600, 400));
+      await tester.pump();
+      expect(note().collapsed, isTrue, reason: 'round $round: closes');
+    }
+    // None of that was content: the undo stack is still just the load.
+    expect(controller.canUndo, isFalse);
+  });
+
+  testWidgets('a drag that starts outside closes the note on the way down',
+      (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_openNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    // Pointer-down on empty canvas, before any marquee has been dragged.
+    final gesture = await tester.startGesture(const Offset(600, 400));
+    await tester.pump();
+    expect((controller.elements.single as SketchSticky).collapsed, isTrue,
+        reason: 'closed on pointer-down, not when the marquee ends');
+    await gesture.moveBy(const Offset(40, 40));
+    await gesture.up();
+    await tester.pump();
+  });
+
+  testWidgets('a click on the open note itself keeps it open', (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_openNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await tester.tapAt(_noteRect.center);
+    await tester.pump();
+    expect((controller.elements.single as SketchSticky).collapsed, isFalse);
+    expect(controller.isSelected('note'), isTrue);
+  });
+
+  testWidgets("a press on the open note's own resize handle keeps it open",
+      (tester) async {
+    // The handle sits on the padded selection box, *outside* the note's
+    // bounds — a naive "was the hit inside the note" test closes the note
+    // under the user's hand the instant they try to resize it.
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_openNote()],
+    );
+    addTearDown(controller.dispose);
+    controller.select('note');
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction, snap: false));
+
+    final gesture = await tester.startGesture(
+      _noteRect.bottomRight.translate(
+        SketchGeometry.selectionPadding,
+        SketchGeometry.selectionPadding,
+      ),
+    );
+    await gesture.moveBy(const Offset(30, 10));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    final note = controller.elements.single as SketchSticky;
+    expect(note.collapsed, isFalse);
+    expect(note.rect.width, _noteRect.width + 30, reason: 'and it resized');
+  });
+
+  testWidgets('clicking from one open note to another closes the first',
+      (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [
+        _openNote(),
+        SketchSticky.create(
+          id: 'other',
+          rect: const Rect.fromLTWH(500, 60, 220, 100),
+          text: 'the other one',
+        ),
+      ],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await tester.tapAt(const Offset(610, 110));
+    await tester.pump();
+
+    SketchSticky byId(String id) =>
+        controller.elements.firstWhere((e) => e.id == id) as SketchSticky;
+    expect(byId('note').collapsed, isTrue);
+    expect(byId('other').collapsed, isFalse);
+  });
+
+  testWidgets('a cancelled edit is not stranded open: the next click closes it',
+      (tester) async {
+    // Escape keeps its meaning for the *text* — nothing is committed — but
+    // must not leave the note in a third state that is expanded, not
+    // editing, and immune to click-away.
+    final controller = SketchController(
+      currentTool: SketchTool.select,
+      initialElements: [_openNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    controller.beginTextEdit(elementId: 'note');
+    controller.cancelTextEdit();
+    expect((controller.elements.single as SketchSticky).collapsed, isFalse);
+
+    await tester.tapAt(const Offset(600, 400));
+    await tester.pump();
+    expect((controller.elements.single as SketchSticky).collapsed, isTrue);
+  });
+
+  testWidgets('drawing with a shape tool closes open notes too',
+      (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.rectangle,
+      initialElements: [_openNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    final gesture = await tester.startGesture(const Offset(500, 300));
+    await tester.pump();
+    expect((controller.elements.first as SketchSticky).collapsed, isTrue);
+    await gesture.moveBy(const Offset(60, 40));
+    await gesture.up();
+    await tester.pump();
+    expect(controller.elements, hasLength(2));
+  });
+
+  testWidgets('panning with the hand tool leaves an open note open',
+      (tester) async {
+    // Navigation, not a click on the board — scrolling a conversation does
+    // not dismiss the message you were reading.
+    final controller = SketchController(
+      currentTool: SketchTool.hand,
+      initialElements: [_openNote()],
+    );
+    addTearDown(controller.dispose);
+
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+
+    await tester.pumpWidget(_host(controller, interaction));
+
+    await tester.tapAt(const Offset(600, 400));
+    await tester.pump();
+    expect((controller.elements.single as SketchSticky).collapsed, isFalse);
+  });
 }
 
 /// A note collapsed to its badge, sized well past the badge so the two boxes
 /// are distinguishable in a hit test.
 const Rect _noteRect = Rect.fromLTWH(100, 60, 220, 100);
+
+SketchSticky _openNote() => SketchSticky.create(
+      id: 'note',
+      rect: _noteRect,
+      text: 'remember this',
+    );
 
 SketchSticky _collapsedNote() => SketchSticky.create(
       id: 'note',

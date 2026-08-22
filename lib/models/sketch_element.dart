@@ -468,8 +468,24 @@ class SketchSticky extends _SketchBoundedShape {
     this.collapsed = false,
   });
 
-  /// Default sticky-note background colour (Excalidraw-style yellow).
-  static const Color defaultColor = Color(0xFFFFEC99);
+  /// Default sticky-note paper colour.
+  ///
+  /// A saturated amber rather than the pale Excalidraw yellow it replaced.
+  /// The note is drawn as a messenger bubble, and a messenger's bubble is a
+  /// *coloured* container — against a near-white canvas the pale wash read
+  /// as a stain, not a surface, and beside the board's black-stroked shapes
+  /// it had no presence at all. Nothing else on the canvas casts a shadow,
+  /// so a stronger fill is how the bubble earns its edge.
+  static const Color defaultColor = Color(0xFFFFD54F);
+
+  /// Default outline colour: the paper, darkened. A hairline in a deeper
+  /// shade is what gives the bubble a crisp edge on both light and dark
+  /// canvases without a shadow.
+  static const Color defaultEdgeColor = Color(0xFFE3A400);
+
+  /// Default outline width. Thinner than `SketchStyle`'s 2px: the edge is
+  /// definition, not a drawn line, and at 2px it competed with the text.
+  static const double defaultStrokeWidth = 1.5;
 
   /// Size a note takes when the gesture that created it didn't say — a press
   /// with no real drag — and the floor a drag-created one is grown to.
@@ -478,8 +494,9 @@ class SketchSticky extends _SketchBoundedShape {
   /// size of the drag rect, and a plain click produced a 0×0 rect that the
   /// commit path then discarded, so clicking with the sticky tool did
   /// nothing at all. Sized for two lines of [defaultFontSize] text inside
-  /// [StickyBubbleGeometry]'s insets and tail band.
-  static const Size defaultSize = Size(160, 72);
+  /// [StickyBubbleGeometry]'s insets and tail band; a note that needs more
+  /// grows on commit — see [fittedToText].
+  static const Size defaultSize = Size(180, 72);
 
   /// Label size. Was 20, against 16 for every other element's text; that
   /// extra 25% is most of what made notes feel oversized, because a note has
@@ -489,6 +506,16 @@ class SketchSticky extends _SketchBoundedShape {
   /// Body rounding. A chat bubble is round; the old 4px read as a rectangle
   /// with softened corners.
   static const double defaultCornerRadius = 12.0;
+
+  /// Style a note gets when its creator doesn't supply one. Stroke is the
+  /// outline (see [defaultEdgeColor]), fill is the paper; a sticky is always
+  /// filled, which is what makes it a bubble rather than a box.
+  static const SketchStyle defaultStyle = SketchStyle(
+    strokeColor: defaultEdgeColor,
+    fillColor: defaultColor,
+    fillStyle: FillStyle.solid,
+    strokeWidth: defaultStrokeWidth,
+  );
 
   /// Glyph colour used for dark notes, matching `SketchStyle`'s default ink.
   static const Color _darkInk = Color(0xFF1E1E1E);
@@ -518,16 +545,20 @@ class SketchSticky extends _SketchBoundedShape {
 
   /// Colour this note's glyphs take — its label, and its badge's mark.
   ///
-  /// Not [SketchStyle.strokeColor] directly: for a sticky the stroke colour
-  /// *is* the paper colour ([create] sets stroke and fill to the same
-  /// [defaultColor]), so glyphs drawn in it are invisible against the note
-  /// they sit on. When the two agree, ink is derived from the paper's
-  /// luminance instead, which also keeps the badge's mark legible on a note
-  /// the user has painted some other colour. A stroke colour the user has
-  /// deliberately made *different* from the fill is honoured as-is.
+  /// Derived from the paper's luminance, not read from the style. On a
+  /// sticky, [SketchStyle.strokeColor] is the bubble's *outline*, and glyphs
+  /// drawn in the outline colour are either invisible (files saved before
+  /// the outline existed have stroke == fill) or merely muddy (the default
+  /// edge is a darker shade of the paper). A messenger never asks which
+  /// colour the text in a bubble should be; it is whichever reads against
+  /// the bubble — and that stays true when the user repaints the paper from
+  /// the palette. A note with no fill at all is just an outline, and its
+  /// text takes that outline's colour like any other shape's label.
   Color get inkColor {
     final paper = style.fillColor;
-    if (paper == null || paper != style.strokeColor) return style.strokeColor;
+    if (paper == null || style.fillStyle == FillStyle.none) {
+      return style.strokeColor;
+    }
     return paper.computeLuminance() > 0.5 ? _darkInk : _lightInk;
   }
 
@@ -547,6 +578,39 @@ class SketchSticky extends _SketchBoundedShape {
         math.max(drawn.width, defaultSize.width),
         math.max(drawn.height, defaultSize.height),
       );
+
+  /// Where this note's label is laid out and how big it comes out, through
+  /// the one layout the painter also draws with.
+  Size get labelSize {
+    final label = text;
+    if (label == null) return Size.zero;
+    return TextMetrics.measure(
+      text: label,
+      fontSize: fontSize,
+      maxWidth: StickyBubbleGeometry.textBoxOf(rect).width,
+    );
+  }
+
+  /// This note grown, if need be, until its text fits — the way a messenger
+  /// bubble takes the height of its message rather than clipping it.
+  ///
+  /// Grows only, never shrinks: a user who has deliberately made a note
+  /// taller than its text keeps that, and a note whose text is shortened
+  /// stays where it was rather than snapping about under the cursor. Width
+  /// is left alone too; the text wraps to it.
+  ///
+  /// A note narrower than one em is skipped — wrapping a label one glyph
+  /// per line into a 10px-wide sliver would grow it into a tower, which is
+  /// worse than the clipping it would otherwise get.
+  SketchSticky fittedToText() {
+    if (text == null || collapsed) return this;
+    if (StickyBubbleGeometry.textBoxOf(rect).width < fontSize) return this;
+    final needed = StickyBubbleGeometry.heightFor(labelSize.height);
+    if (needed <= rect.height) return this;
+    return copyWith(
+      rect: Rect.fromLTWH(rect.left, rect.top, rect.width, needed),
+    );
+  }
 
   SketchSticky copyWith({
     String? id,
@@ -595,12 +659,7 @@ class SketchSticky extends _SketchBoundedShape {
   }) {
     return SketchSticky(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style ??
-          const SketchStyle(
-            strokeColor: defaultColor,
-            fillColor: defaultColor,
-            fillStyle: FillStyle.solid,
-          ),
+      style: style ?? defaultStyle,
       rect: rect,
       text: text,
       fontSize: fontSize,

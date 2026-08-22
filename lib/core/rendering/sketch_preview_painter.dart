@@ -195,15 +195,17 @@ class SketchPreviewPainter extends CustomPainter {
   /// press with no drag shows the note it is about to leave behind.
   void _paintStickyPreview(Canvas canvas, Rect rect) {
     final settled = SketchSticky.rectFor(rect);
-    final bubble = StickyBubbleGeometry.fillPath(
+    final bubble = StickyBubbleGeometry.bubblePath(
       settled,
       SketchSticky.defaultCornerRadius,
     );
+    // The note's own default colours rather than the preview tint: the
+    // preview is the note, a frame early.
     _marqueeFill.color = SketchSticky.defaultColor.withValues(alpha: 0.9);
     canvas.drawPath(bubble, _marqueeFill);
     _strokePaint
-      ..color = previewColor.withValues(alpha: 0.5)
-      ..strokeWidth = 1.0;
+      ..color = SketchSticky.defaultEdgeColor.withValues(alpha: 0.9)
+      ..strokeWidth = SketchSticky.defaultStrokeWidth;
     canvas.drawPath(bubble, _strokePaint);
   }
 

@@ -62,40 +62,6 @@ class RoughGenerator {
     return path;
   }
 
-  /// Builds a sketchy closed outline through [vertices], in order, with the
-  /// last joined back to the first.
-  ///
-  /// The general form of [rectangle] / [diamond] / [triangle] above, for
-  /// silhouettes those three don't describe — the sticky note's chat bubble,
-  /// whose outline is a body plus a tail. Corners are square, exactly as they
-  /// are for [rectangle]: at any visible roughness the jitter dominates the
-  /// corner treatment, and the matching *fill* carries the real rounding.
-  static Path closedPolyline(
-    List<Offset> vertices, {
-    double roughness = 1.0,
-    int seed = 1,
-    bool doubleStroke = true,
-    double bowing = 1.0,
-  }) {
-    final path = Path();
-    if (vertices.length < 2) return path;
-    final rng = _Rng(seed);
-    for (var pass = 0; pass < (doubleStroke ? 2 : 1); pass++) {
-      for (var i = 0; i < vertices.length; i++) {
-        _line(
-          path,
-          vertices[i],
-          vertices[(i + 1) % vertices.length],
-          roughness,
-          rng,
-          bowing,
-          move: i == 0,
-        );
-      }
-    }
-    return path;
-  }
-
   /// Builds a sketchy diamond (rhombus) inscribed in [rect].
   static Path diamond(
     Rect rect, {

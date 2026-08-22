@@ -783,19 +783,39 @@ void main() {
       expect(note.rect, rect);
     });
 
-    test('collapse and text land in one undo entry', () {
+    test('committing text that overflows grows the bubble first', () {
+      // A messenger bubble takes the height of its message; the grow has
+      // to happen *before* the collapse, because a badge has no bubble to
+      // measure.
+      final c = withNote();
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit(
+        'A note long enough that it has to wrap onto several lines, which '
+        'the default height was never meant to hold, and then some more.',
+      );
+      final note = noteIn(c);
+      expect(note.collapsed, isTrue);
+      expect(note.rect.height, greaterThan(rect.height));
+      expect(note.rect.width, rect.width);
+    });
+
+    test('collapse, growth and text land in one undo entry', () {
       final c = withNote();
       c.beginTextEdit(elementId: 'note');
       c.commitTextEdit('buy milk');
       expect(noteIn(c).collapsed, isTrue);
       expect(noteIn(c).text, 'buy milk');
 
-      // Both must come back together. Collapsing through a second mutation
+      // All must come back together. Collapsing through a second mutation
       // would leave the user undoing the collapse first and finding a bubble
       // with text they had already undone away.
       c.undo();
       expect(noteIn(c).collapsed, isFalse);
       expect(noteIn(c).text, isNull);
+      expect(noteIn(c).rect, rect);
+      expect(c.canUndo, isTrue, reason: 'only the add remains');
+      c.undo();
+      expect(c.elements, isEmpty);
     });
 
     test('cancelling leaves the note exactly as it found it', () {
@@ -808,26 +828,18 @@ void main() {
       expect(noteIn(c).text, 'already here');
     });
 
-    test('an empty note stays open rather than becoming a blank badge', () {
-      // A badge with nothing behind it is indistinguishable from a full one,
-      // which is worse clutter than a visibly-empty bubble.
-      final c = withNote();
+    test('an emptied note collapses like any other, and is not deleted', () {
+      // Nothing is exempt from "click away, it closes": a note left open
+      // because it was blank is a note that looks stuck. And it is not
+      // removed the way an empty SketchText is — it still has its colour,
+      // position and size.
+      final c = withNote(text: 'was here');
       c.beginTextEdit(elementId: 'note');
       c.commitTextEdit('   ');
 
-      expect(c.elements, hasLength(1), reason: 'not deleted like a SketchText');
-      expect(noteIn(c).collapsed, isFalse);
-      expect(noteIn(c).text, isNull);
-    });
-
-    test('emptying an existing note reopens nothing and deletes nothing', () {
-      final c = withNote(text: 'was here');
-      c.beginTextEdit(elementId: 'note');
-      c.commitTextEdit('');
-
       expect(c.elements, hasLength(1));
       expect(noteIn(c).text, isNull);
-      expect(noteIn(c).collapsed, isFalse);
+      expect(noteIn(c).collapsed, isTrue);
     });
 
     test('a shape label is untouched by any of this', () {
@@ -862,18 +874,27 @@ void main() {
       expect(note.bounds, rect);
     });
 
+    test('is view state: it repaints but is not undoable', () {
+      // Open-or-closed is a side-effect of clicks whose purpose was
+      // something else; an undo entry per toggle would make Ctrl+Z reopen
+      // a note instead of undoing the thing the user actually did. It does
+      // bump paintGen, because it is persisted — autosave has to see it.
+      final c = withCollapsedNote();
+      final gen = c.paintGen;
+      c.setStickyCollapsed('note', false);
+      expect(c.paintGen, greaterThan(gen));
+
+      c.undo();
+      // The only entry on the stack is the add, so one undo empties the
+      // canvas rather than re-collapsing the note.
+      expect(c.elements, isEmpty);
+    });
+
     test('is a no-op when the note is already in that state', () {
       final c = withCollapsedNote();
       final gen = c.paintGen;
       c.setStickyCollapsed('note', true);
       expect(c.paintGen, gen);
-
-      // An undo entry here would make the user's next Ctrl+Z do nothing
-      // visible — the same defect click-to-select once had. The only entry
-      // on the stack should still be the one `add` pushed, so a single undo
-      // takes the note off the canvas entirely.
-      c.undo();
-      expect(c.elements, isEmpty);
     });
 
     test('ignores ids that are missing or not notes', () {
@@ -884,9 +905,65 @@ void main() {
       c.setStickyCollapsed('nobody', true);
       expect(c.paintGen, gen);
       expect(c.elements.single, isA<SketchRectangle>());
+    });
+  });
 
+  group('SketchController.collapseExpandedStickies', () {
+    const rect = Rect.fromLTWH(0, 0, 200, 90);
+
+    SketchController board() {
+      final c = SketchController();
+      c.addAll([
+        SketchSticky.create(id: 'a', rect: rect, text: 'a'),
+        SketchSticky.create(id: 'b', rect: rect.shift(const Offset(300, 0)),
+            text: 'b'),
+        SketchSticky.create(id: 'c', rect: rect.shift(const Offset(600, 0)),
+            text: 'c', collapsed: true),
+        _rect(id: 'box'),
+      ]);
+      return c;
+    }
+
+    bool collapsed(SketchController c, String id) =>
+        (c.elements.firstWhere((e) => e.id == id) as SketchSticky).collapsed;
+
+    test('closes every open note but the one kept', () {
+      final c = board();
+      expect(c.collapseExpandedStickies(except: 'b'), 1);
+      expect(collapsed(c, 'a'), isTrue);
+      expect(collapsed(c, 'b'), isFalse);
+      expect(collapsed(c, 'c'), isTrue);
+    });
+
+    test('with nothing kept, closes them all', () {
+      final c = board();
+      expect(c.collapseExpandedStickies(), 2);
+      expect(collapsed(c, 'a'), isTrue);
+      expect(collapsed(c, 'b'), isTrue);
+    });
+
+    test('reports zero and does not repaint when nothing was open', () {
+      final c = board();
+      c.collapseExpandedStickies();
+      final gen = c.paintGen;
+      expect(c.collapseExpandedStickies(), 0);
+      expect(c.paintGen, gen);
+    });
+
+    test('leaves no undo entry', () {
+      final c = board();
+      c.collapseExpandedStickies();
       c.undo();
+      // The one entry is the addAll; undoing it empties the board rather
+      // than reopening the notes.
       expect(c.elements, isEmpty);
+    });
+
+    test('keeps the rect underneath, so reopening restores it', () {
+      final c = board();
+      c.collapseExpandedStickies();
+      c.setStickyCollapsed('a', false);
+      expect((c.elements.first as SketchSticky).rect, rect);
     });
   });
 }

@@ -26,12 +26,14 @@ class TextMetrics {
   /// returned painter.
   ///
   /// [color] affects painting only, never metrics — which is why [measure]
-  /// can cache without it in the key.
+  /// can cache without it in the key. [maxWidth] is where a sticky note's
+  /// label wraps; free text passes nothing and runs as long as it likes.
   static TextPainter layout({
     required String text,
     required double fontSize,
     String? fontFamily,
     Color color = const Color(0xFF000000),
+    double maxWidth = double.infinity,
   }) {
     return TextPainter(
       text: TextSpan(
@@ -43,16 +45,18 @@ class TextMetrics {
         ),
       ),
       textDirection: TextDirection.ltr,
-    )..layout();
+    )..layout(maxWidth: maxWidth);
   }
 
-  /// Laid-out size of [text], cached by (text, fontSize, fontFamily).
+  /// Laid-out size of [text], cached by (text, fontSize, fontFamily,
+  /// maxWidth).
   static Size measure({
     required String text,
     required double fontSize,
     String? fontFamily,
+    double maxWidth = double.infinity,
   }) {
-    final key = '$fontSize|${fontFamily ?? ''}|$text';
+    final key = '$fontSize|${fontFamily ?? ''}|$maxWidth|$text';
     final hit = _sizes[key];
     if (hit != null) return hit;
 
@@ -60,6 +64,7 @@ class TextMetrics {
       text: text,
       fontSize: fontSize,
       fontFamily: fontFamily,
+      maxWidth: maxWidth,
     );
     final size = painter.size;
     painter.dispose();

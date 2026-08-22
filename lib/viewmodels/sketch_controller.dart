@@ -208,21 +208,51 @@ class SketchController extends ChangeNotifier {
 
   /// Collapses a sticky note to its badge, or expands it back to its bubble.
   ///
-  /// No-op for any other element type, and for a note already in that state
-  /// — so a click on an expanded note can call this unconditionally without
-  /// leaving an undo entry that undoes nothing visible.
-  ///
+  /// No-op for any other element type, and for a note already in that state.
   /// The note's `rect` is untouched, which is what makes expanding restore
   /// the geometry the user had rather than a default.
+  ///
+  /// **Not history-tracked**, deliberately — see [collapseExpandedStickies],
+  /// which is where most collapses come from.
   void setStickyCollapsed(String id, bool collapsed) {
     final idx = _indexOf(id);
     if (idx < 0) return;
     final el = _elements[idx];
     if (el is! SketchSticky || el.collapsed == collapsed) return;
-    _pushHistory();
     _elements[idx] = el.copyWith(collapsed: collapsed);
     _invalidateCache();
     _bumpPaint();
+  }
+
+  /// Collapses every expanded sticky note other than [except], returning
+  /// how many it closed.
+  ///
+  /// This is what a click anywhere on the canvas does on its way down: a
+  /// note stays open only while the pointer is on it. The caller passes the
+  /// element the press landed on — the note itself, a handle of it — and
+  /// everything else closes.
+  ///
+  /// Like [setStickyCollapsed], it leaves **no undo entry**. Open-or-closed
+  /// is view state in the way selection is, not content: it is cheap to
+  /// redo by hand (one click), it is a side-effect of clicks whose *purpose*
+  /// was something else, and an entry for each of those would make Ctrl+Z
+  /// unpredictable — the user clicks a rectangle, and their next undo
+  /// reopens a note instead of undoing the thing they did to the rectangle.
+  /// Unlike selection it *is* persisted, because a board's worth of notes
+  /// should come back the way it was left; `paintGen` is bumped so autosave
+  /// sees it.
+  int collapseExpandedStickies({String? except}) {
+    var closed = 0;
+    for (var i = 0; i < _elements.length; i++) {
+      final el = _elements[i];
+      if (el is! SketchSticky || el.collapsed || el.id == except) continue;
+      _elements[i] = el.copyWith(collapsed: true);
+      closed++;
+    }
+    if (closed == 0) return 0;
+    _invalidateCache();
+    _bumpPaint();
+    return closed;
   }
 
   /// Moves a linear element's (line/arrow) [start] and/or [end] point.
@@ -621,10 +651,12 @@ class SketchController extends ChangeNotifier {
   /// removes the text from a bounded shape, or skips creation for a
   /// pending new [SketchText].
   ///
-  /// Committing a sticky note also collapses it — see [_withText]. Note that
-  /// [cancelTextEdit] deliberately does not: commit is "I'm done with this
-  /// note", cancel is "forget I started", and a cancelled edit leaves the
-  /// note exactly as it found it.
+  /// Committing a sticky note also grows it to fit and collapses it — see
+  /// [_withText]. [cancelTextEdit] does neither: commit is "I'm done with
+  /// this note", cancel is "forget I started", and a cancelled edit leaves
+  /// the note exactly as it found it. A cancelled note is not stranded
+  /// open, though — the next click anywhere else closes it like any other
+  /// expanded note ([collapseExpandedStickies]).
   void commitTextEdit(String text) {
     final id = _editingElementId;
     final pos = _editingCanvasPosition;
@@ -688,26 +720,28 @@ class SketchController extends ChangeNotifier {
       case SketchTriangle tri:
         return tri.copyWith(text: text);
       case SketchSticky s:
-        // Finishing a note collapses it to its badge. That is the whole
-        // point of the note: it sits out of the way until wanted, so a board
-        // can carry many without them swamping the diagram — and it means
-        // there is no second gesture to learn, because clicking away is
-        // already how an edit ends.
+        // Finishing a note grows it to fit what was typed and collapses it
+        // to its badge. Collapsing on commit is what Enter gets — a click
+        // away has already closed the note on its way down, through
+        // `collapseExpandedStickies`, before the editor's commit fires, and
+        // the `copyWith` below is then a no-op on that axis.
         //
-        // A note with nothing in it stays open. Collapsing it would hide the
-        // fact that it is blank behind a badge indistinguishable from a full
-        // one; an empty bubble is at least visibly empty, and can be selected
-        // and deleted. It is not removed outright the way an empty
-        // `SketchText` is, either: a `SketchText` *is* its text and has
+        // An emptied note collapses like any other. It is not removed the
+        // way an empty `SketchText` is: a `SketchText` *is* its text and has
         // nothing left when emptied, while a note the user deliberately
-        // placed still has its colour, its position and its size.
+        // placed still has its colour, its position and its size. Nor does
+        // it stay open as a visible reminder that it is blank — the one rule
+        // the user can hold is "click away, it closes", and a note exempt
+        // from that is a note that looks stuck.
         //
-        // Collapse and text land in one `copyWith`, so the single history
-        // entry this commit pushes undoes both together.
-        return s.copyWith(
-          text: text,
-          collapsed: text == null ? s.collapsed : true,
-        );
+        // Fit before collapsing: `fittedToText` measures the *bubble*, and a
+        // collapsed note has none to measure. Text, growth and collapse
+        // land in one element, so the single history entry this commit
+        // pushes undoes all three together.
+        return s
+            .copyWith(text: text, collapsed: false)
+            .fittedToText()
+            .copyWith(collapsed: true);
       case SketchText t:
         if (text == null || text.isEmpty) {
           // Empty text on a SketchText → remove it.

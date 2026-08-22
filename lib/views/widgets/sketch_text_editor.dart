@@ -279,11 +279,17 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
 
     final textColor = _resolveTextColor(el);
 
+    final editorHeight = box.height.clamp(20, 4000) + _editorInset.dy * 2;
+
     return Positioned(
       left: box.screenPos.dx - _editorInset.dx,
       top: box.screenPos.dy - _editorInset.dy,
       width: box.width.clamp(60, 4000) + _editorInset.dx * 2,
-      height: box.height.clamp(20, 4000) + _editorInset.dy * 2,
+      // A note's composer is open-ended: the bubble grows to fit its text
+      // on commit, so the editor has to grow *while typing* or the third
+      // line scrolls out of sight inside a box sized for two. Shapes keep
+      // a fixed box, which is what keeps their centred label centred.
+      height: onBubble ? null : editorHeight,
       child: Focus(
         onKeyEvent: (_, e) =>
             _onKey(e) ? KeyEventResult.handled : KeyEventResult.ignored,
@@ -291,6 +297,8 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
           onTapOutside: (_) => _commit(),
           child: Container(
             alignment: isShape ? Alignment.center : Alignment.topLeft,
+            constraints:
+                onBubble ? BoxConstraints(minHeight: editorHeight) : null,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
               // ~6% black tint — a decorative edit-box background, not a

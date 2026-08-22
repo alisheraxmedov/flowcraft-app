@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/core/rendering/sketch_render_cache.dart';
 import 'package:flowcraft/models/sketch_element.dart';
-import 'package:flowcraft/models/sketch_style.dart';
 
 /// The cache is what actually turns an element into the paths the painter
 /// draws, so it is where "what is drawn" can be measured against "what
@@ -13,19 +12,14 @@ import 'package:flowcraft/models/sketch_style.dart';
 /// repo has already paid for once, in `SketchText.bounds`.
 const Rect _rect = Rect.fromLTWH(60, 20, 220, 110);
 
-/// Roughness zeroed so the outline is measurable. `RoughGenerator` still
-/// jitters by up to half a pixel and bows by 2% of a segment's length at
-/// roughness 0, hence the tolerance below rather than an exact compare.
+/// Full roughness on purpose: a sticky is the one closed shape that is
+/// drawn clean whatever its style says, and these tests would pass by
+/// accident at roughness 0.
 SketchSticky _sticky({bool collapsed = false}) => SketchSticky.create(
       id: 'note',
       rect: _rect,
       text: 'remember this',
-      style: const SketchStyle(
-        strokeColor: SketchSticky.defaultColor,
-        fillColor: SketchSticky.defaultColor,
-        fillStyle: FillStyle.solid,
-        roughness: 0,
-      ),
+      style: SketchSticky.defaultStyle.copyWith(roughness: 2.0),
       collapsed: collapsed,
     );
 
@@ -72,11 +66,21 @@ void main() {
       expect(note.bounds, _rect);
 
       _expectWithin(cache.fillPath(note).getBounds(), note.bounds, slack: 0.01);
-      // Bowing and the half-pixel jitter floor are the only slack a
-      // roughness-0 stroke can take; the point is that the tail is drawn
-      // inside the rect rather than hanging off the bottom of it.
       _expectWithin(_inkedBounds(cache.strokePath(note)), note.bounds,
-          slack: 4);
+          slack: 0.01);
+    });
+
+    test('the outline is the exact edge of the fill, at any roughness', () {
+      // Rendered rough, the outline had square corners over a rounded fill
+      // and poked past it at every corner — the "badly made" the user saw.
+      final cache = SketchRenderCache();
+      final note = _sticky();
+      final fill = _inkedBounds(cache.fillPath(note));
+      final stroke = _inkedBounds(cache.strokePath(note));
+      expect(stroke.left, closeTo(fill.left, 0.01));
+      expect(stroke.top, closeTo(fill.top, 0.01));
+      expect(stroke.right, closeTo(fill.right, 0.01));
+      expect(stroke.bottom, closeTo(fill.bottom, 0.01));
     });
 
     test('collapsed: the badge fills its bounds and nothing more', () {
@@ -92,7 +96,7 @@ void main() {
       expect(fill.right, lessThan(_rect.right - 100));
 
       _expectWithin(_inkedBounds(cache.strokePath(note)), note.bounds,
-          slack: 4);
+          slack: 0.01);
     });
   });
 

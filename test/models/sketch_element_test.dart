@@ -283,37 +283,104 @@ void main() {
   });
 
   group('SketchSticky.inkColor', () {
-    SketchSticky painted(Color stroke, Color fill) => SketchSticky.create(
+    SketchSticky painted(Color stroke, Color? fill) => SketchSticky.create(
           rect: const Rect.fromLTWH(0, 0, 10, 10),
           style: SketchStyle(
             strokeColor: stroke,
             fillColor: fill,
-            fillStyle: FillStyle.solid,
+            fillStyle: fill == null ? FillStyle.none : FillStyle.solid,
           ),
         );
 
-    test('is legible on the default note, where stroke *is* the paper', () {
-      // `create` sets stroke and fill from one colour, so glyphs drawn in
-      // the stroke colour are invisible against the note carrying them.
-      final ink = SketchSticky.create(
-        rect: const Rect.fromLTWH(0, 0, 10, 10),
-      ).inkColor;
-      expect(ink, isNot(SketchSticky.defaultColor));
-      expect(ink.computeLuminance(),
-          lessThan(SketchSticky.defaultColor.computeLuminance()));
+    test('is dark on the default paper, not the outline colour', () {
+      // The stroke is the bubble's *edge* — a darker shade of the paper —
+      // and glyphs in it would be muddy amber on amber.
+      final note = SketchSticky.create(rect: const Rect.fromLTWH(0, 0, 10, 10));
+      expect(note.inkColor, isNot(note.style.strokeColor));
+      expect(note.inkColor, isNot(note.style.fillColor));
+      expect(note.inkColor.computeLuminance(), lessThan(0.1));
     });
 
-    test('flips for a dark note', () {
+    test('stays legible on a note saved before the outline existed', () {
+      // Those files have stroke == fill == pale yellow; glyphs drawn in the
+      // stroke colour were invisible.
+      const paper = Color(0xFFFFEC99);
+      final ink = painted(paper, paper).inkColor;
+      expect(ink, isNot(paper));
+      expect(ink.computeLuminance(), lessThan(paper.computeLuminance()));
+    });
+
+    test('flips for a dark paper, whatever the outline is', () {
       const dark = Color(0xFF20242C);
       expect(
-        painted(dark, dark).inkColor.computeLuminance(),
+        painted(const Color(0xFFAA0000), dark).inkColor.computeLuminance(),
         greaterThan(dark.computeLuminance()),
       );
     });
 
-    test('honours a stroke colour the user made different from the fill', () {
+    test('follows the fill the user picks from the palette', () {
+      // Repainting the paper must not leave yesterday's ink on it.
+      final note = SketchSticky.create(rect: const Rect.fromLTWH(0, 0, 10, 10));
+      final repainted = note.copyWithStyle(
+        note.style.withFillColor(const Color(0xFF1B2A4A)),
+      );
+      expect(repainted.inkColor.computeLuminance(), greaterThan(0.5));
+    });
+
+    test('an unfilled note takes its outline colour, like any shape label',
+        () {
       const ink = Color(0xFFAA0000);
-      expect(painted(ink, SketchSticky.defaultColor).inkColor, ink);
+      expect(painted(ink, null).inkColor, ink);
+    });
+  });
+
+  group('SketchSticky.fittedToText', () {
+    const rect = Rect.fromLTWH(0, 0, 180, 72);
+    const paragraph =
+        'A note long enough that it has to wrap onto several lines, which '
+        'the default height was never meant to hold.';
+
+    test('grows a note whose text overflows, to exactly what it needs', () {
+      final note = SketchSticky.create(rect: rect, text: paragraph);
+      final grown = note.fittedToText();
+      expect(grown.rect.height, greaterThan(rect.height));
+      expect(grown.rect.width, rect.width, reason: 'width is left alone');
+      expect(grown.rect.topLeft, rect.topLeft, reason: 'origin is kept');
+      // The text box of the grown note holds the laid-out text exactly —
+      // the bubble takes the height of its message.
+      expect(
+        StickyBubbleGeometry.textBoxOf(grown.rect).height,
+        closeTo(grown.labelSize.height, 0.01),
+      );
+    });
+
+    test('leaves a note whose text already fits exactly as it is', () {
+      final note = SketchSticky.create(rect: rect, text: 'short');
+      expect(identical(note.fittedToText(), note), isTrue);
+    });
+
+    test('never shrinks a note the user made tall', () {
+      const tall = Rect.fromLTWH(0, 0, 180, 400);
+      final note = SketchSticky.create(rect: tall, text: 'short');
+      expect(note.fittedToText().rect, tall);
+    });
+
+    test('is a no-op on a collapsed note or one with no text', () {
+      expect(
+        SketchSticky.create(rect: rect, text: paragraph, collapsed: true)
+            .fittedToText()
+            .rect,
+        rect,
+      );
+      expect(SketchSticky.create(rect: rect).fittedToText().rect, rect);
+    });
+
+    test('refuses to grow a sliver into a tower', () {
+      // One glyph per line into a 10px-wide note would be hundreds of px
+      // tall; clipping is the lesser evil there.
+      const sliver = Rect.fromLTWH(0, 0, 10, 10);
+      final note = SketchSticky.create(rect: sliver, text: paragraph);
+      expect(note.fittedToText().rect, sliver);
     });
   });
 

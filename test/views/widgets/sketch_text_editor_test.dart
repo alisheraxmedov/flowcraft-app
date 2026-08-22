@@ -22,6 +22,14 @@ Widget _host(SketchController controller) {
   );
 }
 
+/// The editor's decorated box — the thing that either grows with its text
+/// (a note) or stays put (a shape). `EditableText` itself grows inside a
+/// fixed box too, up to the box's cap, so it is the wrong thing to measure.
+Finder _composer() => find.ancestor(
+      of: find.byType(EditableText),
+      matching: find.byType(Container),
+    );
+
 void main() {
   testWidgets('a SketchText edits in place, on its own position',
       (tester) async {
@@ -138,6 +146,55 @@ void main() {
     expect(content.top, moreOrLessEquals(expected.top, epsilon: 0.01));
     // Width is deliberately not asserted: the editor floors its box at 60px
     // so a narrow note still has somewhere to type.
+  });
+
+  testWidgets("a note's composer grows as lines are typed", (tester) async {
+    // The bubble grows to fit on commit; if the editor did not grow while
+    // typing, the third line would scroll out of sight inside a box sized
+    // for two.
+    const rect = Rect.fromLTWH(60, 120, 180, 72);
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    controller.add(SketchSticky.create(id: 'note', rect: rect, text: 'one'));
+
+    await tester.pumpWidget(_host(controller));
+    controller.beginTextEdit(elementId: 'note');
+    await tester.pump();
+
+    final before = tester.getRect(_composer());
+    await tester.enterText(
+      find.byType(EditableText),
+      'one\ntwo\nthree\nfour\nfive\nsix',
+    );
+    await tester.pump();
+    final after = tester.getRect(_composer());
+
+    expect(after.top, before.top, reason: 'anchored where it was');
+    expect(after.height, greaterThan(before.height));
+  });
+
+  testWidgets("a shape's composer keeps its fixed box", (tester) async {
+    // The mirror of the above: a centred label needs a fixed box to be
+    // centred in.
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    controller.add(SketchRectangle.create(
+      id: 'box',
+      rect: const Rect.fromLTWH(40, 80, 160, 100),
+      text: 'Label',
+    ));
+
+    await tester.pumpWidget(_host(controller));
+    controller.beginTextEdit(elementId: 'box');
+    await tester.pump();
+
+    final before = tester.getRect(_composer());
+    await tester.enterText(
+      find.byType(EditableText),
+      'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight',
+    );
+    await tester.pump();
+    expect(tester.getRect(_composer()).height, before.height);
   });
 
   testWidgets("a note's editable glyphs are legible against its paper",

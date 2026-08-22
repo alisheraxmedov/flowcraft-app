@@ -178,6 +178,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         final textTarget = _topMostTextTarget(canvas);
         if (textTarget != null && _isDoubleTap(textTarget.id)) {
           _clearTapMemory();
+          _collapseStickiesExcept(textTarget.id);
           _beginTextEditOn(textTarget);
           _setConsumed(true);
           return;
@@ -189,6 +190,19 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         // that leaves both reachable: a line has these two handles and
         // nothing else, while the box keeps seven other ways to be resized.
         final endpointTarget = _endpointTargetAt(screen);
+        // Resolved before the session starts, because the press target is
+        // also what decides which open note survives this click. The hit
+        // test runs whether or not a handle won, so that a press on a
+        // note's own resize handle keeps that note open.
+        final resizeTarget =
+            endpointTarget == null ? _resizeTargetAt(screen) : null;
+        final hit = endpointTarget == null && resizeTarget == null
+            ? _ctrl.elementAt(canvas, tolerance: _canvasHitTolerance)
+            : null;
+        _collapseStickiesExcept(
+          endpointTarget?.element.id ?? resizeTarget?.element.id ?? hit?.id,
+        );
+
         if (endpointTarget != null) {
           final (:element, :endpoint, :grabbed, :fixed) = endpointTarget;
           _ctrl.beginDragSession();
@@ -206,7 +220,6 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
           return;
         }
 
-        final resizeTarget = _resizeTargetAt(screen);
         if (resizeTarget != null) {
           _ctrl.beginDragSession();
           _interaction.begin(SketchDragSession(
@@ -223,7 +236,6 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         }
 
         final additive = HardwareKeyboard.instance.isShiftPressed;
-        final hit = _ctrl.elementAt(canvas, tolerance: _canvasHitTolerance);
         if (hit != null) {
           // A group is one object to the pointer, so every path here goes
           // through the whole membership, never the single element hit.
@@ -277,7 +289,10 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         return;
 
       case SketchTool.eraser:
+        // Erase first: a note under the eraser is gone, and collapsing it
+        // on the way would only cost a repaint.
         _eraseAt(canvas);
+        _collapseStickiesExcept(null);
         _interaction.begin(SketchDragSession(
           kind: SketchSessionKind.erase,
           startCanvas: canvas,
@@ -289,6 +304,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
 
       case SketchTool.freedraw:
         _ctrl.clearSelection();
+        _collapseStickiesExcept(null);
         _interaction.begin(SketchDragSession(
           kind: SketchSessionKind.createFreedraw,
           startCanvas: canvas,
@@ -307,6 +323,9 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
       case SketchTool.arrow:
       case SketchTool.sticky:
         _ctrl.clearSelection();
+        // Drawing a new shape is a click outside every open note, the
+        // sticky tool included: starting a second note closes the first.
+        _collapseStickiesExcept(null);
         _interaction.begin(SketchDragSession(
           kind: SketchSessionKind.createBounded,
           startCanvas: canvas,
@@ -321,6 +340,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         // Text tool: tap on a text-bearing element to edit its label, tap
         // on empty space to create a new free-floating SketchText.
         final target = _topMostTextTarget(canvas);
+        _collapseStickiesExcept(target?.id);
         if (target != null) {
           _beginTextEditOn(target);
         } else {
@@ -331,6 +351,12 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
 
       case SketchTool.hand:
         // Pan tool delegates to the underlying canvas.
+        //
+        // And leaves open notes open: a pan is navigation, not a click on
+        // the board — scrolling a conversation does not dismiss the message
+        // you were reading. This is also why collapse lives here and not in
+        // the canvas widget's own pointer handling, which cannot tell the
+        // two apart.
         _setConsumed(false);
         return;
     }
@@ -472,6 +498,32 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
       _ctrl.setStickyCollapsed(target.id, false);
     }
     _ctrl.beginTextEdit(elementId: target.id);
+  }
+
+  /// Closes every open sticky note the press did not land on.
+  ///
+  /// The one rule a user can hold: **a note is open while the pointer is on
+  /// it, and a click anywhere else closes it — every time.** Editing is
+  /// orthogonal: if that click also ends an edit, the editor's `TapRegion`
+  /// commits the text a moment later, and the commit finds the note already
+  /// closed. Hanging collapse off the commit alone is how the first version
+  /// closed a note exactly once — the second time round there was no edit
+  /// to commit, so nothing fired and the bubble stayed put.
+  ///
+  /// Runs on pointer-**down**, before any session begins, so the board
+  /// reacts the instant the button goes down rather than when a marquee
+  /// ends — and so the drag snapshot `beginDragSession` arms already holds
+  /// the closed state, keeping an undo of the drag from reopening the note.
+  ///
+  /// "Anywhere else" is anywhere this handler sees. Clicks on app chrome —
+  /// the toolbar, the properties panel — never reach the canvas, so a note
+  /// stays open through them; the user is doing something else, and the
+  /// note can wait for the next click on the board. [keep] is whatever the
+  /// press resolved to: the note itself, one of its handles, or `null` for
+  /// empty canvas. Another note counts as "elsewhere", so clicking from one
+  /// open note to the next closes the first.
+  void _collapseStickiesExcept(String? keep) {
+    _ctrl.collapseExpandedStickies(except: keep);
   }
 
   /// Opens a collapsed note that was clicked rather than dragged.
