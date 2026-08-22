@@ -3,6 +3,8 @@ import 'package:flutter/painting.dart' show Rect;
 import 'dart:ui' show Offset;
 
 import 'package:flowcraft/core/domain/sketch_hit_test.dart';
+import 'package:flowcraft/core/serialization/sketch_serializer.dart';
+import 'package:flowcraft/core/utils/id_generator.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
@@ -37,8 +39,11 @@ class SketchController extends ChangeNotifier {
   String? _editingElementId;
   Offset? _editingCanvasPosition;
 
+  int _droppedOnLoad = 0;
+
   List<SketchElement>? _cachedElements;
   Set<String>? _cachedSelectedIds;
+  Map<String, List<String>>? _cachedGroups;
 
   // ── Getters ────────────────────────────────────────────────────────────
 
@@ -57,6 +62,18 @@ class SketchController extends ChangeNotifier {
 
   bool get canUndo => _history.canUndo;
   bool get canRedo => _history.canRedo;
+
+  /// How many elements the open scene's file held that failed to decode, as
+  /// reported to [loadScene]. `0` for a clean load.
+  int get droppedOnLoad => _droppedOnLoad;
+
+  /// Whether the canvas holds *less* than the file it came from.
+  ///
+  /// Autosave must not write while this is true: the reduced scene would
+  /// overwrite the elements that failed to load and make a recoverable file
+  /// permanently lossy. The user has to be told, and to accept the loss via
+  /// [acknowledgePartialScene], before the file may be rewritten.
+  bool get sceneIsPartial => _droppedOnLoad > 0;
 
   bool isSelected(String id) => _selectedIds.contains(id);
   bool get hasSelection => _selectedIds.isNotEmpty;
@@ -189,6 +206,29 @@ class SketchController extends ChangeNotifier {
     _bumpPaint();
   }
 
+  /// Moves a linear element's (line/arrow) [start] and/or [end] point.
+  /// No-op for anything else. Bracket a continuous endpoint drag with
+  /// [beginDragSession] / [endDragSession], exactly like [resizeElement].
+  void updateLinear(String id, {Offset? start, Offset? end}) {
+    if (start == null && end == null) return;
+    final idx = _indexOf(id);
+    if (idx < 0) return;
+    final el = _elements[idx];
+    final SketchElement? updated = switch (el) {
+      SketchLine l => l.copyWith(start: start, end: end),
+      SketchArrow a => a.copyWith(start: start, end: end),
+      _ => null,
+    };
+    if (updated == null) return;
+    // A pointer parked on a handle delivers plenty of zero-delta moves;
+    // none of them should be what commits the drag's history entry.
+    if (_endpointsOf(updated) == _endpointsOf(el)) return;
+    _commitDragHistory();
+    _elements[idx] = updated;
+    _invalidateCache();
+    _bumpPaint();
+  }
+
   /// Restyles every selected element by running [transform] over its current
   /// style. Returns how many elements actually changed.
   ///
@@ -261,10 +301,19 @@ class SketchController extends ChangeNotifier {
   /// canvas — which autosave would then persist into the wrong file. Any
   /// in-flight drag or text edit is abandoned too, since it belongs to a
   /// scene that is no longer on screen.
-  void loadScene(Iterable<SketchElement> newElements) {
+  ///
+  /// [droppedOnLoad] is how many elements the file held that could not be
+  /// decoded (see [SketchSerializer.load]). Pass it, and the scene is marked
+  /// [sceneIsPartial] until [acknowledgePartialScene] clears it — see that
+  /// getter for what the caller owes the user before saving.
+  void loadScene(
+    Iterable<SketchElement> newElements, {
+    int droppedOnLoad = 0,
+  }) {
     _elements
       ..clear()
       ..addAll(newElements);
+    _droppedOnLoad = droppedOnLoad;
     _selectedIds.clear();
     _history.clear();
     _dragInProgress = false;
@@ -294,6 +343,199 @@ class SketchController extends ChangeNotifier {
     _invalidateCache();
     _cachedSelectedIds = null;
     _bumpPaint();
+  }
+
+  /// Accepts the loss reported by [sceneIsPartial], re-arming autosave.
+  ///
+  /// Only the user can make this call — it is the moment their file stops
+  /// containing the elements this build could not read.
+  void acknowledgePartialScene() {
+    if (_droppedOnLoad == 0) return;
+    _droppedOnLoad = 0;
+    notifyListeners();
+  }
+
+  // ── Duplicate / clipboard ──────────────────────────────────────────────
+
+  /// Duplicates every selected element, offset by [offset], and leaves the
+  /// copies selected in the originals' place. Returns how many were made.
+  ///
+  /// One history entry for the whole batch, like [applyStyleToSelected].
+  int duplicateSelected({Offset offset = const Offset(16, 16)}) {
+    final sources = _selectedInOrder();
+    if (sources.isEmpty) return 0;
+    _pushHistory();
+    return _addCopies(sources, offset);
+  }
+
+  /// The current selection as a [SketchSerializer] payload for the system
+  /// clipboard, or `null` when nothing is selected.
+  ///
+  /// The scene format rather than a bespoke one, so a selection copied in
+  /// one FlowCraft window pastes into another — and into a saved `.json`
+  /// scene — with no second parser to keep in step with this one.
+  String? copySelectionToJson() {
+    final selected = _selectedInOrder();
+    if (selected.isEmpty) return null;
+    return SketchSerializer.serialize(selected);
+  }
+
+  /// Adds the elements encoded in [json] with fresh ids and selects them.
+  /// Returns how many were added, or `0` if the payload is unusable.
+  ///
+  /// [json] is whatever the system clipboard happened to hold, so this never
+  /// throws into the UI: text that isn't JSON, JSON that isn't a scene, and
+  /// a scene from a newer schema version all give `0`, while individual
+  /// unparseable elements are skipped the way opening a file skips them.
+  /// A paste dropping elements is *not* the data-loss case [sceneIsPartial]
+  /// guards — nothing is being overwritten, so it stays out of that flag.
+  ///
+  /// [offset] translates every pasted element rather than positioning them
+  /// absolutely (pass `Offset.zero` to paste in place). It defaults to the
+  /// nudge [duplicateSelected] uses, so a paste back into the window it was
+  /// copied from doesn't land invisibly on top of the original.
+  int pasteFromJson(String json, {Offset? offset}) {
+    final List<SketchElement> parsed;
+    try {
+      parsed = SketchSerializer.loadJson(json).elements;
+    } catch (_) {
+      return 0;
+    }
+    if (parsed.isEmpty) return 0;
+    _pushHistory();
+    return _addCopies(parsed, offset ?? const Offset(16, 16));
+  }
+
+  // ── Z-order ────────────────────────────────────────────────────────────
+
+  /// Moves the selection above everything else, keeping the selected
+  /// elements in the order they already had relative to each other.
+  void bringToFront() {
+    if (_selectedIds.isEmpty) return;
+    final (selected, others) = _partitionBySelection();
+    _applyOrder([...others, ...selected]);
+  }
+
+  /// Moves the selection below everything else, preserving its internal
+  /// order.
+  void sendToBack() {
+    if (_selectedIds.isEmpty) return;
+    final (selected, others) = _partitionBySelection();
+    _applyOrder([...selected, ...others]);
+  }
+
+  /// Moves the selection one step up the stack.
+  ///
+  /// A non-contiguous selection travels as independent runs: each contiguous
+  /// block steps over the single unselected element above it, so a block
+  /// already at the top stays put while the others still advance. The
+  /// alternative — compacting the selection into one block — would reorder
+  /// elements the user never selected, which is a far bigger surprise than
+  /// one block not moving.
+  void bringForward() {
+    if (_selectedIds.isEmpty) return;
+    final next = List<SketchElement>.of(_elements);
+    // Top-down, so moving one run can't disturb a run not yet visited.
+    var i = next.length - 1;
+    while (i >= 0) {
+      if (!_selectedIds.contains(next[i].id)) {
+        i--;
+        continue;
+      }
+      final end = i;
+      while (i >= 0 && _selectedIds.contains(next[i].id)) {
+        i--;
+      }
+      // Drop the blocker below the run instead of moving the run itself:
+      // one list operation, and the run's internal order can't shift.
+      if (end < next.length - 1) next.insert(i + 1, next.removeAt(end + 1));
+    }
+    _applyOrder(next);
+  }
+
+  /// Moves the selection one step down the stack — the mirror of
+  /// [bringForward], including its run-by-run rule.
+  void sendBackward() {
+    if (_selectedIds.isEmpty) return;
+    final next = List<SketchElement>.of(_elements);
+    var i = 0;
+    while (i < next.length) {
+      if (!_selectedIds.contains(next[i].id)) {
+        i++;
+        continue;
+      }
+      final start = i;
+      while (i < next.length && _selectedIds.contains(next[i].id)) {
+        i++;
+      }
+      if (start > 0) next.insert(i - 1, next.removeAt(start - 1));
+    }
+    _applyOrder(next);
+  }
+
+  // ── Grouping ───────────────────────────────────────────────────────────
+
+  /// Puts every selected element into one new group.
+  ///
+  /// A selection spanning several existing groups is *flattened* into the
+  /// new one rather than nested inside it: [SketchElement.groupId] is a flat
+  /// field with no parent to nest into, and faking a hierarchy on top of it
+  /// would leave the gesture layer guessing which level a click selects.
+  void groupSelected() {
+    // A group of one is just the element; grouping it would only cost an
+    // undo entry that changes nothing the user can see.
+    if (_selectedIds.length < 2) return;
+    if (_selectionIsExactlyOneGroup()) return;
+
+    final groupId = IdGenerator.generate('group');
+    final grouped = <int, SketchElement>{};
+    for (var i = 0; i < _elements.length; i++) {
+      final el = _elements[i];
+      if (!_selectedIds.contains(el.id)) continue;
+      grouped[i] = el.withGroupId(groupId);
+    }
+    if (grouped.isEmpty) return;
+
+    _pushHistory();
+    grouped.forEach((i, el) => _elements[i] = el);
+    _invalidateCache();
+    _bumpPaint();
+  }
+
+  /// Clears the group of every selected element. No-op when none is grouped.
+  void ungroupSelected() {
+    if (_selectedIds.isEmpty) return;
+    final ungrouped = <int, SketchElement>{};
+    for (var i = 0; i < _elements.length; i++) {
+      final el = _elements[i];
+      if (!_selectedIds.contains(el.id) || el.groupId == null) continue;
+      ungrouped[i] = el.withGroupId(null);
+    }
+    if (ungrouped.isEmpty) return;
+
+    _pushHistory();
+    ungrouped.forEach((i, el) => _elements[i] = el);
+    _invalidateCache();
+    _bumpPaint();
+  }
+
+  /// Expands [ids] to include every element sharing a group with any of
+  /// them, so clicking one member selects the whole group.
+  ///
+  /// Called from pointer-down on every click, so it runs off a group index
+  /// built once per scene mutation rather than scanning the element list.
+  /// Ids that aren't on the canvas pass through untouched — [selectMany] is
+  /// what validates them.
+  Set<String> expandToGroups(Iterable<String> ids) {
+    final groups = _groups;
+    if (groups.isEmpty) return ids.toSet();
+    final expanded = <String>{};
+    for (final id in ids) {
+      expanded.add(id);
+      final members = groups[id];
+      if (members != null) expanded.addAll(members);
+    }
+    return expanded;
   }
 
   // ── Selection (NOT history-tracked) ────────────────────────────────────
@@ -456,8 +698,141 @@ class SketchController extends ChangeNotifier {
     return -1;
   }
 
+  /// Endpoints of a linear element, `null` for anything else.
+  static (Offset, Offset)? _endpointsOf(SketchElement el) => switch (el) {
+        SketchLine l => (l.start, l.end),
+        SketchArrow a => (a.start, a.end),
+        _ => null,
+      };
+
+  /// Selected elements in stacking order — the order they were drawn in,
+  /// not the order they happen to have been clicked in.
+  List<SketchElement> _selectedInOrder() => [
+        for (final el in _elements)
+          if (_selectedIds.contains(el.id)) el,
+      ];
+
+  (List<SketchElement>, List<SketchElement>) _partitionBySelection() {
+    final selected = <SketchElement>[];
+    final others = <SketchElement>[];
+    for (final el in _elements) {
+      (_selectedIds.contains(el.id) ? selected : others).add(el);
+    }
+    return (selected, others);
+  }
+
+  /// Appends fresh-id copies of [sources] on top of the stack and selects
+  /// them, returning the count. Callers push history first, so duplicate and
+  /// paste each stay exactly one entry.
+  int _addCopies(List<SketchElement> sources, Offset offset) {
+    final copies = _reidentify(sources, offset);
+    _elements.addAll(copies);
+    _selectedIds
+      ..clear()
+      ..addAll(copies.map((e) => e.id));
+    _invalidateCache();
+    _cachedSelectedIds = null;
+    _bumpPaint();
+    return copies.length;
+  }
+
+  /// Copies [sources] with fresh ids, remapped groups, and an [offset] shift.
+  ///
+  /// Ids are minted against the ids already on the canvas, because a paste
+  /// of a selection copied from *this* scene arrives carrying the originals'
+  /// ids — and two elements sharing an id hand selection, hit-testing and
+  /// MCP addressing a single handle for both.
+  ///
+  /// A group among [sources] is copied as a *new* group for the same reason:
+  /// reusing the source group id would fuse the copies to the originals, so
+  /// dragging one would drag the other.
+  List<SketchElement> _reidentify(List<SketchElement> sources, Offset offset) {
+    final taken = <String>{for (final el in _elements) el.id};
+    final groups = <String, String>{};
+    final copies = <SketchElement>[];
+    for (final source in sources) {
+      var id = IdGenerator.generate('sketch');
+      while (!taken.add(id)) {
+        id = IdGenerator.generate('sketch');
+      }
+      var copy = source.withId(id);
+      final group = source.groupId;
+      if (group != null) {
+        copy = copy.withGroupId(
+          groups.putIfAbsent(group, () => IdGenerator.generate('group')),
+        );
+      }
+      copies.add(offset == Offset.zero ? copy : copy.translate(offset));
+    }
+    return copies;
+  }
+
+  /// Commits a reordered element list as one history entry, or does nothing
+  /// when the order is unchanged — a z-order command on a selection already
+  /// at the top would otherwise leave an entry that undoes nothing visible.
+  void _applyOrder(List<SketchElement> next) {
+    var changed = false;
+    for (var i = 0; i < next.length; i++) {
+      if (!identical(next[i], _elements[i])) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return;
+    _pushHistory();
+    _elements
+      ..clear()
+      ..addAll(next);
+    _invalidateCache();
+    _bumpPaint();
+  }
+
+  /// Element id → every id in that element's group, itself included.
+  ///
+  /// Rebuilt once per scene mutation rather than per lookup, because
+  /// [expandToGroups] runs on every pointer-down. Members of one group share
+  /// a single list instance, so the index costs one map entry per grouped
+  /// element and copies nothing.
+  Map<String, List<String>> get _groups => _cachedGroups ??= _buildGroups();
+
+  Map<String, List<String>> _buildGroups() {
+    final byGroup = <String, List<String>>{};
+    for (final el in _elements) {
+      final group = el.groupId;
+      if (group == null) continue;
+      (byGroup[group] ??= <String>[]).add(el.id);
+    }
+    final index = <String, List<String>>{};
+    for (final members in byGroup.values) {
+      for (final id in members) {
+        index[id] = members;
+      }
+    }
+    return index;
+  }
+
+  /// Whether the selection is exactly the membership of one existing group.
+  /// Regrouping that changes only the group's id, which the user sees as an
+  /// undo entry that does nothing.
+  bool _selectionIsExactlyOneGroup() {
+    List<String>? members;
+    var selected = 0;
+    for (final el in _elements) {
+      if (!_selectedIds.contains(el.id)) continue;
+      final group = _groups[el.id];
+      // Ungrouped, or a second group in the selection: a real regroup.
+      if (group == null || (members != null && !identical(group, members))) {
+        return false;
+      }
+      members = group;
+      selected++;
+    }
+    return members != null && members.length == selected;
+  }
+
   void _invalidateCache() {
     _cachedElements = null;
+    _cachedGroups = null;
   }
 
   void _bumpPaint() {

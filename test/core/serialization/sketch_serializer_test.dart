@@ -77,5 +77,114 @@ void main() {
       final encodedPoints = encoded['points'] as List;
       expect(encodedPoints.length, lessThan(points.length));
     });
+
+    test('round-trips groupId without a schema bump', () {
+      final source = <SketchElement>[
+        SketchRectangle.create(id: 'a', rect: const Rect.fromLTWH(0, 0, 10, 10))
+            .withGroupId('g1'),
+        SketchEllipse.create(id: 'b', rect: const Rect.fromLTWH(0, 0, 10, 10))
+            .withGroupId('g1'),
+      ];
+
+      final map = SketchSerializer.toMap(source);
+      expect(map['version'], 1);
+
+      final restored = SketchSerializer.fromMap(map);
+      expect(restored.map((e) => e.groupId), ['g1', 'g1']);
+    });
+  });
+
+  group('SketchSerializer.load (tolerant)', () {
+    /// A scene of three rectangles whose middle element is [broken].
+    Map<String, dynamic> sceneWith(Object broken) => <String, dynamic>{
+          'version': SketchSerializer.schemaVersion,
+          'elements': <dynamic>[
+            SketchRectangle.create(
+              id: 'first',
+              rect: const Rect.fromLTWH(0, 0, 10, 10),
+            ).toJson(),
+            broken,
+            SketchRectangle.create(
+              id: 'last',
+              rect: const Rect.fromLTWH(20, 0, 10, 10),
+            ).toJson(),
+          ],
+        };
+
+    const unknownType = <String, dynamic>{
+      'type': 'wormhole',
+      'id': 'middle',
+      'style': <String, dynamic>{},
+    };
+
+    test('keeps the readable elements when one has an unknown type', () {
+      // The whole point: one bad element used to make the project
+      // unopenable, so the user lost every *other* element in the file too.
+      final loaded = SketchSerializer.load(sceneWith(unknownType));
+
+      expect(loaded.elements.map((e) => e.id), ['first', 'last']);
+      expect(loaded.isComplete, isFalse);
+      expect(loaded.droppedCount, 1);
+      expect(loaded.errors.single.index, 1);
+      expect(loaded.errors.single.id, 'middle');
+      expect(loaded.errors.single.type, 'wormhole');
+    });
+
+    test('keeps the rest when an element is missing a required field', () {
+      final loaded = SketchSerializer.load(sceneWith(<String, dynamic>{
+        'type': 'rectangle',
+        'id': 'middle',
+        // no 'style', no 'rect'
+      }));
+
+      expect(loaded.elements.map((e) => e.id), ['first', 'last']);
+      expect(loaded.errors.single.id, 'middle');
+    });
+
+    test('keeps the rest when an entry is not an object at all', () {
+      final loaded = SketchSerializer.load(sceneWith('not an element'));
+
+      expect(loaded.elements.map((e) => e.id), ['first', 'last']);
+      expect(loaded.errors.single.index, 1);
+      expect(loaded.errors.single.id, isNull);
+      expect(loaded.errors.single.type, isNull);
+    });
+
+    test('reports nothing for a clean scene', () {
+      final loaded = SketchSerializer.loadJson(
+        SketchSerializer.serialize([
+          SketchRectangle.create(
+            id: 'a',
+            rect: const Rect.fromLTWH(0, 0, 10, 10),
+          ),
+        ]),
+      );
+
+      expect(loaded.elements.single.id, 'a');
+      expect(loaded.isComplete, isTrue);
+      expect(loaded.droppedCount, 0);
+    });
+
+    test('still refuses a newer schema version outright', () {
+      // Not one bad element: nothing here knows which parts of a newer
+      // payload are safe to keep, and keeping some of it would corrupt the
+      // file on the next save.
+      expect(
+        () => SketchSerializer.load({
+          'version': SketchSerializer.schemaVersion + 1,
+          'elements': const [],
+        }),
+        throwsStateError,
+      );
+    });
+
+    test('fromMap stays strict, so callers that want a loud failure keep it', () {
+      // The MCP draw path rejects bad input rather than silently dropping
+      // the shape the agent asked for.
+      expect(
+        () => SketchSerializer.fromMap(sceneWith(unknownType)),
+        throwsStateError,
+      );
+    });
   });
 }

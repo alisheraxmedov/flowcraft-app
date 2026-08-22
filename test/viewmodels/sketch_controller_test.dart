@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flowcraft/core/serialization/sketch_serializer.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
@@ -301,6 +303,458 @@ void main() {
       c.undo();
       expect(c.elements.single.id, 'new');
       expect(c.canUndo, isFalse);
+    });
+  });
+
+  group('SketchController.updateLinear', () {
+    SketchLine line() => SketchLine.create(
+          id: 'l',
+          start: Offset.zero,
+          end: const Offset(10, 0),
+        );
+
+    test('moves one endpoint and leaves the other alone', () {
+      final c = SketchController(initialElements: [line()]);
+      c.updateLinear('l', end: const Offset(50, 20));
+
+      final updated = c.elements.single as SketchLine;
+      expect(updated.start, Offset.zero);
+      expect(updated.end, const Offset(50, 20));
+    });
+
+    test('moves an arrow, and does nothing to a non-linear element', () {
+      final c = SketchController(initialElements: [
+        SketchArrow.create(
+          id: 'a',
+          start: Offset.zero,
+          end: const Offset(5, 5),
+        ),
+        _rect(id: 'r'),
+      ]);
+
+      c.updateLinear('a', start: const Offset(1, 1));
+      expect((c.elements.first as SketchArrow).start, const Offset(1, 1));
+
+      final gen = c.paintGen;
+      c.updateLinear('r', start: const Offset(9, 9));
+      expect(c.paintGen, gen);
+      expect(c.elements[1].bounds, const Rect.fromLTWH(0, 0, 10, 10));
+    });
+
+    test('an endpoint drag collapses into exactly one entry', () {
+      final c = SketchController(initialElements: [line()]);
+
+      c.beginDragSession();
+      for (final dx in <double>[20, 30, 40]) {
+        c.updateLinear('l', end: Offset(dx, 0));
+      }
+      c.endDragSession();
+
+      expect((c.elements.single as SketchLine).end, const Offset(40, 0));
+      c.undo();
+      expect((c.elements.single as SketchLine).end, const Offset(10, 0));
+      expect(c.canUndo, isFalse);
+    });
+
+    test('a session whose calls move nothing leaves history untouched', () {
+      final c = SketchController(initialElements: [line()]);
+
+      c.beginDragSession();
+      // A pointer parked on the handle: same endpoint, over and over.
+      c.updateLinear('l', end: const Offset(10, 0));
+      c.updateLinear('l');
+      c.endDragSession();
+
+      expect(c.canUndo, isFalse);
+    });
+  });
+
+  group('SketchController.duplicateSelected', () {
+    test('copies get fresh ids, the offset, and the selection', () {
+      final c = SketchController(initialElements: [
+        _rect(id: 'a'),
+        _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
+      ]);
+      c.selectMany({'a', 'b'});
+
+      expect(c.duplicateSelected(), 2);
+
+      expect(c.elements.length, 4);
+      expect(c.elements.take(2).map((e) => e.id), ['a', 'b']);
+
+      final copies = c.elements.skip(2).toList();
+      // Fresh ids: two elements sharing one would give selection,
+      // hit-testing and MCP addressing a single handle for both.
+      expect(copies.map((e) => e.id).toSet().intersection({'a', 'b'}), isEmpty);
+      expect(copies.map((e) => e.id).toSet().length, 2);
+      expect(copies[0].bounds, const Rect.fromLTWH(16, 16, 10, 10));
+      expect(copies[1].bounds, const Rect.fromLTWH(66, 16, 10, 10));
+      expect(c.selectedIds, copies.map((e) => e.id).toSet());
+    });
+
+    test('is exactly one undo entry', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      c.select('a');
+
+      c.duplicateSelected();
+      expect(c.elements.length, 2);
+
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('duplicating a group makes a second, independent group', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+      );
+      c.selectMany({'a', 'b'});
+      c.groupSelected();
+      final original = c.elements.first.groupId;
+
+      c.duplicateSelected();
+
+      final copies = c.elements.skip(2).toList();
+      expect(copies[0].groupId, isNotNull);
+      expect(copies[0].groupId, copies[1].groupId);
+      // Reusing the source group id would fuse copy to original, so
+      // dragging one would drag the other.
+      expect(copies[0].groupId, isNot(original));
+      expect(c.elements.first.groupId, original);
+    });
+
+    test('is a no-op without a selection', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      final gen = c.paintGen;
+
+      expect(c.duplicateSelected(), 0);
+      expect(c.elements.length, 1);
+      expect(c.paintGen, gen);
+      expect(c.canUndo, isFalse);
+    });
+  });
+
+  group('SketchController copy / paste', () {
+    test('a copied selection pastes back with fresh ids', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+      );
+      c.select('a');
+
+      final json = c.copySelectionToJson()!;
+      expect(c.pasteFromJson(json), 1);
+
+      expect(c.elements.map((e) => e.id).take(2), ['a', 'b']);
+      expect(c.elements.length, 3);
+      expect(c.elements.last.id, isNot('a'));
+      expect(c.selectedIds, {c.elements.last.id});
+    });
+
+    test('copySelectionToJson is null without a selection', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      expect(c.copySelectionToJson(), isNull);
+    });
+
+    test('pastes a scene copied in another window', () {
+      // Going through SketchSerializer is what makes this work: the
+      // clipboard carries the same format a saved project holds.
+      final json = SketchSerializer.serialize([
+        _rect(id: 'a'),
+        _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
+      ]);
+      final c = SketchController();
+
+      expect(c.pasteFromJson(json, offset: Offset.zero), 2);
+      expect(c.elements.map((e) => e.bounds), [
+        const Rect.fromLTWH(0, 0, 10, 10),
+        const Rect.fromLTWH(50, 0, 10, 10),
+      ]);
+    });
+
+    test('never throws on hostile clipboard text', () {
+      final c = SketchController();
+
+      // Whatever the system clipboard happened to hold. None of it may
+      // reach the UI as an exception.
+      for (final hostile in <String>[
+        '',
+        'not json at all',
+        '[]',
+        'null',
+        '{}',
+        '{"version": 1}',
+        '{"version": 1, "elements": "nope"}',
+        '{"version": 999, "elements": []}',
+        '{"version": 1, "elements": [null]}',
+      ]) {
+        expect(c.pasteFromJson(hostile), 0, reason: 'input: "$hostile"');
+      }
+
+      expect(c.elements, isEmpty);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('skips an unparseable element and pastes the rest', () {
+      final c = SketchController();
+      final json = jsonEncode({
+        'version': SketchSerializer.schemaVersion,
+        'elements': [
+          _rect(id: 'a').toJson(),
+          {'type': 'wormhole', 'id': 'x'},
+        ],
+      });
+
+      expect(c.pasteFromJson(json), 1);
+      // A lossy *paste* overwrites nothing, so it is not the data-loss case
+      // sceneIsPartial exists to guard.
+      expect(c.sceneIsPartial, isFalse);
+    });
+
+    test('is exactly one undo entry', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      c.select('a');
+      final json = c.copySelectionToJson()!;
+
+      c.pasteFromJson(json);
+      expect(c.elements.length, 2);
+
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.canUndo, isFalse);
+    });
+  });
+
+  group('SketchController z-order', () {
+    SketchController scene() => SketchController(initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+          _rect(id: 'd'),
+        ]);
+
+    List<String> order(SketchController c) =>
+        c.elements.map((e) => e.id).toList();
+
+    test('bringToFront keeps the selection in its own order', () {
+      final c = scene();
+      c.selectMany({'a', 'c'});
+      c.bringToFront();
+      expect(order(c), ['b', 'd', 'a', 'c']);
+    });
+
+    test('sendToBack keeps the selection in its own order', () {
+      final c = scene();
+      c.selectMany({'b', 'd'});
+      c.sendToBack();
+      expect(order(c), ['b', 'd', 'a', 'c']);
+    });
+
+    test('bringForward moves each run one step, independently', () {
+      final c = scene();
+      // Non-contiguous: 'a' has room to rise, 'd' is already on top and
+      // must simply stay there rather than dragging 'a' up beside it.
+      c.selectMany({'a', 'd'});
+      c.bringForward();
+      expect(order(c), ['b', 'a', 'c', 'd']);
+    });
+
+    test('sendBackward moves each run one step, independently', () {
+      final c = scene();
+      c.selectMany({'a', 'd'});
+      c.sendBackward();
+      expect(order(c), ['a', 'b', 'd', 'c']);
+    });
+
+    test('a contiguous run keeps its internal order', () {
+      final c = scene();
+      c.selectMany({'a', 'b'});
+      c.bringForward();
+      expect(order(c), ['c', 'a', 'b', 'd']);
+    });
+
+    test('a selection already at the front records nothing', () {
+      final c = scene();
+      c.selectMany({'c', 'd'});
+
+      c.bringToFront();
+      c.bringForward();
+
+      expect(order(c), ['a', 'b', 'c', 'd']);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('is exactly one undo entry', () {
+      final c = scene();
+      c.select('a');
+
+      c.bringToFront();
+      expect(order(c), ['b', 'c', 'd', 'a']);
+
+      c.undo();
+      expect(order(c), ['a', 'b', 'c', 'd']);
+      expect(c.canUndo, isFalse);
+    });
+  });
+
+  group('SketchController grouping', () {
+    test('groupSelected puts the selection in one new group', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+      );
+      c.selectMany({'a', 'b'});
+
+      c.groupSelected();
+
+      final group = c.elements[0].groupId;
+      expect(group, isNotNull);
+      expect(c.elements[1].groupId, group);
+      expect(c.elements[2].groupId, isNull);
+
+      c.undo();
+      expect(c.elements.map((e) => e.groupId), everyElement(isNull));
+      expect(c.canUndo, isFalse);
+    });
+
+    test('flattens a selection spanning two groups into one', () {
+      final c = SketchController(initialElements: [
+        _rect(id: 'a'),
+        _rect(id: 'b'),
+        _rect(id: 'c'),
+        _rect(id: 'd'),
+      ]);
+      c.selectMany({'a', 'b'});
+      c.groupSelected();
+      final first = c.elements[0].groupId;
+      c.selectMany({'c', 'd'});
+      c.groupSelected();
+      final second = c.elements[2].groupId;
+
+      c.selectMany({'a', 'b', 'c', 'd'});
+      c.groupSelected();
+
+      // Flat, not nested: groupId has no parent to nest into.
+      final merged = c.elements.map((e) => e.groupId).toSet();
+      expect(merged.length, 1);
+      expect(merged.single, isNot(first));
+      expect(merged.single, isNot(second));
+    });
+
+    test('re-grouping an intact group records nothing', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+      );
+      c.selectMany({'a', 'b'});
+      c.groupSelected();
+      final group = c.elements.first.groupId;
+
+      c.groupSelected();
+
+      expect(c.elements.first.groupId, group);
+      c.undo();
+      expect(c.elements.map((e) => e.groupId), everyElement(isNull));
+      expect(c.canUndo, isFalse);
+    });
+
+    test('a single element cannot be grouped', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      c.select('a');
+
+      c.groupSelected();
+
+      expect(c.elements.single.groupId, isNull);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('ungroupSelected clears the group in one entry', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+      );
+      c.selectMany({'a', 'b'});
+      c.groupSelected();
+      final group = c.elements.first.groupId;
+
+      c.ungroupSelected();
+      expect(c.elements.map((e) => e.groupId), everyElement(isNull));
+
+      c.undo();
+      expect(c.elements.map((e) => e.groupId), everyElement(group));
+    });
+
+    test('ungroupSelected records nothing when nothing is grouped', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+      );
+      c.selectMany({'a', 'b'});
+
+      c.ungroupSelected();
+
+      expect(c.canUndo, isFalse);
+    });
+
+    test('expandToGroups pulls in the rest of a group', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+      );
+      c.selectMany({'a', 'b'});
+      c.groupSelected();
+
+      expect(c.expandToGroups({'a'}), {'a', 'b'});
+      expect(c.expandToGroups({'c'}), {'c'});
+      // Validating ids is selectMany's job, not this one's.
+      expect(c.expandToGroups({'gone'}), {'gone'});
+    });
+
+    test('expandToGroups sees grouping done after its first call', () {
+      final c = SketchController(
+        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+      );
+      // Primes the cached group index; a stale one would keep selecting
+      // yesterday's groups on every click.
+      expect(c.expandToGroups({'a'}), {'a'});
+
+      c.selectMany({'a', 'b'});
+      c.groupSelected();
+      expect(c.expandToGroups({'a'}), {'a', 'b'});
+
+      c.ungroupSelected();
+      expect(c.expandToGroups({'a'}), {'a'});
+    });
+  });
+
+  group('SketchController partial scenes', () {
+    test('a scene loaded with drops is marked partial', () {
+      final c = SketchController();
+
+      c.loadScene([_rect(id: 'a')], droppedOnLoad: 2);
+
+      expect(c.droppedOnLoad, 2);
+      // Autosave must not write over the file while this is true, or the
+      // two unreadable elements are gone for good.
+      expect(c.sceneIsPartial, isTrue);
+    });
+
+    test('a clean load clears the mark', () {
+      final c = SketchController();
+      c.loadScene([_rect(id: 'a')], droppedOnLoad: 2);
+
+      c.loadScene([_rect(id: 'b')]);
+
+      expect(c.sceneIsPartial, isFalse);
+      expect(c.droppedOnLoad, 0);
+    });
+
+    test('acknowledging clears it once and notifies', () {
+      final c = SketchController();
+      c.loadScene([_rect(id: 'a')], droppedOnLoad: 1);
+      var notified = 0;
+      c.addListener(() => notified++);
+
+      c.acknowledgePartialScene();
+      expect(c.sceneIsPartial, isFalse);
+      expect(notified, 1);
+
+      c.acknowledgePartialScene();
+      expect(notified, 1);
     });
   });
 }

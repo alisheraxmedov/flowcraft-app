@@ -16,6 +16,7 @@ sealed class SketchElement {
     required this.id,
     required this.style,
     this.angle = 0.0,
+    this.groupId,
   });
 
   final String id;
@@ -24,11 +25,29 @@ sealed class SketchElement {
   /// Rotation in radians, around the centre of [bounds].
   final double angle;
 
+  /// Group this element belongs to, or `null` when it stands alone.
+  ///
+  /// Groups are flat — an element is in one group or none, and nesting is
+  /// deliberately not modelled. Every transform below preserves it, because
+  /// a group that dissolves the moment it is dragged is worse than no
+  /// grouping at all.
+  final String? groupId;
+
   /// Axis-aligned bounding box in canvas-space (ignoring rotation).
   Rect get bounds;
 
   SketchElement copyWithStyle(SketchStyle newStyle);
   SketchElement translate(Offset delta);
+
+  /// Copy of this element under a different [id].
+  ///
+  /// [id] is `final`, so duplicate and paste need this to mint distinct
+  /// elements: two elements sharing an id give selection, hit-testing and
+  /// MCP addressing the same handle for both.
+  SketchElement withId(String id);
+
+  /// Copy of this element in group [groupId]; `null` ungroups it.
+  SketchElement withGroupId(String? groupId);
 
   Map<String, dynamic> toJson();
 
@@ -74,6 +93,7 @@ sealed class _SketchBoundedShape extends SketchElement {
     this.text,
     this.fontSize = 16.0,
     super.angle,
+    super.groupId,
   });
 
   final Rect rect;
@@ -93,26 +113,30 @@ class SketchRectangle extends _SketchBoundedShape {
     super.fontSize,
     this.cornerRadius = 0.0,
     super.angle,
+    super.groupId,
   });
 
   final double cornerRadius;
 
   SketchRectangle copyWith({
+    String? id,
     Rect? rect,
     SketchStyle? style,
     double? cornerRadius,
     double? angle,
-    Object? text = _textSentinel,
+    Object? text = _unset,
     double? fontSize,
+    Object? groupId = _unset,
   }) {
     return SketchRectangle(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       rect: rect ?? this.rect,
       cornerRadius: cornerRadius ?? this.cornerRadius,
       angle: angle ?? this.angle,
-      text: identical(text, _textSentinel) ? this.text : text as String?,
+      text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
@@ -123,6 +147,12 @@ class SketchRectangle extends _SketchBoundedShape {
   @override
   SketchRectangle translate(Offset delta) =>
       copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchRectangle withId(String id) => copyWith(id: id);
+
+  @override
+  SketchRectangle withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchRectangle.create({
     String? id,
@@ -152,6 +182,7 @@ class SketchRectangle extends _SketchBoundedShape {
         'angle': angle,
         if (text != null) 'text': text,
         'fontSize': fontSize,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchRectangle.fromJson(Map<String, dynamic> json) {
@@ -163,6 +194,7 @@ class SketchRectangle extends _SketchBoundedShape {
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
       text: json['text'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
@@ -175,22 +207,26 @@ class SketchEllipse extends _SketchBoundedShape {
     super.text,
     super.fontSize,
     super.angle,
+    super.groupId,
   });
 
   SketchEllipse copyWith({
+    String? id,
     Rect? rect,
     SketchStyle? style,
     double? angle,
-    Object? text = _textSentinel,
+    Object? text = _unset,
     double? fontSize,
+    Object? groupId = _unset,
   }) {
     return SketchEllipse(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       rect: rect ?? this.rect,
       angle: angle ?? this.angle,
-      text: identical(text, _textSentinel) ? this.text : text as String?,
+      text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
@@ -200,6 +236,12 @@ class SketchEllipse extends _SketchBoundedShape {
 
   @override
   SketchEllipse translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchEllipse withId(String id) => copyWith(id: id);
+
+  @override
+  SketchEllipse withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchEllipse.create({
     String? id,
@@ -226,6 +268,7 @@ class SketchEllipse extends _SketchBoundedShape {
         'angle': angle,
         if (text != null) 'text': text,
         'fontSize': fontSize,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchEllipse.fromJson(Map<String, dynamic> json) {
@@ -236,6 +279,7 @@ class SketchEllipse extends _SketchBoundedShape {
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
       text: json['text'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
@@ -248,22 +292,26 @@ class SketchDiamond extends _SketchBoundedShape {
     super.text,
     super.fontSize,
     super.angle,
+    super.groupId,
   });
 
   SketchDiamond copyWith({
+    String? id,
     Rect? rect,
     SketchStyle? style,
     double? angle,
-    Object? text = _textSentinel,
+    Object? text = _unset,
     double? fontSize,
+    Object? groupId = _unset,
   }) {
     return SketchDiamond(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       rect: rect ?? this.rect,
       angle: angle ?? this.angle,
-      text: identical(text, _textSentinel) ? this.text : text as String?,
+      text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
@@ -273,6 +321,12 @@ class SketchDiamond extends _SketchBoundedShape {
 
   @override
   SketchDiamond translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchDiamond withId(String id) => copyWith(id: id);
+
+  @override
+  SketchDiamond withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchDiamond.create({
     String? id,
@@ -299,6 +353,7 @@ class SketchDiamond extends _SketchBoundedShape {
         'angle': angle,
         if (text != null) 'text': text,
         'fontSize': fontSize,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchDiamond.fromJson(Map<String, dynamic> json) {
@@ -309,6 +364,7 @@ class SketchDiamond extends _SketchBoundedShape {
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
       text: json['text'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
@@ -321,22 +377,26 @@ class SketchTriangle extends _SketchBoundedShape {
     super.text,
     super.fontSize,
     super.angle,
+    super.groupId,
   });
 
   SketchTriangle copyWith({
+    String? id,
     Rect? rect,
     SketchStyle? style,
     double? angle,
-    Object? text = _textSentinel,
+    Object? text = _unset,
     double? fontSize,
+    Object? groupId = _unset,
   }) {
     return SketchTriangle(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       rect: rect ?? this.rect,
       angle: angle ?? this.angle,
-      text: identical(text, _textSentinel) ? this.text : text as String?,
+      text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
@@ -346,6 +406,12 @@ class SketchTriangle extends _SketchBoundedShape {
 
   @override
   SketchTriangle translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchTriangle withId(String id) => copyWith(id: id);
+
+  @override
+  SketchTriangle withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchTriangle.create({
     String? id,
@@ -372,6 +438,7 @@ class SketchTriangle extends _SketchBoundedShape {
         'angle': angle,
         if (text != null) 'text': text,
         'fontSize': fontSize,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchTriangle.fromJson(Map<String, dynamic> json) {
@@ -382,6 +449,7 @@ class SketchTriangle extends _SketchBoundedShape {
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
       text: json['text'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
@@ -394,6 +462,7 @@ class SketchSticky extends _SketchBoundedShape {
     super.text,
     super.fontSize,
     super.angle,
+    super.groupId,
     this.cornerRadius = 4.0,
   });
 
@@ -403,21 +472,24 @@ class SketchSticky extends _SketchBoundedShape {
   final double cornerRadius;
 
   SketchSticky copyWith({
+    String? id,
     Rect? rect,
     SketchStyle? style,
     double? angle,
     double? cornerRadius,
-    Object? text = _textSentinel,
+    Object? text = _unset,
     double? fontSize,
+    Object? groupId = _unset,
   }) {
     return SketchSticky(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       rect: rect ?? this.rect,
       angle: angle ?? this.angle,
       cornerRadius: cornerRadius ?? this.cornerRadius,
-      text: identical(text, _textSentinel) ? this.text : text as String?,
+      text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
@@ -426,6 +498,12 @@ class SketchSticky extends _SketchBoundedShape {
 
   @override
   SketchSticky translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchSticky withId(String id) => copyWith(id: id);
+
+  @override
+  SketchSticky withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchSticky.create({
     String? id,
@@ -460,6 +538,7 @@ class SketchSticky extends _SketchBoundedShape {
         'cornerRadius': cornerRadius,
         if (text != null) 'text': text,
         'fontSize': fontSize,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchSticky.fromJson(Map<String, dynamic> json) {
@@ -471,13 +550,14 @@ class SketchSticky extends _SketchBoundedShape {
       cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 4.0,
       text: json['text'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 20.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
 
 // Sentinel for nullable copyWith parameters (allows distinguishing
 // "no argument" from "explicit null").
-const Object _textSentinel = Object();
+const Object _unset = Object();
 
 // ─── Linear shapes (line / arrow) ─────────────────────────────────────────
 
@@ -488,6 +568,7 @@ sealed class _SketchLinear extends SketchElement {
     required this.start,
     required this.end,
     super.angle,
+    super.groupId,
   });
 
   final Offset start;
@@ -510,20 +591,24 @@ class SketchLine extends _SketchLinear {
     required super.start,
     required super.end,
     super.angle,
+    super.groupId,
   });
 
   SketchLine copyWith({
+    String? id,
     Offset? start,
     Offset? end,
     SketchStyle? style,
     double? angle,
+    Object? groupId = _unset,
   }) {
     return SketchLine(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       start: start ?? this.start,
       end: end ?? this.end,
       angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
@@ -533,6 +618,12 @@ class SketchLine extends _SketchLinear {
   @override
   SketchLine translate(Offset delta) =>
       copyWith(start: start + delta, end: end + delta);
+
+  @override
+  SketchLine withId(String id) => copyWith(id: id);
+
+  @override
+  SketchLine withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchLine.create({
     String? id,
@@ -556,6 +647,7 @@ class SketchLine extends _SketchLinear {
         'start': _offsetToJson(start),
         'end': _offsetToJson(end),
         'angle': angle,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchLine.fromJson(Map<String, dynamic> json) {
@@ -565,6 +657,7 @@ class SketchLine extends _SketchLinear {
       start: _offsetFromJson(json['start'] as Map<String, dynamic>),
       end: _offsetFromJson(json['end'] as Map<String, dynamic>),
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
@@ -577,24 +670,45 @@ class SketchArrow extends _SketchLinear {
     required super.end,
     this.arrowSize = 10.0,
     super.angle,
+    super.groupId,
+    this.startBinding,
+    this.endBinding,
   });
 
   final double arrowSize;
 
+  /// Shape this arrow's tail is attached to — reserved, always `null` for
+  /// now. See [SketchBinding] for why it exists before the feature does.
+  final SketchBinding? startBinding;
+
+  /// Shape this arrow's head is attached to — reserved, see [startBinding].
+  final SketchBinding? endBinding;
+
   SketchArrow copyWith({
+    String? id,
     Offset? start,
     Offset? end,
     SketchStyle? style,
     double? arrowSize,
     double? angle,
+    Object? groupId = _unset,
+    Object? startBinding = _unset,
+    Object? endBinding = _unset,
   }) {
     return SketchArrow(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       start: start ?? this.start,
       end: end ?? this.end,
       arrowSize: arrowSize ?? this.arrowSize,
       angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+      startBinding: identical(startBinding, _unset)
+          ? this.startBinding
+          : startBinding as SketchBinding?,
+      endBinding: identical(endBinding, _unset)
+          ? this.endBinding
+          : endBinding as SketchBinding?,
     );
   }
 
@@ -604,6 +718,12 @@ class SketchArrow extends _SketchLinear {
   @override
   SketchArrow translate(Offset delta) =>
       copyWith(start: start + delta, end: end + delta);
+
+  @override
+  SketchArrow withId(String id) => copyWith(id: id);
+
+  @override
+  SketchArrow withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchArrow.create({
     String? id,
@@ -630,6 +750,9 @@ class SketchArrow extends _SketchLinear {
         'end': _offsetToJson(end),
         'arrowSize': arrowSize,
         'angle': angle,
+        if (groupId != null) 'groupId': groupId,
+        if (startBinding != null) 'startBinding': startBinding!.toJson(),
+        if (endBinding != null) 'endBinding': endBinding!.toJson(),
       };
 
   factory SketchArrow.fromJson(Map<String, dynamic> json) {
@@ -640,9 +763,70 @@ class SketchArrow extends _SketchLinear {
       end: _offsetFromJson(json['end'] as Map<String, dynamic>),
       arrowSize: (json['arrowSize'] as num?)?.toDouble() ?? 10.0,
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      groupId: json['groupId'] as String?,
+      startBinding: _bindingFromJson(json['startBinding']),
+      endBinding: _bindingFromJson(json['endBinding']),
     );
   }
 }
+
+/// Attachment of one arrow endpoint to another element.
+///
+/// Reserved: nothing binds arrows yet, and nothing reads these fields. It
+/// ships in v1 anyway because the alternative is worse — a field that first
+/// appears in a later release makes every file already saved by a v1 user
+/// forward-incompatible and forces a schema bump to fix. Reserving it now
+/// costs one class.
+///
+/// A value type rather than a bare element id for the same reason: [focus]
+/// and [gap] are what the binding feature will need, and introducing them
+/// later would be a second migration.
+class SketchBinding {
+  const SketchBinding({
+    required this.elementId,
+    this.focus = 0.0,
+    this.gap = 0.0,
+  });
+
+  /// Element the endpoint is attached to.
+  final String elementId;
+
+  /// Where along the bound element the arrow aims, `-1..1`, with `0` for
+  /// its centre.
+  final double focus;
+
+  /// Canvas-space distance the endpoint keeps from the bound element's edge.
+  final double gap;
+
+  Map<String, dynamic> toJson() => {
+        'elementId': elementId,
+        'focus': focus,
+        'gap': gap,
+      };
+
+  factory SketchBinding.fromJson(Map<String, dynamic> json) {
+    return SketchBinding(
+      elementId: json['elementId'] as String,
+      focus: (json['focus'] as num?)?.toDouble() ?? 0.0,
+      gap: (json['gap'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SketchBinding &&
+        other.elementId == elementId &&
+        other.focus == focus &&
+        other.gap == gap;
+  }
+
+  @override
+  int get hashCode => Object.hash(elementId, focus, gap);
+}
+
+SketchBinding? _bindingFromJson(Object? raw) =>
+    raw is Map ? SketchBinding.fromJson(raw.cast<String, dynamic>()) : null;
 
 // ─── Freedraw ──────────────────────────────────────────────────────────────
 
@@ -652,6 +836,7 @@ class SketchFreedraw extends SketchElement {
     required super.style,
     required List<Offset> points,
     super.angle,
+    super.groupId,
   })  : assert(points.isNotEmpty, 'freedraw must contain at least one point'),
         points = List<Offset>.unmodifiable(points);
 
@@ -672,21 +857,30 @@ class SketchFreedraw extends SketchElement {
   }
 
   SketchFreedraw copyWith({
+    String? id,
     List<Offset>? points,
     SketchStyle? style,
     double? angle,
+    Object? groupId = _unset,
   }) {
     return SketchFreedraw(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       points: points ?? this.points,
       angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
   @override
   SketchFreedraw copyWithStyle(SketchStyle newStyle) =>
       copyWith(style: newStyle);
+
+  @override
+  SketchFreedraw withId(String id) => copyWith(id: id);
+
+  @override
+  SketchFreedraw withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   @override
   SketchFreedraw translate(Offset delta) {
@@ -717,6 +911,7 @@ class SketchFreedraw extends SketchElement {
           for (final p in points) _offsetToJson(p),
         ],
         'angle': angle,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchFreedraw.fromJson(Map<String, dynamic> json) {
@@ -728,6 +923,7 @@ class SketchFreedraw extends SketchElement {
         for (final p in raw) _offsetFromJson(p as Map<String, dynamic>),
       ],
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
@@ -743,6 +939,7 @@ class SketchText extends SketchElement {
     this.fontSize = 16.0,
     this.fontFamily,
     super.angle,
+    super.groupId,
   });
 
   final Offset position;
@@ -764,21 +961,24 @@ class SketchText extends SketchElement {
   }
 
   SketchText copyWith({
+    String? id,
     Offset? position,
     String? text,
     double? fontSize,
     String? fontFamily,
     SketchStyle? style,
     double? angle,
+    Object? groupId = _unset,
   }) {
     return SketchText(
-      id: id,
+      id: id ?? this.id,
       style: style ?? this.style,
       position: position ?? this.position,
       text: text ?? this.text,
       fontSize: fontSize ?? this.fontSize,
       fontFamily: fontFamily ?? this.fontFamily,
       angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
 
@@ -788,6 +988,12 @@ class SketchText extends SketchElement {
   @override
   SketchText translate(Offset delta) =>
       copyWith(position: position + delta);
+
+  @override
+  SketchText withId(String id) => copyWith(id: id);
+
+  @override
+  SketchText withGroupId(String? groupId) => copyWith(groupId: groupId);
 
   factory SketchText.create({
     String? id,
@@ -817,6 +1023,7 @@ class SketchText extends SketchElement {
         'fontSize': fontSize,
         if (fontFamily != null) 'fontFamily': fontFamily,
         'angle': angle,
+        if (groupId != null) 'groupId': groupId,
       };
 
   factory SketchText.fromJson(Map<String, dynamic> json) {
@@ -828,6 +1035,7 @@ class SketchText extends SketchElement {
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
       fontFamily: json['fontFamily'] as String?,
       angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      groupId: json['groupId'] as String?,
     );
   }
 }
