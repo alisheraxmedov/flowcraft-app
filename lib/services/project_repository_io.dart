@@ -57,6 +57,12 @@ class ProjectRepository {
 
   /// Reads one project's full scene. Throws if the file is missing or its
   /// JSON can't be parsed — callers decide whether that's fatal.
+  ///
+  /// A file whose JSON *is* readable but holds elements this build can't
+  /// decode comes back with the good ones and a non-zero
+  /// [FlowProjectScene.droppedCount]. Callers must not write that scene
+  /// back through [save] without telling the user first: the reduced scene
+  /// would overwrite the elements that failed to load.
   Future<FlowProjectScene> load(String id) async {
     final file = _sceneFile(id);
     if (!await file.exists()) {
@@ -132,7 +138,16 @@ class ProjectRepository {
 
   File get _indexFile => File(_join(_indexFileName));
 
-  File _sceneFile(String id) => File(_join('$id$_sceneExtension'));
+  /// Every path this class builds out of an id goes through here, so this
+  /// is the gate that keeps a crafted id from naming a file outside the
+  /// projects directory — [FlowProject.isValidId] rejecting it at parse
+  /// time is the first line, this is the one that cannot be routed around.
+  File _sceneFile(String id) {
+    if (!FlowProject.isValidId(id)) {
+      throw ArgumentError.value(id, 'id', 'Not a usable project id');
+    }
+    return File(_join('$id$_sceneExtension'));
+  }
 
   String _join(String fileName) =>
       '${_directory.path}${Platform.pathSeparator}$fileName';
@@ -144,7 +159,10 @@ class ProjectRepository {
       if (entity is! File) continue;
       final name = entity.uri.pathSegments.last;
       if (name == _indexFileName || !name.endsWith(_sceneExtension)) continue;
-      ids.add(name.substring(0, name.length - _sceneExtension.length));
+      final id = name.substring(0, name.length - _sceneExtension.length);
+      // Some other JSON file sharing the directory, not a project of ours.
+      if (!FlowProject.isValidId(id)) continue;
+      ids.add(id);
     }
     return ids;
   }
@@ -179,9 +197,14 @@ class ProjectRepository {
     final projects = <FlowProject>[];
     for (final id in ids) {
       try {
-        projects.add(
-          ProjectSerializer.decodeHeader(await _sceneFile(id).readAsString()),
-        );
+        final header =
+            ProjectSerializer.decodeHeader(await _sceneFile(id).readAsString());
+        // The file name decides which project this is, never the header:
+        // the header belongs to whoever wrote the file, and every later
+        // `load`/`delete` turns this id straight back into a path. A header
+        // that disagrees with its own file name is broken by definition —
+        // nothing this app writes can produce one.
+        projects.add(header.id == id ? header : FlowProject.broken(id: id));
       } catch (_) {
         // One unreadable file must not abort the scan for the others.
         projects.add(FlowProject.broken(id: id));

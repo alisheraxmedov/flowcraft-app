@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -159,6 +160,110 @@ void main() {
 
       final rect = elements.single as SketchRectangle;
       expect(rect.style.strokeColor, const Color(0xFF2E7D32));
+    });
+
+    test('refuses the non-finite numbers JSON can smuggle in', () {
+      // `1e999` is the reachable spelling — there is no Infinity literal,
+      // so a payload that looks like plain JSON produces one anyway.
+      final decoded = jsonDecode(
+        '[{"type":"rectangle","x":1,"y":2,"width":1e999,"height":10}]',
+      ) as List<dynamic>;
+      expect((decoded.single as Map)['width'], double.infinity);
+
+      expect(
+        () => parseDiagramElements(decoded),
+        throwsA(
+          isA<DiagramSpecException>()
+              .having((e) => e.message, 'message', contains('finite')),
+        ),
+      );
+    });
+
+    test('refuses a non-finite value in every numeric field', () {
+      const fields = {
+        'rectangle': ['x', 'y', 'width', 'height'],
+        'arrow': ['fromX', 'fromY', 'toX', 'toY'],
+      };
+
+      for (final entry in fields.entries) {
+        for (final field in entry.value) {
+          for (final bad in [
+            double.infinity,
+            double.negativeInfinity,
+            double.nan,
+          ]) {
+            expect(
+              () => parseDiagramElements([
+                {'type': entry.key, field: bad},
+              ]),
+              throwsA(isA<DiagramSpecException>()),
+              reason: '${entry.key}.$field = $bad',
+            );
+          }
+        }
+      }
+    });
+
+    test('refuses a finite value far outside any canvas', () {
+      expect(
+        () => parseDiagramElements([
+          {'type': 'rectangle', 'x': 1e300},
+        ]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+    });
+
+    test('refuses a negative extent that would invert the rect', () {
+      expect(
+        () => parseDiagramElements([
+          {'type': 'rectangle', 'width': -50},
+        ]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+    });
+
+    test('refuses a font size that is non-finite, zero, or unrenderable', () {
+      for (final bad in [double.infinity, double.nan, 0, -12, 100000]) {
+        expect(
+          () => parseDiagramElements([
+            {'type': 'text', 'text': 'hi', 'fontSize': bad},
+          ]),
+          throwsA(isA<DiagramSpecException>()),
+          reason: 'fontSize = $bad',
+        );
+      }
+    });
+
+    test('refuses a numeric field that is not a number', () {
+      expect(
+        () => parseDiagramElements([
+          {'type': 'rectangle', 'width': 'wide'},
+        ]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+    });
+
+    test('refuses more elements than one call may draw', () {
+      final overLimit = [
+        for (var i = 0; i <= maxDiagramElements; i++) {'type': 'line'},
+      ];
+
+      expect(
+        () => parseDiagramElements(overLimit),
+        throwsA(
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            // The model has to be able to act on this, not just be refused.
+            allOf(contains('Too many elements'), contains('several calls')),
+          ),
+        ),
+      );
+      // The limit itself is inclusive — one below it still draws.
+      expect(
+        parseDiagramElements(overLimit.sublist(1)),
+        hasLength(maxDiagramElements),
+      );
     });
 
     test('processes multiple elements in order', () {

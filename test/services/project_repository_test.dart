@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flowcraft/flowcraft.dart';
@@ -113,6 +114,120 @@ void main() {
           .writeAsStringSync(ProjectSerializer.encodeScene(orphan));
 
       expect((await repository.list()).single.name, 'Orphan');
+    });
+  });
+
+  group('planted files', () {
+    // One file per project is a format people hand to each other, so a
+    // whiteboard someone was asked to "just drop in" is an untrusted input
+    // that gets to name a path.
+    late Directory root;
+    late Directory projects;
+    late File outsider;
+    late ProjectRepository planted;
+
+    /// `proj_planted.json`, whose header claims to be [claimedId].
+    void plant(String claimedId) {
+      File('${projects.path}${Platform.pathSeparator}proj_planted.json')
+          .writeAsStringSync(
+        jsonEncode({
+          'version': 1,
+          'project': {
+            'id': claimedId,
+            'name': 'Shared board',
+            // Newest, so a startup restore would reach for it first.
+            'createdAt': '2099-01-01T00:00:00.000Z',
+            'updatedAt': '2099-01-01T00:00:00.000Z',
+            'elementCount': 0,
+          },
+          'scene': {'version': 1, 'elements': <dynamic>[]},
+        }),
+      );
+    }
+
+    setUp(() {
+      final sep = Platform.pathSeparator;
+      root = Directory('${tempDir.path}${sep}root')..createSync();
+      projects = Directory('${root.path}${sep}projects')..createSync();
+      // A readable, deletable `.json` one directory up from the library.
+      outsider = File('${root.path}${sep}secret.json')
+        ..writeAsStringSync(
+          ProjectSerializer.encodeScene(
+            FlowProjectScene(
+              project: FlowProject(
+                id: 'secret',
+                name: 'Private notes',
+                createdAt: DateTime(2026),
+                updatedAt: DateTime(2026),
+                elementCount: 1,
+              ),
+              elements: [_rect('classified')],
+            ),
+          ),
+        );
+      planted = ProjectRepository(directoryPath: projects.path);
+    });
+
+    test('a header claiming a traversal id is listed as its own file', () async {
+      plant('..${Platform.pathSeparator}secret');
+
+      final listed = await planted.list();
+
+      // The file name decides the identity, and the mismatch marks it
+      // broken — which is also what keeps the startup restore off it.
+      expect(listed.single.id, 'proj_planted');
+      expect(listed.single.isBroken, isTrue);
+    });
+
+    test('a traversal id can neither be read nor deleted', () async {
+      final traversal = '..${Platform.pathSeparator}secret';
+      plant(traversal);
+      await planted.list();
+
+      await expectLater(
+        planted.load(traversal),
+        throwsA(isA<ArgumentError>()),
+        reason: 'arbitrary .json read',
+      );
+      await expectLater(
+        planted.delete(traversal),
+        throwsA(isA<ArgumentError>()),
+        reason: 'arbitrary .json delete',
+      );
+      await expectLater(
+        planted.save(id: traversal, elements: const []),
+        throwsA(isA<ArgumentError>()),
+        reason: 'arbitrary .json overwrite',
+      );
+      expect(outsider.existsSync(), isTrue);
+    });
+
+    test('an absolute id is refused too', () async {
+      final absolute = '${root.path}${Platform.pathSeparator}secret';
+      plant(absolute);
+
+      expect((await planted.list()).single.id, 'proj_planted');
+      await expectLater(
+        planted.load(absolute),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('a header id that simply disagrees with its file is broken, not '
+        'followed', () async {
+      plant('proj_elsewhere');
+
+      final listed = await planted.list();
+
+      expect(listed.single.id, 'proj_planted');
+      expect(listed.single.isBroken, isTrue);
+    });
+
+    test('a file whose name is not an id is ignored, not listed', () async {
+      File('${projects.path}${Platform.pathSeparator}not-a-project.json')
+          .writeAsStringSync('{}');
+
+      expect(await planted.list(), isEmpty);
     });
   });
 

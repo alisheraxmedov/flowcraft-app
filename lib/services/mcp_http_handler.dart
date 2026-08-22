@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' show BytesBuilder;
 
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
@@ -37,6 +38,106 @@ bool isLoopbackOrigin(String? origin) {
   final uri = Uri.tryParse(origin);
   if (uri == null) return false;
   return const {'localhost', '127.0.0.1', '::1'}.contains(uri.host);
+}
+
+/// Ceiling on one request body, shared by the MCP endpoint and the legacy
+/// REST one.
+///
+/// Not a defence against a stranger — the socket is loopback-only and
+/// authenticated. It is a defence against the authenticated caller being an
+/// agent that mis-generates a runaway payload and takes a *GUI* process
+/// down with it, where an out-of-memory kill costs the user unsaved work.
+/// 8 MiB is far past what a diagram needs: the wordiest element serializes
+/// to a few hundred bytes, so this admits an order of magnitude more than
+/// `maxDiagramElements` in `diagram_spec.dart` will accept anyway.
+const int maxRequestBodyBytes = 8 * 1024 * 1024;
+
+/// Thrown by [readBoundedBody] when a client sends more than
+/// [maxRequestBodyBytes]. Its text carries the limit and nothing else —
+/// that number is the whole actionable answer.
+class RequestBodyTooLargeException implements Exception {
+  const RequestBodyTooLargeException();
+
+  @override
+  String toString() =>
+      'request body exceeds the $maxRequestBodyBytes byte limit';
+}
+
+/// Reads [request]'s body as UTF-8, giving up as soon as it passes
+/// [maxRequestBodyBytes] instead of buffering whatever keeps arriving.
+///
+/// `Content-Length` is consulted first so an honest oversized request is
+/// refused before a byte of it is held, but it is only a hint — a chunked
+/// body sends none — so the running total is what actually enforces the cap.
+Future<String> readBoundedBody(HttpRequest request) async {
+  if (request.contentLength > maxRequestBodyBytes) {
+    throw const RequestBodyTooLargeException();
+  }
+  final buffer = BytesBuilder(copy: false);
+  await for (final chunk in request) {
+    if (buffer.length + chunk.length > maxRequestBodyBytes) {
+      throw const RequestBodyTooLargeException();
+    }
+    buffer.add(chunk);
+  }
+  return utf8.decode(buffer.takeBytes());
+}
+
+/// Answers an over-limit [request] with a 413 carrying [body], then hangs
+/// up on it.
+///
+/// The refusal can't go out through [HttpRequest.response]: `dart:io` holds
+/// a response back until the request body has been read, and reading an
+/// oversized body just to be polite about refusing it is the exact thing
+/// the limit exists to prevent. Detaching the socket puts the answer on the
+/// wire now instead.
+///
+/// A request refused on its declared `Content-Length` was never read, so it
+/// gets the full 413. One refused part-way through a chunked body has
+/// already had its connection torn down by `dart:io` — there is nothing
+/// left to write to, and the abort is itself the answer the client reads.
+Future<void> refuseOversizedBody(
+  HttpRequest request,
+  Map<String, Object?> body,
+) async {
+  final Socket socket;
+  try {
+    socket = await request.response.detachSocket(writeHeaders: false);
+  } catch (_) {
+    return;
+  }
+  final payload = utf8.encode(jsonEncode(body));
+  socket
+    ..add(utf8.encode(
+      'HTTP/1.1 413 Request Entity Too Large\r\n'
+      'Content-Type: application/json; charset=utf-8\r\n'
+      'Content-Length: ${payload.length}\r\n'
+      'Connection: close\r\n\r\n',
+    ))
+    ..add(payload);
+  await socket.flush();
+  await socket.close();
+}
+
+/// Compares a caller-supplied secret against the real one without stopping
+/// at the first byte that differs.
+///
+/// Against 256 bits of `Random.secure()` over loopback the timing signal
+/// this removes is close to unusable — there is no search for it to guide.
+/// It is here because a compare that leaks how long a prefix matched is the
+/// kind of primitive that gets copied somewhere it does matter. Lengths
+/// stay distinguishable; contents do not.
+bool constantTimeEquals(String a, String b) {
+  final x = utf8.encode(a);
+  final y = utf8.encode(b);
+  var mismatch = x.length ^ y.length;
+  for (var i = 0; i < x.length; i++) {
+    // On a length mismatch the answer is already decided by the seed above;
+    // substituting a zero past the end of [y] only keeps the loop in bounds
+    // instead of cutting it short.
+    mismatch |= x[i] ^ (i < y.length ? y[i] : 0);
+  }
+  return mismatch == 0;
 }
 
 /// Serves MCP over the Streamable HTTP transport, straight out of the
@@ -147,10 +248,17 @@ class McpHttpHandler {
   }
 
   Future<void> _handleMessage(HttpRequest request) async {
-    final body = await utf8.decoder.bind(request).join();
     final Object? message;
     try {
+      final body = await readBoundedBody(request);
       message = body.isEmpty ? null : jsonDecode(body);
+    } on RequestBodyTooLargeException catch (e) {
+      await refuseOversizedBody(request, {
+        'jsonrpc': '2.0',
+        'id': null,
+        ..._error(_invalidRequest, '$e'),
+      });
+      return;
     } on FormatException catch (e) {
       _replyError(
         request,
@@ -255,12 +363,16 @@ class McpHttpHandler {
   /// MCP HTTP clients reach for, while the custom header is what the
   /// legacy stdio bridge and the app's own REST endpoints already use.
   bool _isAuthorized(HttpRequest request) {
-    if (request.headers.value(tokenHeader) == _token) return true;
+    final header = request.headers.value(tokenHeader);
+    if (header != null && constantTimeEquals(header, _token)) return true;
     final authorization =
         request.headers.value(HttpHeaders.authorizationHeader) ?? '';
     const prefix = 'Bearer ';
     return authorization.startsWith(prefix) &&
-        authorization.substring(prefix.length).trim() == _token;
+        constantTimeEquals(
+          authorization.substring(prefix.length).trim(),
+          _token,
+        );
   }
 
   Map<String, Object?> _error(int code, String message) => {

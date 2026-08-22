@@ -48,6 +48,18 @@ class FlowProject {
     );
   }
 
+  /// Whether [id] may be turned into a file name.
+  ///
+  /// Ids do not only come from [IdGenerator] — a project file carries its
+  /// own id in its JSON header, and one-file-per-project is a format people
+  /// hand to each other, so any file dropped into the projects directory
+  /// gets a say in a path the repository composes. The alphabet here is
+  /// exactly what [IdGenerator] emits (`prefix_micros_hex`): no separator,
+  /// no dot, therefore no `..` and no way out of that directory.
+  static bool isValidId(String id) => _idPattern.hasMatch(id);
+
+  static final RegExp _idPattern = RegExp(r'^[A-Za-z0-9_]{1,64}$');
+
   final String id;
   final String name;
   final DateTime createdAt;
@@ -88,9 +100,16 @@ class FlowProject {
   }
 
   factory FlowProject.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
+    // Rejected here rather than at each call site: this is the one door
+    // every id takes into the app from a file, and the callers that turn it
+    // into a path are several layers away from the parse.
+    if (!isValidId(id)) {
+      throw FormatException('Not a usable project id: "$id"');
+    }
     final created = _parseTime(json['createdAt']);
     return FlowProject(
-      id: json['id'] as String,
+      id: id,
       name: json['name'] as String? ?? 'Untitled',
       createdAt: created,
       updatedAt: json['updatedAt'] == null
@@ -130,8 +149,20 @@ class FlowProject {
 /// repository hands back on `load` and takes on `save`.
 @immutable
 class FlowProjectScene {
-  const FlowProjectScene({required this.project, required this.elements});
+  const FlowProjectScene({
+    required this.project,
+    required this.elements,
+    this.droppedCount = 0,
+  });
 
   final FlowProject project;
   final List<SketchElement> elements;
+
+  /// How many elements the file held that this build could not decode.
+  ///
+  /// Non-zero means [elements] is *less* than what is on disk, so whoever
+  /// loaded it owes the user a warning before anything writes back over
+  /// that file — see `SketchController.sceneIsPartial`. Always `0` on a
+  /// scene built in memory for a save.
+  final int droppedCount;
 }

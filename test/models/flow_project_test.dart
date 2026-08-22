@@ -45,6 +45,36 @@ void main() {
       expect(renamed.elementCount, 3);
     });
 
+    test('refuses an id that could name a file outside the library', () {
+      // A project file carries its own id, and the repository turns that id
+      // into a path — so a shared file is an untrusted source for it.
+      const escapes = [
+        '../../../../.config/foo/config',
+        r'..\..\secret',
+        'proj/nested',
+        '/etc/passwd',
+        '..',
+        '.',
+        '',
+        'proj.1',
+        'proj 1',
+      ];
+
+      for (final id in escapes) {
+        expect(FlowProject.isValidId(id), isFalse, reason: '"$id" is not an id');
+        expect(
+          () => FlowProject.fromJson({'id': id}),
+          throwsA(isA<FormatException>()),
+          reason: '"$id" must not survive parsing',
+        );
+      }
+    });
+
+    test('accepts the ids IdGenerator actually produces', () {
+      expect(FlowProject.isValidId(IdGenerator.generate('proj')), isTrue);
+      expect(FlowProject.isValidId(FlowProject.create(name: 'A').id), isTrue);
+    });
+
     test('broken placeholders are flagged and named after their file', () {
       final broken = FlowProject.broken(id: 'proj_bad');
 

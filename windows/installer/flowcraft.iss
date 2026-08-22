@@ -12,7 +12,7 @@
 #define MyAppName "FlowCraft"
 #define MyAppPublisher "FlowCraft"
 #define MyAppExeName "flowcraft.exe"
-#define MyAppURL "https://github.com/alisheraxmedov/flowcraft"
+#define MyAppURL "https://github.com/alisheraxmedov/flowcraft-app"
 
 [Setup]
 AppId={{6E9F2C2C-9C4C-4B7C-9E6C-4C6E7C9E2C7A}
