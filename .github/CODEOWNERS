@@ -1,0 +1,6 @@
+# Every file in this repository is owned by the maintainer.
+#
+# Branch protection on `main` requires a code-owner review, so this line is
+# what makes the maintainer's approval mandatory on every pull request —
+# including ones opened from a fork.
+* @alisheraxmedov
