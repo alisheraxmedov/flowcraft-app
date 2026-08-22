@@ -1,9 +1,9 @@
 # FlowCraft
 
-Miro / Excalidraw-style interactive whiteboard **desktop app** (macOS,
-Windows, Linux) built with Flutter. Not a pub.dev package — the repo root
-*is* the app. A built-in MCP control server lets AI coding agents (Claude
-Code, Codex CLI, Gemini CLI) draw diagrams live on the running canvas.
+An interactive whiteboard **desktop app** (macOS, Windows, Linux) built with
+Flutter. Not a pub.dev package — the repo root *is* the app. A built-in MCP
+control server lets AI coding agents (Claude Code, Codex CLI, Gemini CLI)
+draw diagrams live on the running canvas.
 
 ## Architecture: MVVM + Riverpod
 

@@ -1,9 +1,8 @@
 # FlowCraft
 
-**A Miro / Excalidraw-style interactive whiteboard desktop app for macOS,
-Windows, and Linux — with a built-in MCP control server so AI coding agents
-(Claude Code, Codex CLI, Gemini CLI, ...) can draw diagrams live on the
-canvas.**
+**An interactive whiteboard desktop app for macOS, Windows, and Linux — with
+a built-in MCP control server so AI coding agents (Claude Code, Codex CLI,
+Gemini CLI, ...) can draw diagrams live on the canvas.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Flutter](https://img.shields.io/badge/Flutter-%E2%89%A51.17.0-02569B.svg)](https://flutter.dev)

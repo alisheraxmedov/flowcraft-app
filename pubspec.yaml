@@ -1,8 +1,8 @@
 name: flowcraft
 description: >-
-  FlowCraft — a Miro / Excalidraw-style interactive whiteboard desktop app
-  for macOS, Windows, and Linux, with a built-in MCP control server so AI
-  coding agents can draw diagrams live on the canvas.
+  FlowCraft — an interactive whiteboard desktop app for macOS, Windows, and
+  Linux, with a built-in MCP control server so AI coding agents can draw
+  diagrams live on the canvas.
 publish_to: 'none'
 version: 1.0.0+1
 
