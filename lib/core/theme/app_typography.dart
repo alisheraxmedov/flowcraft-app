@@ -31,6 +31,17 @@ class AppTypography {
         letterSpacing: 0,
       );
 
+  /// Dense chrome text — sidebar rows, pill buttons, inline fields. Same
+  /// face and metrics as [bodyBase]; 14px is a shade too loud for controls
+  /// packed into a toolbar, and hand-rolling `bodyBase.copyWith(fontSize:
+  /// 13)` at each call site is how that size drifts.
+  static TextStyle get bodySm => GoogleFonts.inter(
+        fontSize: 13,
+        fontWeight: FontWeight.w400,
+        height: 1.6,
+        letterSpacing: 0,
+      );
+
   static TextStyle get labelMono => GoogleFonts.jetBrainsMono(
         fontSize: 12,
         fontWeight: FontWeight.w500,
