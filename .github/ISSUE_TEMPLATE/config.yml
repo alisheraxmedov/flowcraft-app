@@ -1,0 +1,15 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/alisheraxmedov/flowcraft-app/security/advisories/new
+    about: >-
+      Report privately, never as a public issue. FlowCraft runs a local HTTP
+      server and reads files from your home directory — see SECURITY.md.
+  - name: Question or idea
+    url: https://github.com/alisheraxmedov/flowcraft-app/discussions
+    about: >-
+      Not sure whether something is a bug? Ask here before filing an issue.
+  - name: Contributing guide
+    url: https://github.com/alisheraxmedov/flowcraft-app/blob/main/CONTRIBUTING.md
+    about: >-
+      Every change starts as an issue. Read this before writing code.

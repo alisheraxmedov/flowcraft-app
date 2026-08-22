@@ -1,0 +1,67 @@
+name: Feature request
+description: Suggest a capability FlowCraft does not have
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the [roadmap](https://github.com/alisheraxmedov/flowcraft-app#roadmap)
+        first — a fair amount of what is missing is missing on purpose, waiting
+        behind something else, and the roadmap says what is next and why.
+
+        **Describe the problem, not the solution.** The best fix for the problem
+        you have is often not the one you had in mind.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you running into?
+      description: What you were trying to do, and where FlowCraft got in the way.
+      placeholder: >-
+        When an agent draws a large diagram I can't tell whether it succeeded —
+        the canvas looks empty because the shapes landed off-screen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What did you have in mind?
+      description: Optional. If you already have a solution in mind, describe it here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you work around it today?
+      description: >-
+        Knowing the workaround usually says a lot about how urgent this is, and
+        sometimes reveals a smaller fix.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      description: >-
+        FlowCraft ships with zero Flutter plugins on purpose — it is load-bearing
+        for the macOS build and for the "no native third-party code" guarantee.
+        Anything needing OS integration beyond `dart:io` is expensive.
+      options:
+        - label: >-
+            I have read the "Constraints you must not break" section of
+            CONTRIBUTING.md and, as far as I can tell, this does not require a
+            Flutter plugin.
+          required: false
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Would you like to build it?
+      options:
+        - label: >-
+            I would be willing to open a pull request for this, once the
+            approach is agreed here.
+          required: false

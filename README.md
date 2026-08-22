@@ -637,8 +637,16 @@ flutter build linux --release
 
 ## Contributing
 
-Issues and pull requests are welcome. A few things worth knowing before you start — all of them are
-explained in more detail in [`CLAUDE.md`](CLAUDE.md), which doubles as the contributor guide:
+Issues and pull requests are welcome. **Please open an issue and wait for a reply before writing
+code** — several things in this repository look like bugs and are deliberate, and the roadmap has an
+order. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the full workflow, and
+[`CLAUDE.md`](CLAUDE.md) explains the architecture and the traps.
+
+`main` is protected: changes land through a pull request, with a passing `Test` job and a review
+from the maintainer. Found a security problem? Do not open a public issue — see
+[`SECURITY.md`](SECURITY.md).
+
+The constraints most likely to get a PR rejected:
 
 - **Keep the app at zero Flutter plugins.** It is load-bearing: it is why the macOS build behaves the
   way it does, why export writes to a fixed folder instead of showing a native save dialog, and why

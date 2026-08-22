@@ -1,0 +1,84 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check the
+        [open issues](https://github.com/alisheraxmedov/flowcraft-app/issues)
+        first — and note that a few things that look like bugs are deliberate
+        and explained in [CLAUDE.md](https://github.com/alisheraxmedov/flowcraft-app/blob/main/CLAUDE.md)
+        (the disabled macOS App Sandbox, the fixed MCP port, gitignored
+        lockfiles).
+
+        **Found a security vulnerability?** Do not file it here — see
+        [SECURITY.md](https://github.com/alisheraxmedov/flowcraft-app/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        I selected a rectangle and picked a fill colour from the toolbar.
+        I expected the rectangle to fill. Nothing changed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps someone else can follow exactly.
+      placeholder: |
+        1. Open FlowCraft
+        2. Press R and drag a rectangle
+        3. Press V and click the rectangle
+        4. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: >-
+        Where you got FlowCraft — a CI artifact, or built from source (then the
+        commit SHA).
+      placeholder: "built from source at ad358ee"
+    validations:
+      required: true
+
+  - type: textarea
+    id: ai-agent
+    attributes:
+      label: AI agent involved?
+      description: >-
+        Only if the bug involves the MCP server. Which CLI, and the prompt or
+        tool call you sent.
+        **Redact your auth token** — it is a live secret.
+      placeholder: "Claude Code; asked it to draw the architecture of a Rust repo"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >-
+        Console output, a screenshot, or the scene JSON (Export → Copy JSON to
+        clipboard) if the bug is about specific elements.
+    validations:
+      required: false
