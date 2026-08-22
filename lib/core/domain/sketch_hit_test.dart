@@ -64,16 +64,36 @@ class SketchHitTest {
     return null;
   }
 
-  /// All elements whose bounds intersect [region]. Used for marquee
-  /// selection (rubber-band).
+  /// All elements that [region] catches. Used for marquee selection
+  /// (rubber-band).
+  ///
+  /// Bounds are the cheap first pass — and for everything but a line or
+  /// arrow, the only pass. They are the wrong answer for a linear element:
+  /// a diagonal one fills a thin sliver of its bounding box, so a band
+  /// nowhere near the stroke selected it anyway. Linear elements therefore
+  /// test their actual segment against [region].
+  ///
+  /// The bounds pass is [SketchGeometry.rectsTouch] rather than
+  /// [Rect.overlaps] because a shared edge has to count: an axis-aligned
+  /// connector's bounds *are* a single edge, so a band drawn flush along
+  /// the stroke was reported as missing it.
   static List<SketchElement> intersecting(
     List<SketchElement> elements,
     Rect region,
   ) {
-    return [
-      for (final e in elements)
-        if (e.bounds.overlaps(region)) e,
-    ];
+    final hits = <SketchElement>[];
+    for (final e in elements) {
+      if (!SketchGeometry.rectsTouch(e.bounds, region)) continue;
+      final caught = switch (e) {
+        SketchLine l =>
+          SketchGeometry.segmentIntersectsRect(l.start, l.end, region),
+        SketchArrow a =>
+          SketchGeometry.segmentIntersectsRect(a.start, a.end, region),
+        _ => true,
+      };
+      if (caught) hits.add(e);
+    }
+    return hits;
   }
 
   /// Topmost element whose text can be edited (a [SketchText], or a shape /

@@ -39,6 +39,9 @@ class SketchPreviewPainter extends CustomPainter {
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1.0;
   static final Paint _marqueeFill = Paint()..style = PaintingStyle.fill;
+  static final Paint _guideStroke = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.0;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -75,6 +78,27 @@ class SketchPreviewPainter extends CustomPainter {
 
     if (s.kind == SketchSessionKind.marquee) {
       _paintMarquee(canvas, s);
+    }
+    _paintGuides(canvas, s);
+  }
+
+  /// Draws the alignment guides the active snap produced, in screen-space
+  /// so the line stays hairline-thin at any zoom.
+  void _paintGuides(Canvas canvas, SketchDragSession s) {
+    if (s.guides.isEmpty) return;
+    _guideStroke.color = marqueeColor;
+    for (final guide in s.guides) {
+      final a = guide.vertical
+          ? Offset(guide.position, guide.from)
+          : Offset(guide.from, guide.position);
+      final b = guide.vertical
+          ? Offset(guide.position, guide.to)
+          : Offset(guide.to, guide.position);
+      canvas.drawLine(
+        ViewportTransform.canvasToScreen(a, viewport),
+        ViewportTransform.canvasToScreen(b, viewport),
+        _guideStroke,
+      );
     }
   }
 

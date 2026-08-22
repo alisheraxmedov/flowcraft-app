@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/core/domain/sketch_geometry.dart';
 import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -25,10 +26,27 @@ class SketchPainter extends CustomPainter {
     required this.paintGen,
     required this.cache,
     required this.selectionColor,
+    this.handleFillColor = _defaultHandleFill,
     this.editingElementId,
     this.scaleStrokeWithZoom = true,
     this.canvasSize,
   });
+
+  /// Fill for resize / endpoint handles when the host doesn't supply one.
+  ///
+  /// A neutral chip under the themed [selectionColor] border, which is what
+  /// carries the theme here; a host with a light-on-light surface passes
+  /// [handleFillColor] from its own `colorScheme`.
+  static const Color _defaultHandleFill = Color(0xFFFFFFFF);
+
+  /// Screen-space side of a square resize handle.
+  static const double _handleSize = 8.0;
+
+  /// Screen-space radius of a round endpoint handle. Deliberately round
+  /// where resize handles are square: on a diagonal line the two shapes end
+  /// up close together, and a shared shape would leave the user guessing
+  /// which one they are about to grab.
+  static const double _endpointHandleRadius = 4.5;
 
   final List<SketchElement> elements;
   final Set<String> selectedIds;
@@ -36,6 +54,7 @@ class SketchPainter extends CustomPainter {
   final int paintGen;
   final SketchRenderCache cache;
   final Color selectionColor;
+  final Color handleFillColor;
 
   /// Element currently being edited in the inline text editor. Its text is
   /// skipped here so it doesn't double up under the editor overlay.
@@ -266,33 +285,71 @@ class SketchPainter extends CustomPainter {
   void _paintSelectionOverlays(Canvas canvas, Size size) {
     if (selectedIds.isEmpty) return;
     _selectionPaint.color = selectionColor;
+    _handleFillPaint.color = handleFillColor;
+    _handleBorderPaint.color = selectionColor;
 
     for (final element in elements) {
       if (!selectedIds.contains(element.id)) continue;
       final canvasRect = element.bounds;
       final tl = ViewportTransform.canvasToScreen(canvasRect.topLeft, viewport);
       final br = ViewportTransform.canvasToScreen(canvasRect.bottomRight, viewport);
+      // Padded by the same shared constant the gesture handler hit-tests
+      // against, so the handle under the cursor is the handle that is drawn.
       final screenRect = Rect.fromLTRB(tl.dx, tl.dy, br.dx, br.dy)
-          .inflate(4.0);
+          .inflate(SketchGeometry.selectionPadding);
       canvas.drawRRect(
         RRect.fromRectAndRadius(screenRect, const Radius.circular(2)),
         _selectionPaint,
       );
 
-      // Resize handle (bottom-right corner) for bounded shapes.
+      // Handles are placed and sized in screen-space, so they stay a
+      // constant, grabbable size however far the canvas is zoomed.
       if (_isResizable(element)) {
-        final handleRect = Rect.fromCenter(
-          center: screenRect.bottomRight,
-          width: 8.0,
-          height: 8.0,
+        for (final handle in ResizeHandle.values) {
+          _drawResizeHandle(
+            canvas,
+            SketchGeometry.handlePosition(screenRect, handle),
+          );
+        }
+      }
+
+      // A line / arrow is defined by its two endpoints, not by the corners
+      // of the box around it — which for a diagonal are the same two points
+      // and for an axis-aligned one are not.
+      final ends = _endpointsOf(element);
+      if (ends != null) {
+        _drawEndpointHandle(
+          canvas,
+          ViewportTransform.canvasToScreen(ends.$1, viewport),
         );
-        _handleFillPaint.color = const Color(0xFFFFFFFF);
-        canvas.drawRect(handleRect, _handleFillPaint);
-        _handleBorderPaint.color = selectionColor;
-        canvas.drawRect(handleRect, _handleBorderPaint);
+        _drawEndpointHandle(
+          canvas,
+          ViewportTransform.canvasToScreen(ends.$2, viewport),
+        );
       }
     }
   }
+
+  void _drawResizeHandle(Canvas canvas, Offset centre) {
+    final rect = Rect.fromCenter(
+      center: centre,
+      width: _handleSize,
+      height: _handleSize,
+    );
+    canvas.drawRect(rect, _handleFillPaint);
+    canvas.drawRect(rect, _handleBorderPaint);
+  }
+
+  void _drawEndpointHandle(Canvas canvas, Offset centre) {
+    canvas.drawCircle(centre, _endpointHandleRadius, _handleFillPaint);
+    canvas.drawCircle(centre, _endpointHandleRadius, _handleBorderPaint);
+  }
+
+  static (Offset, Offset)? _endpointsOf(SketchElement e) => switch (e) {
+        SketchLine l => (l.start, l.end),
+        SketchArrow a => (a.start, a.end),
+        _ => null,
+      };
 
   static bool _isResizable(SketchElement e) =>
       e is SketchRectangle ||
@@ -323,6 +380,7 @@ class SketchPainter extends CustomPainter {
         editingElementId != old.editingElementId ||
         !_setEquals(selectedIds, old.selectedIds) ||
         selectionColor != old.selectionColor ||
+        handleFillColor != old.handleFillColor ||
         scaleStrokeWithZoom != old.scaleStrokeWithZoom;
   }
 

@@ -166,5 +166,64 @@ void main() {
       );
       expect(hits, [inside]);
     });
+
+    test('catches a horizontal line a band is drawn flush along', () {
+      // Zero-height bounds are a single edge, and Rect.overlaps calls a
+      // shared edge disjoint — so this band missed the stroke it covers.
+      final wire = SketchLine.create(
+        start: const Offset(100, 200),
+        end: const Offset(300, 200),
+      );
+      const band = Rect.fromLTRB(80, 200, 320, 260);
+      expect(wire.bounds.height, 0);
+      expect(wire.bounds.overlaps(band), isFalse);
+      expect(SketchHitTest.intersecting([wire], band), [wire]);
+    });
+
+    test('catches a vertical arrow a band is drawn flush along', () {
+      final wire = SketchArrow.create(
+        start: const Offset(200, 100),
+        end: const Offset(200, 300),
+      );
+      const band = Rect.fromLTRB(200, 80, 260, 320);
+      expect(wire.bounds.width, 0);
+      expect(wire.bounds.overlaps(band), isFalse);
+      expect(SketchHitTest.intersecting([wire], band), [wire]);
+    });
+
+    test('a band straddling an axis-aligned line keeps working', () {
+      final wire = SketchLine.create(
+        start: const Offset(100, 200),
+        end: const Offset(300, 200),
+      );
+      expect(
+        SketchHitTest.intersecting(
+            [wire], const Rect.fromLTRB(80, 150, 320, 260)),
+        [wire],
+      );
+    });
+
+    test('skips a diagonal line whose bounding box the region only clips', () {
+      final wire = SketchLine.create(
+        start: Offset.zero,
+        end: const Offset(200, 200),
+      );
+      // Inside the bounding box, but 100+ px from the stroke itself.
+      const corner = Rect.fromLTRB(150, 10, 190, 50);
+      expect(wire.bounds.overlaps(corner), isTrue);
+      expect(SketchHitTest.intersecting([wire], corner), isEmpty);
+    });
+
+    test('still catches a diagonal line the region actually crosses', () {
+      final wire = SketchLine.create(
+        start: Offset.zero,
+        end: const Offset(200, 200),
+      );
+      final hits = SketchHitTest.intersecting(
+        [wire],
+        const Rect.fromLTRB(90, 90, 110, 110),
+      );
+      expect(hits, [wire]);
+    });
   });
 }
