@@ -5,18 +5,27 @@ import 'dart:math';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 import 'diagram_spec.dart';
+import 'mcp_http_handler.dart';
 
 /// Local control server embedded in the FlowCraft desktop app.
 ///
-/// This is the "hand" that AI agents ultimately drive: the isolated MCP
-/// bridge process (see `mcp_server/`) forwards tool calls here over plain
-/// HTTP, and this class turns them into mutations on the live
+/// This is the "hand" that AI agents ultimately drive, and it speaks two
+/// dialects on one loopback socket:
+///
+/// * `/mcp` — a full MCP server over the Streamable HTTP transport, so an
+///   AI CLI can be pointed straight at the running app with no second
+///   process to install. See [McpHttpHandler].
+/// * `/health`, `/draw`, `/clear` — the original private REST API, kept
+///   for the legacy stdio bridge in `mcp_server/`.
+///
+/// Both end up in the same place: mutations on the live
 /// [SketchController] the whiteboard UI is already watching.
 ///
-/// Security: binds to loopback only (127.0.0.1) and requires every
-/// mutating request to carry the token this class writes to
+/// Security: binds to loopback only (127.0.0.1), rejects browser origins
+/// that aren't themselves local (DNS-rebinding defense), and requires
+/// every mutating request to carry the token this class writes to
 /// `~/.flowcraft/control.token` on first start, so only processes running
-/// as the same local user — i.e. the paired MCP bridge — can draw.
+/// as the same local user can draw.
 class FlowcraftControlServer {
   FlowcraftControlServer({
     required SketchController controller,
@@ -42,8 +51,22 @@ class FlowcraftControlServer {
   int? get boundPort => _server?.port;
 
   /// The shared auth token mutating requests must send via the
-  /// `X-Flowcraft-Token` header.
+  /// `X-Flowcraft-Token` header (or `Authorization: Bearer` on `/mcp`).
   String get token => _token;
+
+  /// The URL to register with an AI CLI, once [start] has bound a port.
+  /// Null before that — the port isn't known until the socket exists.
+  String? get mcpEndpoint {
+    final port = boundPort;
+    return port == null ? null : 'http://127.0.0.1:$port$mcpEndpointPath';
+  }
+
+  /// Built lazily so the token file is only touched when the server
+  /// actually starts, not when this class is merely constructed.
+  late final McpHttpHandler _mcp = McpHttpHandler(
+    controller: _controller,
+    token: _token,
+  );
 
   File get _tokenFile =>
       File('${_configDir.path}${Platform.pathSeparator}control.token');
@@ -78,6 +101,18 @@ class FlowcraftControlServer {
 
   Future<void> _handle(HttpRequest request) async {
     try {
+      // The MCP endpoint speaks JSON-RPC end to end, including its own
+      // auth and origin failures, so it owns the whole request.
+      if (request.uri.path == mcpEndpointPath) {
+        await _mcp.handle(request);
+        return;
+      }
+      // Same DNS-rebinding defense for the REST half — a malicious page
+      // can't read the token, but it costs nothing to refuse it outright.
+      if (!isLoopbackOrigin(request.headers.value(originHeader))) {
+        _reply(request, 403, {'error': 'forbidden origin'});
+        return;
+      }
       switch ('${request.method} ${request.uri.path}') {
         case 'GET /health':
           _reply(request, 200, {
@@ -114,11 +149,14 @@ class FlowcraftControlServer {
     }
   }
 
+  /// The REST half deliberately accepts the custom header only — the
+  /// `Authorization: Bearer` alternative exists for `/mcp`, where generic
+  /// MCP clients expect it. This side has exactly one known caller.
   Future<void> _requireAuth(
     HttpRequest request,
     Future<void> Function() action,
   ) async {
-    final header = request.headers.value('X-Flowcraft-Token');
+    final header = request.headers.value(McpHttpHandler.tokenHeader);
     if (header == null || header != _token) {
       _reply(request, 401, {'error': 'missing or invalid token'});
       return;

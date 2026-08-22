@@ -8,7 +8,15 @@ void main() {
   testWidgets('whiteboard app builds and renders the sketch toolbar',
       (tester) async {
     await tester.pumpWidget(
-      const ProviderScope(child: FlowCraftWhiteboardApp()),
+      // Port 0 — building the app really does start the MCP control
+      // server, and `flutter test` runs files in parallel, so anything
+      // that pumps the app must let the OS pick a free port instead of
+      // racing every other file (and the developer's own running
+      // FlowCraft window) for 5199.
+      ProviderScope(
+        overrides: [mcpServerPortProvider.overrideWithValue(0)],
+        child: const FlowCraftWhiteboardApp(),
+      ),
     );
 
     // The app now opens on SplashView first. Pump past its minimum display

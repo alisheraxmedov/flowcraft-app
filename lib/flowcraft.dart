@@ -8,12 +8,16 @@
 library;
 
 // Models — immutable data
+export 'models/flow_project.dart';
 export 'models/flow_viewport.dart';
 export 'models/sketch_element.dart';
 export 'models/sketch_style.dart';
 export 'models/sketch_tool.dart';
 
 // ViewModels — app state + Riverpod providers
+export 'viewmodels/project_autosave.dart';
+export 'viewmodels/projects_state.dart';
+export 'viewmodels/projects_view_model.dart';
 export 'viewmodels/sketch_controller.dart';
 export 'viewmodels/sketch_history.dart';
 export 'viewmodels/theme_view_model.dart';
@@ -22,6 +26,14 @@ export 'viewmodels/mcp_view_model.dart';
 // Views — screens and reusable widgets
 export 'views/splash_view.dart';
 export 'views/whiteboard_view.dart';
+export 'views/widgets/export_feedback.dart';
+export 'views/widgets/export_menu_button.dart';
+export 'views/widgets/mcp_card.dart';
+export 'views/widgets/mcp_setup_dialog.dart';
+export 'views/widgets/project_dialogs.dart';
+export 'views/widgets/project_drawer.dart';
+export 'views/widgets/project_tile.dart';
+export 'views/widgets/project_title_field.dart';
 export 'views/widgets/properties_panel.dart';
 export 'views/widgets/sketch_layer.dart';
 export 'views/widgets/sketch_text_editor.dart';
@@ -29,8 +41,12 @@ export 'views/widgets/toolbar/toolbar.dart';
 
 // Services — external I/O boundary (MCP control server)
 export 'services/app_control.dart';
+export 'services/canvas_exporter.dart';
 export 'services/diagram_spec.dart';
+export 'services/export_file_sink.dart';
 export 'services/flowcraft_control_server.dart';
+export 'services/mcp_tools.dart';
+export 'services/project_repository.dart';
 
 // Core — framework-agnostic infrastructure
 export 'core/canvas/grid_painter.dart';
@@ -39,6 +55,7 @@ export 'core/canvas/whiteboard_canvas.dart';
 export 'core/domain/sketch_geometry.dart';
 export 'core/domain/sketch_hit_test.dart';
 export 'core/domain/stroke_simplifier.dart';
+export 'core/domain/text_metrics.dart';
 export 'core/interactions/sketch_drag_session.dart';
 export 'core/interactions/sketch_gesture_handler.dart';
 export 'core/interactions/sketch_interaction_state.dart';
@@ -47,6 +64,7 @@ export 'core/rendering/rough_generator.dart';
 export 'core/rendering/sketch_painter.dart';
 export 'core/rendering/sketch_preview_painter.dart';
 export 'core/rendering/sketch_render_cache.dart';
+export 'core/serialization/project_serializer.dart';
 export 'core/serialization/sketch_serializer.dart';
 export 'core/theme/app_colors.dart';
 export 'core/theme/app_radius.dart';
@@ -54,3 +72,4 @@ export 'core/theme/app_spacing.dart';
 export 'core/theme/app_theme.dart';
 export 'core/theme/app_typography.dart';
 export 'core/utils/id_generator.dart';
+export 'core/utils/relative_time.dart';

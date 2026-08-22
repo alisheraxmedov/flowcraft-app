@@ -1,18 +1,20 @@
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flowcraft/core/canvas/grid_painter.dart';
 import 'package:flowcraft/core/canvas/whiteboard_canvas.dart';
-import 'package:flowcraft/core/serialization/sketch_serializer.dart';
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
-import 'package:flowcraft/viewmodels/mcp_view_model.dart';
+import 'package:flowcraft/viewmodels/projects_view_model.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/viewmodels/theme_view_model.dart';
+import 'package:flowcraft/views/widgets/export_menu_button.dart';
+import 'package:flowcraft/views/widgets/mcp_card.dart';
+import 'package:flowcraft/views/widgets/project_drawer.dart';
+import 'package:flowcraft/views/widgets/project_title_field.dart';
 import 'package:flowcraft/views/widgets/properties_panel.dart';
 import 'package:flowcraft/views/widgets/toolbar/toolbar.dart';
 
@@ -46,6 +48,10 @@ class _WhiteboardViewState extends ConsumerState<WhiteboardView> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
+      // The saved-project sidebar. `Scaffold.drawer` rather than a panel in
+      // the body Stack: it has to overlay the tool rail, which already owns
+      // the left gutter.
+      drawer: const ProjectDrawer(),
       appBar: _TopBar(
         controller: sketch,
         showGrid: _showGrid,
@@ -85,10 +91,10 @@ class _WhiteboardViewState extends ConsumerState<WhiteboardView> {
             right: AppSpacing.gutter,
             child: PropertiesPanel(controller: sketch),
           ),
-          Positioned(
+          const Positioned(
             right: AppSpacing.gutter,
             bottom: AppSpacing.gutter,
-            child: _McpCard(),
+            child: McpCard(),
           ),
         ],
       ),
@@ -152,20 +158,6 @@ class _TopBarState extends State<_TopBar> {
     if (mounted) setState(() {});
   }
 
-  void _export() {
-    final ctrl = widget.controller;
-    final json = SketchSerializer.serialize(ctrl.elements);
-    Clipboard.setData(ClipboardData(text: json));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Copied ${ctrl.elements.length} element'
-          '${ctrl.elements.length == 1 ? '' : 's'} as JSON',
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final ctrl = widget.controller;
@@ -176,7 +168,8 @@ class _TopBarState extends State<_TopBar> {
       backgroundColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      automaticallyImplyLeading: false,
+      // Left to Material, which supplies the button that opens the
+      // project drawer hung off the Scaffold above.
       titleSpacing: AppSpacing.gutter,
       actionsPadding: EdgeInsets.zero,
       // Same translucent-blur background + bottom hairline as the old
@@ -206,9 +199,11 @@ class _TopBarState extends State<_TopBar> {
             size: 24,
           ),
           const SizedBox(width: 12),
+          // Just the product name now — the open project's own name sits
+          // beside it, and repeating "Whiteboard" next to it read as noise.
           Flexible(
             child: Text(
-              'FlowCraft Whiteboard',
+              'FlowCraft',
               overflow: TextOverflow.ellipsis,
               maxLines: 1,
               style: AppTypography.headlineMd.copyWith(
@@ -216,6 +211,10 @@ class _TopBarState extends State<_TopBar> {
               ),
             ),
           ),
+          const _HeaderDivider(),
+          // Renders nothing until a project is open, so no placeholder gap
+          // appears during the first load.
+          const Flexible(child: ProjectTitleField()),
         ],
       ),
       actions: [
@@ -266,7 +265,16 @@ class _TopBarState extends State<_TopBar> {
                   onTap: ctrl.removeSelected,
                 ),
                 const SizedBox(width: 12),
-                _ExportButton(onTap: _export),
+                // `_TopBar` is a plain StatefulWidget with no `ref`, so the
+                // open project's name — which seeds the export filename —
+                // is read through a local Consumer.
+                Consumer(
+                  builder: (context, ref, _) => ExportMenuButton(
+                    controller: ctrl,
+                    documentName:
+                        ref.watch(projectsViewModelProvider).active?.name,
+                  ),
+                ),
                 const SizedBox(width: AppSpacing.gutter),
               ],
             ),
@@ -327,136 +335,6 @@ class _HeaderDivider extends StatelessWidget {
       height: 24,
       margin: const EdgeInsets.symmetric(horizontal: 8),
       color: Theme.of(context).colorScheme.outlineVariant,
-    );
-  }
-}
-
-class _ExportButton extends StatelessWidget {
-  const _ExportButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.primary,
-      borderRadius: AppRadius.xsRadius,
-      child: InkWell(
-        borderRadius: AppRadius.xsRadius,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.ios_share_rounded,
-                size: 16,
-                color: colorScheme.onPrimary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Export',
-                style: AppTypography.bodyBase.copyWith(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onPrimary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom-right "System" card: MCP control-server toggle + live status,
-/// reading real state from [mcpViewModelProvider].
-class _McpCard extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final running = ref.watch(mcpViewModelProvider);
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      width: 240,
-      padding: const EdgeInsets.all(AppSpacing.panelPadding),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: AppRadius.mdRadius,
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.dns_outlined, size: 18, color: colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                'System',
-                style: AppTypography.labelMono.copyWith(
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                running ? 'ON' : 'OFF',
-                style: AppTypography.caption.copyWith(
-                  color: running ? colorScheme.tertiary : colorScheme.outline,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'MCP Server',
-                  style: AppTypography.bodyBase.copyWith(
-                    fontSize: 13,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Switch(
-                value: running,
-                onChanged: (_) =>
-                    ref.read(mcpViewModelProvider.notifier).toggle(),
-                activeThumbColor: colorScheme.tertiary,
-                activeTrackColor: colorScheme.tertiaryContainer,
-                inactiveThumbColor: colorScheme.onSurfaceVariant,
-                inactiveTrackColor: colorScheme.surfaceContainerHighest,
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: running ? colorScheme.tertiary : colorScheme.outline,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                running ? 'Status: Online' : 'Status: Offline',
-                style: AppTypography.caption.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

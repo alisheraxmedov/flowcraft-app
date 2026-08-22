@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
+import 'package:flowcraft/viewmodels/projects_view_model.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/views/whiteboard_view.dart';
 
@@ -16,9 +17,10 @@ import 'package:flowcraft/views/whiteboard_view.dart';
 const Color _logoGlowCyan = Color(0xFF67E8F9);
 
 /// App startup splash: shows the FlowCraft logo with an entrance animation
-/// while real startup work (spinning up the MCP control server) happens in
-/// the background, then swaps itself for [WhiteboardView] once both the
-/// work and a minimum display duration are done.
+/// while real startup work (spinning up the MCP control server, restoring
+/// the last open project) happens in the background, then swaps itself for
+/// [WhiteboardView] once both the work and a minimum display duration are
+/// done.
 ///
 /// Deliberately swaps its own build output rather than `Navigator.push`ing
 /// to the whiteboard — this screen never needs a stack entry of its own.
@@ -34,9 +36,9 @@ class SplashView extends ConsumerStatefulWidget {
   /// see the entrance animation play out.
   final Duration minDisplayDuration;
 
-  /// Safety-net ceiling: if real startup work (the MCP control server)
-  /// hasn't finished by this point, proceed to the whiteboard anyway. A
-  /// slow or failed control server must never trap the user on the splash
+  /// Safety-net ceiling: if real startup work hasn't finished by this
+  /// point, proceed to the whiteboard anyway. A slow control server or an
+  /// unreadable project directory must never trap the user on the splash
   /// screen.
   final Duration readyTimeout;
 
@@ -71,9 +73,14 @@ class _SplashViewState extends ConsumerState<SplashView>
     // notifier reads it during its own `build()`.
     ref.read(sketchControllerProvider);
     final mcp = ref.read(mcpViewModelProvider.notifier);
+    final projects = ref.read(projectsViewModelProvider.notifier);
 
     final startupWork = Future.wait<void>([
       mcp.ready,
+      // Restoring the last project mutates the canvas, so the whiteboard
+      // must not appear before it lands — otherwise the user watches an
+      // empty canvas pop into their saved scene a beat later.
+      projects.ready,
       Future<void>.delayed(widget.minDisplayDuration),
     ]);
 
