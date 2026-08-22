@@ -1,6 +1,35 @@
 import 'package:flutter/material.dart';
 
+import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/models/sketch_style.dart';
+
+/// What the style enums are called on screen — the chip wording, kept
+/// apart from the enum identifiers the way `ToolShortcuts.labels` is for
+/// tools. `FillStyle.crossHatch.name` reads as code; "Cross-hatch" reads
+/// as a choice.
+class StyleLabels {
+  StyleLabels._();
+
+  static const Map<StrokeStyle, String> strokeStyle = {
+    StrokeStyle.solid: 'Solid',
+    StrokeStyle.dashed: 'Dashed',
+    StrokeStyle.dotted: 'Dotted',
+  };
+
+  static const Map<FillStyle, String> fillStyle = {
+    FillStyle.none: 'None',
+    FillStyle.solid: 'Solid',
+    FillStyle.hachure: 'Hachure',
+    FillStyle.crossHatch: 'Cross-hatch',
+  };
+}
+
+/// Heading style shared by every popover ("Color", "Stroke width", …).
+TextStyle popoverHeadingStyle(BuildContext context) =>
+    AppTypography.caption.copyWith(
+      fontWeight: FontWeight.w600,
+      color: Theme.of(context).colorScheme.onSurface,
+    );
 
 /// Popover content: a labeled slider for a numeric style value (stroke
 /// width, roughness, ...).
@@ -39,8 +68,21 @@ class SliderPopover extends StatefulWidget {
 class _SliderPopoverState extends State<SliderPopover> {
   late double _value = widget.value;
 
+  /// True between `onChangeStart` and `onChangeEnd`. The local value is the
+  /// source of truth for the thumb mid-drag; outside a drag it follows
+  /// [SliderPopover.value] so clicking another element while the popover is
+  /// open shows *that* element's width, not the previous one's.
+  bool _dragging = false;
+
+  @override
+  void didUpdateWidget(SliderPopover old) {
+    super.didUpdateWidget(old);
+    if (!_dragging && old.value != widget.value) _value = widget.value;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: 240,
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
@@ -50,14 +92,15 @@ class _SliderPopoverState extends State<SliderPopover> {
         children: [
           Row(
             children: [
-              Text(widget.label,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+              Text(widget.label, style: popoverHeadingStyle(context)),
               const Spacer(),
-              Text(widget.format(_value),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontFamily: 'monospace',
-                  )),
+              Text(
+                widget.format(_value),
+                style: AppTypography.labelMono.copyWith(
+                  fontSize: 11,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
           Slider(
@@ -69,8 +112,14 @@ class _SliderPopoverState extends State<SliderPopover> {
               setState(() => _value = v);
               widget.onChanged(v);
             },
-            onChangeStart: widget.onChangeStart,
-            onChangeEnd: widget.onChangeEnd,
+            onChangeStart: (v) {
+              _dragging = true;
+              widget.onChangeStart?.call(v);
+            },
+            onChangeEnd: (v) {
+              _dragging = false;
+              widget.onChangeEnd?.call(v);
+            },
           ),
         ],
       ),
@@ -109,9 +158,7 @@ class ChoicePopover<T> extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style:
-                  const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+          Text(label, style: popoverHeadingStyle(context)),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcraft/flowcraft.dart';
 
@@ -7,11 +8,15 @@ import 'package:flowcraft/flowcraft.dart';
 /// visibly jumped a few pixels the instant editing started and jumped back
 /// on commit. The box is now offset by that chrome, putting the editable
 /// glyphs exactly where `SketchPainter` draws the committed ones.
-Widget _host(SketchController controller) {
+///
+/// [elsewhere] is somewhere else focus can go, for the focus-loss tests.
+Widget _host(SketchController controller, {FocusNode? elsewhere}) {
   return MaterialApp(
     home: Scaffold(
       body: Stack(
         children: [
+          if (elsewhere != null)
+            Focus(focusNode: elsewhere, child: const SizedBox(width: 10, height: 10)),
           SketchTextEditor(
             controller: controller,
             viewport: const FlowViewport(),
@@ -21,6 +26,10 @@ Widget _host(SketchController controller) {
     ),
   );
 }
+
+/// The text controller behind the live `EditableText`.
+TextEditingController _liveText(WidgetTester tester) =>
+    tester.widget<EditableText>(find.byType(EditableText)).controller;
 
 /// The editor's decorated box — the thing that either grows with its text
 /// (a note) or stays put (a shape). `EditableText` itself grows inside a
@@ -72,7 +81,7 @@ void main() {
     expect(editable.style.fontFamily, 'JetBrains Mono');
   });
 
-  testWidgets("a shape's label edits over the shape's own bounds",
+  testWidgets("a shape's label edits inside the painter's own label inset",
       (tester) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
@@ -86,12 +95,157 @@ void main() {
     controller.beginTextEdit(elementId: 'box');
     await tester.pump();
 
-    // A centred label stays centred only if the editor's content box lines
-    // up with the shape's bounds rather than being shrunk by its chrome.
+    // `SketchPainter._drawCenteredText` wraps a label at `bounds.width - 12`
+    // and centres it; the editor's content box has to be that same band —
+    // 6 px in from each side, centred on the shape — or a label whose
+    // natural width falls inside those 12 px changes line count on commit.
+    // (A centred label also stays centred only if the box lines up with the
+    // shape rather than being shrunk by the editor's chrome.)
     final content = tester.getRect(find.byType(EditableText));
-    expect(content.left, 40);
-    expect(content.width, 160);
+    expect(content.left, 46);
+    expect(content.width, 148);
+    expect(content.center.dx, 120);
     expect(content.center.dy, 130);
+  });
+
+  testWidgets('a long SketchText is one line in the editor, as when painted',
+      (tester) async {
+    // Free text is laid out unbounded by the painter — it never wraps. The
+    // editor used to wrap it at a fixed 300 px, so anything longer reflowed
+    // onto one line the instant the edit ended.
+    const text = 'thirty characters of plain text';
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    controller.add(SketchText.create(
+      id: 'long',
+      position: Offset.zero,
+      text: text,
+      fontSize: 16,
+    ));
+
+    await tester.pumpWidget(_host(controller));
+    controller.beginTextEdit(elementId: 'long');
+    await tester.pump();
+
+    final painted = TextMetrics.measure(text: text, fontSize: 16);
+    expect(painted.width, greaterThan(300),
+        reason: 'the text has to be wider than the old fixed box to prove anything');
+    final editable = tester.getSize(find.byType(EditableText));
+    expect(editable.height, moreOrLessEquals(painted.height, epsilon: 0.5),
+        reason: 'one painted line, one editor line');
+    expect(editable.width, greaterThanOrEqualTo(painted.width));
+  });
+
+  testWidgets("a free text's composer grows as lines are typed",
+      (tester) async {
+    // The painter draws every line; an editor fixed at ~1.7 lines scrolled
+    // the third out of sight.
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    controller.add(SketchText.create(
+      id: 'para',
+      position: const Offset(20, 20),
+      text: 'one',
+      fontSize: 16,
+    ));
+
+    await tester.pumpWidget(_host(controller));
+    controller.beginTextEdit(elementId: 'para');
+    await tester.pump();
+
+    final before = tester.getRect(_composer());
+    await tester.enterText(find.byType(EditableText), 'one\ntwo\nthree\nfour');
+    await tester.pump();
+    final after = tester.getRect(_composer());
+
+    expect(after.top, before.top, reason: 'anchored where it was');
+    expect(after.height, greaterThan(before.height));
+    expect(
+      tester.getSize(find.byType(EditableText)).height,
+      moreOrLessEquals(
+        TextMetrics.measure(text: 'one\ntwo\nthree\nfour', fontSize: 16).height,
+        epsilon: 0.5,
+      ),
+      reason: 'every line is visible, none scrolled away',
+    );
+  });
+
+  testWidgets('losing focus commits', (tester) async {
+    // Tab (or anything else that walks focus away) used to strand the edit:
+    // still open, shortcuts live again, Escape no longer reaching it.
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    final elsewhere = FocusNode();
+    addTearDown(elsewhere.dispose);
+    controller.add(SketchText.create(
+      id: 't',
+      position: Offset.zero,
+      text: 'before',
+      fontSize: 16,
+    ));
+
+    await tester.pumpWidget(_host(controller, elsewhere: elsewhere));
+    controller.beginTextEdit(elementId: 't');
+    await tester.pump();
+    await tester.pump();
+    await tester.enterText(find.byType(EditableText), 'after');
+
+    elsewhere.requestFocus();
+    await tester.pump();
+
+    expect(controller.editingElementId, isNull);
+    expect((controller.elements.single as SketchText).text, 'after');
+  });
+
+  group('Enter and Escape', () {
+    Future<SketchController> open(WidgetTester tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      controller.add(SketchText.create(
+        id: 't',
+        position: Offset.zero,
+        text: 'hello',
+        fontSize: 16,
+      ));
+      await tester.pumpWidget(_host(controller));
+      controller.beginTextEdit(elementId: 't');
+      await tester.pump();
+      await tester.pump();
+      return controller;
+    }
+
+    testWidgets('are left to the IME while a composition is open',
+        (tester) async {
+      // For CJK / pinyin input Enter confirms the candidate and Escape
+      // drops it; the framework sees the hardware key first, so acting on
+      // it here would commit the whole element mid-composition.
+      final controller = await open(tester);
+      _liveText(tester).value = const TextEditingValue(
+        text: 'hello',
+        selection: TextSelection.collapsed(offset: 5),
+        composing: TextRange(start: 0, end: 5),
+      );
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(controller.editingElementId, 't', reason: 'Enter was the IME\'s');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.editingElementId, 't', reason: 'so was Escape');
+    });
+
+    testWidgets('numpad Enter commits like the main Enter', (tester) async {
+      final controller = await open(tester);
+      await tester.enterText(find.byType(EditableText), 'typed');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.numpadEnter);
+      await tester.pump();
+
+      expect(controller.editingElementId, isNull);
+      expect((controller.elements.single as SketchText).text, 'typed');
+    });
   });
 
   testWidgets("a note's label edits inside the bubble's own text box",

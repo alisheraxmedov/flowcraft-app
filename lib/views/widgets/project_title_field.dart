@@ -17,17 +17,9 @@ import 'package:flowcraft/viewmodels/projects_view_model.dart';
 /// have to hunt for a confirm button.
 ///
 /// Renders nothing when no project is open, so it is safe to leave in the
-/// tree unconditionally.
-///
-/// Wiring — in `whiteboard_view.dart`'s `_TopBar`, append to the title row
-/// after the "FlowCraft Whiteboard" label. The [Flexible] matters: the row
-/// is `MainAxisSize.min`, so a fixed-width child would overflow a narrow
-/// window instead of ellipsising.
-///
-/// ```dart
-/// const SizedBox(width: 12),
-/// const Flexible(child: ProjectTitleField()),
-/// ```
+/// tree unconditionally. Hosts in a `MainAxisSize.min` row should wrap it in
+/// a [Flexible] so a long name ellipsises instead of overflowing a narrow
+/// window.
 class ProjectTitleField extends ConsumerStatefulWidget {
   const ProjectTitleField({super.key, this.width = 220});
 

@@ -431,6 +431,19 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     );
   }
 
+  /// "2px" for whole widths, "1.5px" otherwise — the toolbar's slider
+  /// steps by halves, and rounding every label to an integer put a "2px"
+  /// next to another "2px" in the list.
+  static String _widthLabel(double w) =>
+      '${w.toStringAsFixed(w == w.roundToDouble() ? 0 : 1)}px';
+
+  /// The faces the dropdown offers — the two bundled families, which are
+  /// the only strings the panel ever writes.
+  static const List<String> _fontFamilies = [
+    AppTypography.interFamily,
+    AppTypography.monoFamily,
+  ];
+
   Widget _strokeWidthDropdown(SketchElement el, SketchStyle style) {
     const presets = [1.0, 2.0, 4.0, 6.0, 8.0];
     final options = {...presets, style.strokeWidth}.toList()..sort();
@@ -454,7 +467,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
           ),
           items: [
             for (final w in options)
-              DropdownMenuItem(value: w, child: Text('${w.toStringAsFixed(0)}px')),
+              DropdownMenuItem(value: w, child: Text(_widthLabel(w))),
           ],
           onChanged: (v) {
             if (v == null) return;
@@ -467,7 +480,18 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
 
   Widget _typographySection(SketchElement el) {
     final isText = el is SketchText;
-    final current = isText ? (el.fontFamily ?? 'Inter') : 'Inter';
+    // `null` reads as Inter: that is the face `TextMetrics` resolves a
+    // missing family to, so it is what the text is actually painted in.
+    final current =
+        isText ? (el.fontFamily ?? AppTypography.interFamily) : AppTypography.interFamily;
+    // Anything else — an "Arial" from a hand-edited JSON file, say — is
+    // listed as-is rather than asserting: `DropdownButton` requires its
+    // value to be one of its items, and a panel that throws on a file the
+    // app happily painted is the worse of the two.
+    final options = [
+      ..._fontFamilies,
+      if (!_fontFamilies.contains(current)) current,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -488,12 +512,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
             fontSize: 12,
             color: _colorScheme.onSurface,
           ),
-          items: const [
-            DropdownMenuItem(value: 'Inter', child: Text('Inter')),
-            DropdownMenuItem(
-              value: 'JetBrains Mono',
-              child: Text('JetBrains Mono'),
-            ),
+          items: [
+            for (final family in options)
+              DropdownMenuItem(value: family, child: Text(family)),
           ],
           onChanged: !isText
               ? null
@@ -534,6 +555,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
+              // A 16-line editor plus chrome needs ~450 px; on a shorter
+              // window the content scrolls instead of overflowing.
+              scrollable: true,
               backgroundColor: _colorScheme.surfaceContainerHigh,
               title: Text(
                 'Edit element JSON',

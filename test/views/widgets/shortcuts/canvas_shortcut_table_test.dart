@@ -1,6 +1,6 @@
 import 'package:flowcraft/flowcraft.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Two activators collide when they would accept the same keystroke.
@@ -79,6 +79,49 @@ void main() {
     expect(copyOn(TargetPlatform.macOS).control, isFalse);
     expect(copyOn(TargetPlatform.windows).control, isTrue);
     expect(copyOn(TargetPlatform.windows).meta, isFalse);
+  });
+
+  group('modifier hints', () {
+    // Shift-click, Shift-resize, Alt-to-unsnap and the editor's own keys
+    // are real behaviour that lives outside the bindings map; the sheet
+    // used to claim "every shortcut" and leave them all out.
+    test('are display-only and never reach the bindings', () {
+      final hints = CanvasShortcutTable.modifierGroups(TargetPlatform.linux);
+      expect(hints, isNotEmpty);
+      expect(hints.expand((g) => g.hints), isNotEmpty);
+      // Nothing in them can be bound: no activator, no intent.
+      final bound = CanvasShortcutTable.bindings(TargetPlatform.linux).length;
+      final listed = CanvasShortcutTable.groups(TargetPlatform.linux)
+          .expand((g) => g.shortcuts)
+          .length;
+      expect(bound, listed);
+    });
+
+    test('spell the modifiers the way the platform does', () {
+      String keysOf(TargetPlatform p) =>
+          CanvasShortcutTable.modifierGroups(p)
+              .expand((g) => g.hints)
+              .map((h) => h.keys)
+              .join(' ');
+
+      expect(keysOf(TargetPlatform.macOS), contains('⇧'));
+      expect(keysOf(TargetPlatform.macOS), contains('⌥'));
+      expect(keysOf(TargetPlatform.linux), contains('Shift'));
+      expect(keysOf(TargetPlatform.linux), contains('Alt'));
+    });
+
+    testWidgets('the reference sheet shows them', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.linux),
+        home: const Scaffold(body: ShortcutsHelpDialog()),
+      ));
+
+      expect(find.textContaining('Shift'), findsWidgets);
+      expect(find.textContaining('Alt'), findsWidgets);
+      expect(find.text('Disable snapping while dragging'), findsOneWidget);
+      expect(find.text('Keep aspect ratio while resizing'), findsOneWidget);
+      expect(find.text('WHILE EDITING TEXT'), findsOneWidget);
+    });
   });
 
   group('labels', () {

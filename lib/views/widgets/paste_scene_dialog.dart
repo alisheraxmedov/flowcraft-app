@@ -60,6 +60,7 @@ class _PasteSceneDialogState extends State<PasteSceneDialog> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return AlertDialog(
+      scrollable: true,
       title: const Text('Paste a scene'),
       content: SizedBox(
         width: 560,

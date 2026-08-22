@@ -28,28 +28,8 @@ import 'package:flowcraft/views/widgets/paste_scene_dialog.dart';
 /// Clipboard stays enabled regardless, since that is the pre-existing
 /// behaviour this menu absorbed rather than replaced.
 ///
-/// Wiring — in `whiteboard_view.dart`'s `_TopBarState.build()`, replace
-/// `_ExportButton(onTap: _export)` with:
-///
-/// ```dart
-/// ExportMenuButton(controller: ctrl),
-/// ```
-///
-/// To name exported files after the open project, wrap it in a `Consumer`
-/// (`_TopBar` is a plain `StatefulWidget`, so it has no `ref` of its own):
-///
-/// ```dart
-/// Consumer(
-///   builder: (context, ref, _) => ExportMenuButton(
-///     controller: ctrl,
-///     documentName: ref.watch(projectsViewModelProvider).active?.name,
-///   ),
-/// ),
-/// ```
-///
-/// The old `_ExportButton` class and `_TopBarState._export` become dead
-/// once that swap is made, along with that file's `Clipboard` and
-/// `SketchSerializer` imports.
+/// [documentName] seeds the export filename; the top bar supplies the open
+/// project's name through a local `Consumer`.
 class ExportMenuButton extends StatefulWidget {
   const ExportMenuButton({
     super.key,

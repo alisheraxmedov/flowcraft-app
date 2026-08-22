@@ -78,6 +78,65 @@ void main() {
     });
   });
 
+  group('PropertiesPanel typography', () {
+    SketchText text({String? fontFamily}) => SketchText.create(
+          id: 't',
+          position: Offset.zero,
+          text: 'hello',
+          fontSize: 16,
+          fontFamily: fontFamily,
+        );
+
+    testWidgets('an unknown font family does not break the panel',
+        (tester) async {
+      // Reachable from "Edit JSON", "Paste JSON…" and "Import from file…":
+      // any hand-edited scene. `DropdownButton` asserts when its value is
+      // not among its items, and in release rendered a blank control.
+      final controller = SketchController(initialElements: [text(fontFamily: 'Arial')]);
+      addTearDown(controller.dispose);
+      controller.select('t');
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('PROPERTIES'), findsOneWidget);
+      expect(find.text('Arial'), findsOneWidget);
+    });
+
+    testWidgets('a text with no family reads as Inter, which is what paints it',
+        (tester) async {
+      final controller = SketchController(initialElements: [text()]);
+      addTearDown(controller.dispose);
+      controller.select('t');
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.text(TextMetrics.resolveFontFamily(null)), findsOneWidget);
+      expect(find.text('Inter'), findsOneWidget);
+    });
+  });
+
+  group('PropertiesPanel stroke width', () {
+    testWidgets('a half-step width keeps its own label', (tester) async {
+      // The toolbar slider steps by 0.5; rounding every label to an integer
+      // put "2px" (1.5) next to "2px" (2.0).
+      final controller = SketchController(initialElements: [
+        SketchRectangle.create(
+          id: 'a',
+          rect: const Rect.fromLTWH(0, 0, 100, 50),
+          style: const SketchStyle(strokeWidth: 1.5),
+        ),
+      ]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.text('1.5px'), findsOneWidget);
+      expect(find.text('2px', skipOffstage: false), findsOneWidget);
+    });
+  });
+
   group('PropertiesPanel dimension edits', () {
     testWidgets('submitting X/Y/W/H fields resizes the element via the controller',
         (tester) async {

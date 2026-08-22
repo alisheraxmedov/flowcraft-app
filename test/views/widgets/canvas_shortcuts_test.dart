@@ -38,6 +38,30 @@ Widget _host(
   );
 }
 
+/// The real inline editor inside the layer, the way the whiteboard has it.
+Widget _hostWithEditor(SketchController controller) {
+  return MaterialApp(
+    theme: ThemeData(platform: TargetPlatform.macOS),
+    home: Scaffold(
+      body: CanvasShortcuts(
+        controller: controller,
+        child: Stack(
+          children: [
+            const Focus(
+              autofocus: true,
+              child: SizedBox(width: 100, height: 100),
+            ),
+            SketchTextEditor(
+              controller: controller,
+              viewport: const FlowViewport(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// Holds [modifier] down for one keystroke, the way a real chord arrives.
 Future<void> _chord(
   WidgetTester tester,
@@ -112,6 +136,93 @@ void main() {
     await tester.pump();
 
     expect(controller.currentTool, SketchTool.rectangle);
+  });
+
+  group('shortcuts come back the moment typing ends', () {
+    // `FocusNode.unfocus()` — which every field calls on Enter/Escape and
+    // the inline editor on commit — parks focus on the nearest enclosing
+    // scope. Without a scope of its own inside the layer, that was the
+    // route's scope *above* `Shortcuts`, and every key went dead until the
+    // canvas was clicked again.
+    Future<SketchController> editing(WidgetTester tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      controller.add(SketchText.create(
+        id: 't',
+        position: Offset.zero,
+        text: 'hello',
+        fontSize: 16,
+      ));
+      await tester.pumpWidget(_hostWithEditor(controller));
+      controller.beginTextEdit(elementId: 't');
+      await tester.pump();
+      await tester.pump();
+      expect(controller.editingElementId, 't');
+      return controller;
+    }
+
+    testWidgets('a tool key works after the inline editor commits with Enter',
+        (tester) async {
+      final controller = await editing(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(controller.editingElementId, isNull, reason: 'precondition');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+      await tester.pump();
+
+      expect(controller.currentTool, SketchTool.rectangle);
+    });
+
+    testWidgets('a tool key works after the inline editor cancels with Escape',
+        (tester) async {
+      final controller = await editing(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expect(controller.editingElementId, isNull, reason: 'precondition');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+      await tester.pump();
+
+      expect(controller.currentTool, SketchTool.rectangle);
+    });
+
+    testWidgets('a tool key works after Enter in a properties-style field',
+        (tester) async {
+      // `TextField` unfocuses itself on `TextInputAction.done` — the
+      // properties panel's X/Y/W/H and hex fields, and the project title.
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_host(controller, beside: const TextField()));
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+      await tester.pump();
+
+      expect(controller.currentTool, SketchTool.rectangle);
+    });
+  });
+
+  testWidgets('Escape abandons an open text edit', (tester) async {
+    // The intent's doc promises it; an edit whose editor has lost focus
+    // (Tab) has nothing else left that can close it.
+    final controller = SketchController(initialElements: [_rect('a')]);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(controller));
+    controller.select('a');
+    controller.beginTextEdit(elementId: 'a');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    expect(controller.editingElementId, isNull);
+    expect(controller.selectedIds, isEmpty);
   });
 
   group('typing must not fire canvas shortcuts', () {

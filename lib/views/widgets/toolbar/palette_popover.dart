@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'style_popovers.dart' show popoverHeadingStyle;
+
+/// `#RRGGBB`, the way the properties panel's hex field spells a colour.
+String _hexOf(Color c) {
+  final rgb = c.toARGB32() & 0xFFFFFF;
+  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
 /// Popover content: a swatch grid for picking a stroke [Color].
 class PalettePopover extends StatelessWidget {
   const PalettePopover({
@@ -19,7 +27,6 @@ class PalettePopover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: 200,
       padding: const EdgeInsets.all(10),
@@ -27,29 +34,18 @@ class PalettePopover extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Color', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+          Text('Color', style: popoverHeadingStyle(context)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
               for (final c in palette)
-                GestureDetector(
+                Swatch(
+                  color: c,
+                  label: _hexOf(c),
+                  current: selected == c,
                   onTap: () => onPick(c),
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: c,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        width: selected == c ? 2.5 : 1.0,
-                        color: selected == c
-                            ? colorScheme.primary
-                            : colorScheme.outline,
-                      ),
-                    ),
-                  ),
                 ),
             ],
           ),
@@ -81,7 +77,6 @@ class FillPalettePopover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     bool isCurrent(Color? c) => !mixed && selected == c;
     return Container(
       width: 200,
@@ -90,37 +85,79 @@ class FillPalettePopover extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Fill', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+          Text('Fill', style: popoverHeadingStyle(context)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: [
               for (final c in palette)
-                GestureDetector(
+                Swatch(
+                  color: c,
+                  label: c == null ? 'No fill' : _hexOf(c),
+                  current: isCurrent(c),
                   onTap: () => onPick(c),
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: c ?? Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        width: isCurrent(c) ? 2.5 : 1.0,
-                        color: isCurrent(c)
-                            ? colorScheme.primary
-                            : colorScheme.outline,
-                      ),
-                    ),
-                    child: c == null
-                        ? Icon(Icons.do_not_disturb_alt,
-                            size: 14, color: colorScheme.onSurfaceVariant)
-                        : null,
-                  ),
                 ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One tappable colour in a palette grid.
+///
+/// A real button rather than a bare `GestureDetector`: it names its colour
+/// to a screen reader and on hover, takes keyboard focus, and shows a click
+/// cursor — a 24-px circle that does none of those is a guess, not a
+/// control. `null` is the fill palette's "none" entry.
+class Swatch extends StatelessWidget {
+  const Swatch({
+    super.key,
+    required this.color,
+    required this.label,
+    required this.current,
+    required this.onTap,
+  });
+
+  final Color? color;
+  final String label;
+  final bool current;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        selected: current,
+        label: label,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: color ?? Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(
+                width: current ? 2.5 : 1.0,
+                color: current ? colorScheme.primary : colorScheme.outline,
+              ),
+            ),
+            child: color == null
+                ? Icon(
+                    Icons.do_not_disturb_alt,
+                    size: 14,
+                    color: colorScheme.onSurfaceVariant,
+                  )
+                : null,
+          ),
+        ),
       ),
     );
   }

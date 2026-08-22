@@ -75,6 +75,16 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
+  testWidgets('names the build in its footer, whatever the server state',
+      (tester) async {
+    // The same string the MCP handshake and `/health` report; a bug report
+    // filed from a screenshot names the build it came from.
+    for (final status in [running, failed, const McpServerStatus.off()]) {
+      await pumpCard(tester, status);
+      expect(find.text('FlowCraft v$appVersion'), findsOneWidget);
+    }
+  });
+
   testWidgets('hides the connection details while the server is off',
       (tester) async {
     await pumpCard(tester, const McpServerStatus.off());
@@ -152,6 +162,26 @@ void main() {
       'http://127.0.0.1:5199/mcp --header "X-Flowcraft-Token: test-token"',
     );
     expect(find.text('Copied the connect command'), findsOneWidget);
+  });
+
+  testWidgets('a refused clipboard is reported, not swallowed', (tester) async {
+    // A platform-channel refusal used to be an unhandled async error with
+    // no snackbar: Copy did nothing and said nothing.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        throw PlatformException(code: 'denied', message: 'no clipboard');
+      }
+      return null;
+    });
+    await pumpCard(tester, running);
+
+    await tester.tap(find.text('Copy connect'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Could not copy'), findsOneWidget);
+    expect(find.text('Copied the connect command'), findsNothing);
   });
 
   testWidgets('Setup opens per-CLI config for all three CLIs',

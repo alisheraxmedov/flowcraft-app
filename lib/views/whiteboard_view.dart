@@ -93,17 +93,30 @@ class _WhiteboardViewState extends ConsumerState<WhiteboardView> {
                 ),
               ),
             ),
-            // Same reasoning, but this one keeps its `gutter` margin below
-            // the (now implicit) app bar boundary.
+            // The properties panel and the MCP card share the right-hand
+            // column: one `Positioned` spanning the body's height, with the
+            // card pinned to the bottom and the panel given whatever is
+            // left above it. Two independently-anchored overlays met in the
+            // middle on any window shorter than ~780 px — the card, later
+            // in the Stack, painted over the panel's bottom controls. Here
+            // the panel's `Flexible` budget is the column minus the card,
+            // and its own scroll view takes over from there; the two can't
+            // overlap by construction.
             Positioned(
               top: AppSpacing.gutter,
               right: AppSpacing.gutter,
-              child: PropertiesPanel(controller: sketch),
-            ),
-            const Positioned(
-              right: AppSpacing.gutter,
               bottom: AppSpacing.gutter,
-              child: McpCard(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(child: PropertiesPanel(controller: sketch)),
+                  const Padding(
+                    padding: EdgeInsets.only(top: AppSpacing.gutter),
+                    child: McpCard(),
+                  ),
+                ],
+              ),
             ),
             // Above everything, because it says the user's edits are not
             // being saved — the one message on this screen that must not sit

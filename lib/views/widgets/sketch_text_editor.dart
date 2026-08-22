@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
 import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
+import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/core/theme/app_colors.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -49,11 +50,48 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
   /// pixels the instant editing starts, and jumps back on commit.
   static const Offset _editorInset = Offset(5, 3);
 
+  /// Horizontal room a shape's centred label gives up, both sides together,
+  /// before it wraps. Mirrors `SketchPainter._labelInset` (the `maxWidth:
+  /// bounds.width - 12` in `_drawCenteredText`), which is private to the
+  /// painter; a label whose natural width falls inside those 12 px would
+  /// otherwise sit on one line here and wrap to two the moment it commits.
+  static const double _shapeLabelInset = 12.0;
+
+  /// Width a free text's editor keeps past its widest line, in screen px at
+  /// zoom 1: room for the caret and the glyph being typed, so the box never
+  /// soft-wraps a line the painter draws unbroken.
+  static const double _freeTextSlack = 24.0;
+
+  /// Narrowest editor box, in screen px — a box with nowhere to type is no
+  /// use on a 10-px shape or an empty text.
+  static const double _minEditorWidth = 60.0;
+
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_sync);
+    // Free text is sized from its own content (see `_editorBoxFor`), so the
+    // box has to be re-laid-out on every keystroke, not only on controller
+    // changes.
+    _textCtrl.addListener(_onTextChanged);
+    _focusNode.addListener(_onFocusChanged);
     _sync();
+  }
+
+  void _onTextChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Commits when focus walks away without a key or a click ending the edit
+  /// — Tab, most often. Left open, the editor stayed on screen with tool
+  /// keys live again and Escape no longer reaching it.
+  ///
+  /// Harmless on the commit/cancel paths: `_sync` clears `_activeId` before
+  /// it unfocuses, so the edit is already over by the time this fires.
+  void _onFocusChanged() {
+    if (_focusNode.hasFocus) return;
+    if (_activeId == null && _activeCanvasPos == null) return;
+    _commit();
   }
 
   @override
@@ -69,6 +107,8 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
   @override
   void dispose() {
     widget.controller.removeListener(_sync);
+    _focusNode.removeListener(_onFocusChanged);
+    _textCtrl.removeListener(_onTextChanged);
     _focusNode.dispose();
     _textCtrl.dispose();
     super.dispose();
@@ -142,12 +182,16 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
   /// [_editorInset] to make room for the surrounding chrome, which is what
   /// keeps the glyphs sitting exactly where [SketchPainter] draws them once
   /// the edit is committed.
+  ///
+  /// `fontFamily` is always the face the painter will actually use —
+  /// resolved through [TextMetrics.resolveFontFamily], the same call every
+  /// committed label goes through — so the glyphs never reflow on commit.
   ({
     Offset screenPos,
     double width,
     double height,
     double fontSize,
-    String? fontFamily,
+    String fontFamily,
   })? _editorBoxFor(SketchElement? el) {
     final viewport = widget.viewport;
     final zoom = viewport.zoom;
@@ -170,52 +214,73 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
           width: box.width * zoom,
           height: box.height * zoom,
           fontSize: el.fontSize * zoom,
-          // Shapes and stickies carry no font family — the painter renders
-          // their labels in the default face too.
-          fontFamily: null,
+          fontFamily: TextMetrics.resolveFontFamily(null),
         );
       }
       if (el is SketchRectangle ||
           el is SketchEllipse ||
           el is SketchDiamond ||
           el is SketchTriangle) {
+        // The painter wraps a centred label inside `bounds` less
+        // `_shapeLabelInset`; wrapping here at the full width would give a
+        // label in that 12-px band one line count while editing and another
+        // once committed.
         final bounds = el.bounds;
-        final tl = ViewportTransform.canvasToScreen(bounds.topLeft, viewport);
-        final fontSize = _shapeFontSize(el);
+        final tl = ViewportTransform.canvasToScreen(
+          Offset(bounds.left + _shapeLabelInset / 2, bounds.top),
+          viewport,
+        );
         return (
           screenPos: tl,
-          width: bounds.width * zoom,
+          width: (bounds.width - _shapeLabelInset) * zoom,
           height: bounds.height * zoom,
-          fontSize: fontSize * zoom,
-          fontFamily: null,
+          fontSize: _shapeFontSize(el) * zoom,
+          fontFamily: TextMetrics.resolveFontFamily(null),
         );
       }
       if (el is SketchText) {
         final tl = ViewportTransform.canvasToScreen(el.position, viewport);
+        final fontFamily = TextMetrics.resolveFontFamily(el.fontFamily);
         return (
           screenPos: tl,
-          width: 300,
+          width: _freeTextWidth(el.fontSize, fontFamily),
           height: el.fontSize * 2 * zoom,
           fontSize: el.fontSize * zoom,
-          // The painter renders committed text in this face; without it the
-          // glyphs reflow the instant the edit ends.
-          fontFamily: el.fontFamily,
+          fontFamily: fontFamily,
         );
       }
     }
     if (_activeCanvasPos != null) {
       final tl = ViewportTransform.canvasToScreen(_activeCanvasPos!, viewport);
+      // Matches `SketchText.create`'s defaults, which are what
+      // `commitTextEdit` builds from this pending position.
+      final fontFamily = TextMetrics.resolveFontFamily(null);
       return (
         screenPos: tl,
-        width: 300,
+        width: _freeTextWidth(16, fontFamily),
         height: 40 * zoom,
         fontSize: 16 * zoom,
-        // Matches `SketchText.create`'s default, which is what
-        // `commitTextEdit` builds from this pending position.
-        fontFamily: null,
+        fontFamily: fontFamily,
       );
     }
     return null;
+  }
+
+  /// Editor width for a free [SketchText]: its widest line as the painter
+  /// lays it out (unbounded — free text never wraps), scaled to the screen,
+  /// plus [_freeTextSlack]. A fixed 300 px used to soft-wrap anything longer
+  /// inside the editor, so the glyphs jumped back onto one line on commit.
+  ///
+  /// Measured from the *live* text (not the element's), since the box has
+  /// to keep up with what is being typed.
+  double _freeTextWidth(double fontSize, String fontFamily) {
+    final zoom = widget.viewport.zoom;
+    final measured = TextMetrics.measure(
+      text: _textCtrl.text,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+    );
+    return measured.width * zoom + _freeTextSlack;
   }
 
   void _commit() {
@@ -230,11 +295,18 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
 
   bool _onKey(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
-    if (event.logicalKey == LogicalKeyboardKey.escape) {
+    // Mid-composition (CJK, pinyin, dead keys) Enter confirms the candidate
+    // and Escape drops it. On macOS the framework sees the hardware key
+    // before the IME does, so acting here would commit the whole element —
+    // or throw the edit away — on a keystroke meant for the composer.
+    if (_textCtrl.value.composing.isValid) return false;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
       _cancel();
       return true;
     }
-    if (event.logicalKey == LogicalKeyboardKey.enter &&
+    if ((key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter) &&
         !HardwareKeyboard.instance.isShiftPressed) {
       _commit();
       return true;
@@ -281,15 +353,18 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
 
     final editorHeight = box.height.clamp(20, 4000) + _editorInset.dy * 2;
 
+    // Open-ended composers grow with their lines; only a shape keeps a
+    // fixed box, which is what keeps its centred label centred. A note
+    // grows to fit its text on commit and free text is painted line for
+    // line, so for both the editor has to grow *while typing* or the third
+    // line scrolls out of sight inside a box sized for two.
+    final growsWithText = !isShape;
+
     return Positioned(
       left: box.screenPos.dx - _editorInset.dx,
       top: box.screenPos.dy - _editorInset.dy,
-      width: box.width.clamp(60, 4000) + _editorInset.dx * 2,
-      // A note's composer is open-ended: the bubble grows to fit its text
-      // on commit, so the editor has to grow *while typing* or the third
-      // line scrolls out of sight inside a box sized for two. Shapes keep
-      // a fixed box, which is what keeps their centred label centred.
-      height: onBubble ? null : editorHeight,
+      width: box.width.clamp(_minEditorWidth, 4000) + _editorInset.dx * 2,
+      height: growsWithText ? null : editorHeight,
       child: Focus(
         onKeyEvent: (_, e) =>
             _onKey(e) ? KeyEventResult.handled : KeyEventResult.ignored,
@@ -297,8 +372,9 @@ class _SketchTextEditorState extends State<SketchTextEditor> {
           onTapOutside: (_) => _commit(),
           child: Container(
             alignment: isShape ? Alignment.center : Alignment.topLeft,
-            constraints:
-                onBubble ? BoxConstraints(minHeight: editorHeight) : null,
+            constraints: growsWithText
+                ? BoxConstraints(minHeight: editorHeight)
+                : null,
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
               // ~6% black tint — a decorative edit-box background, not a

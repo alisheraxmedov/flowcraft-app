@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/services/app_version.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
+import 'package:flowcraft/views/widgets/export_feedback.dart';
 import 'package:flowcraft/views/widgets/mcp_setup_dialog.dart';
 
 /// How each server state reads on the card, resolved in one place so the
@@ -56,11 +58,18 @@ class McpCard extends ConsumerWidget {
   ) async {
     final command = status.connectCommand;
     if (command == null) return;
-    await Clipboard.setData(ClipboardData(text: command));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied the connect command')),
-    );
+    // Resolved before the await: the card is routinely rebuilt while the
+    // platform call is in flight.
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Clipboard.setData(ClipboardData(text: command));
+    } catch (e) {
+      // A platform-channel refusal would otherwise be an unhandled async
+      // error with no snackbar — the user taps Copy and nothing happens.
+      ExportFeedback.showError(messenger, 'Could not copy: $e');
+      return;
+    }
+    ExportFeedback.showInfo(messenger, 'Copied the connect command');
   }
 
   @override
@@ -187,6 +196,16 @@ class McpCard extends ConsumerWidget {
               onRetry: () => ref.read(mcpViewModelProvider.notifier).retry(),
             ),
           ],
+          // The build, where a bug report can read it off the screen — the
+          // same string the MCP handshake and `/health` report, so the
+          // window and the CLI on the other end can be matched up.
+          const SizedBox(height: 10),
+          Text(
+            'FlowCraft v$appVersion',
+            style: AppTypography.caption.copyWith(
+              color: colorScheme.outline,
+            ),
+          ),
         ],
       ),
     );

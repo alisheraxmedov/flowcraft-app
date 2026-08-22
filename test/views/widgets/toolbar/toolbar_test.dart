@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/views/widgets/toolbar/palette_popover.dart';
@@ -9,16 +10,37 @@ import 'package:flowcraft/views/widgets/toolbar/style_popovers.dart';
 /// so picking a colour with a shape selected visibly did nothing. Picking a
 /// fill colour was doubly invisible: `FillStyle.none` meant the painter
 /// skipped the fill even once the colour was set.
-Widget _host(SketchController controller) {
+Widget _host(
+  SketchController controller, {
+  ThemeData? theme,
+  List<SketchTool> tools = const [SketchTool.select],
+}) {
   return MaterialApp(
+    theme: theme,
     home: Scaffold(
       // A single tool keeps the bar narrow enough that every style button
       // sits inside the default 800×600 test surface.
       body: Align(
         alignment: Alignment.topLeft,
-        child: SketchToolbarRich(
-          controller: controller,
-          tools: const [SketchTool.select],
+        child: SketchToolbarRich(controller: controller, tools: tools),
+      ),
+    ),
+  );
+}
+
+/// The vertical rail as the whiteboard mounts it, inside a body [height]
+/// tall, on a 1280×720 surface.
+Widget _rail(SketchController controller, {required double height}) {
+  return MaterialApp(
+    home: Scaffold(
+      body: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          height: height,
+          child: SketchToolbarRich(
+            controller: controller,
+            orientation: Axis.vertical,
+          ),
         ),
       ),
     ),
@@ -41,11 +63,19 @@ Future<void> _pick(WidgetTester tester, String tooltip, int index) async {
           of: find.byType(tooltip == 'Fill color'
               ? FillPalettePopover
               : PalettePopover),
-          matching: find.byType(GestureDetector),
+          matching: find.byType(Swatch),
         )
         .at(index),
   );
   await tester.pumpAndSettle();
+}
+
+/// Sizes the test surface like a laptop window, restored on teardown.
+void _laptopWindow(WidgetTester tester, {double height = 720}) {
+  tester.view.physicalSize = Size(1280, height);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
 }
 
 void main() {
@@ -300,5 +330,242 @@ void main() {
       expect(controller.elements.single.style.strokeColor, before);
       expect(controller.canUndo, isFalse);
     });
+  });
+
+  group('the vertical rail fits the window', () {
+    // The rail used to size its tool grid against the *whole* body height,
+    // forgetting the style anchors and actions stacked under it: at 720 px
+    // it chose single-column, ran off the bottom of the window, and left
+    // "Clear" reachable only by a wheel-scroll nobody knew was there.
+    Future<void> expectFits(WidgetTester tester, double height) async {
+      _laptopWindow(tester);
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_rail(controller, height: height));
+
+      final scrollable = tester.state<ScrollableState>(find.descendant(
+        of: find.byType(SketchToolbarRich),
+        matching: find.byType(Scrollable),
+      ));
+      expect(scrollable.position.maxScrollExtent, 0,
+          reason: 'nothing left to scroll to at $height px');
+
+      final clear = tester.getRect(find.byTooltip('Clear sketches'));
+      expect(clear.bottom, lessThanOrEqualTo(height),
+          reason: 'the last control is inside the body at $height px');
+      for (final tool in SketchTool.values) {
+        final rect = tester.getRect(find.byTooltip(ToolShortcuts.tooltip(tool)));
+        expect(rect.bottom, lessThanOrEqualTo(height));
+      }
+    }
+
+    testWidgets('at a 1280×720 window (664 px body)', (tester) async {
+      await expectFits(tester, 664);
+    });
+
+    testWidgets('at a 600 px body', (tester) async {
+      await expectFits(tester, 600);
+    });
+
+    testWidgets('keeps one tool per row when there is room', (tester) async {
+      // A single-column rail is ~780 px with its anchors and actions; a
+      // desktop-height window still gets the source design's one-per-row.
+      _laptopWindow(tester, height: 900);
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_rail(controller, height: 850));
+
+      // Single-column: every tool button shares one x.
+      final lefts = {
+        for (final tool in SketchTool.values)
+          tester.getRect(find.byTooltip(ToolShortcuts.tooltip(tool))).left,
+      };
+      expect(lefts, hasLength(1));
+    });
+  });
+
+  group('tool tooltips', () {
+    testWidgets('name the tool and its key, never the enum identifier',
+        (tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_host(controller, tools: SketchTool.values));
+
+      for (final tool in SketchTool.values) {
+        expect(find.byTooltip(tool.name), findsNothing,
+            reason: '"${tool.name}" is a Dart identifier, not a label');
+        expect(find.byTooltip(ToolShortcuts.tooltip(tool)), findsOneWidget);
+      }
+      // The reference sheet's wording, plus the key it teaches.
+      expect(find.byTooltip('Draw · P'), findsOneWidget);
+      expect(find.byTooltip('Sticky note · N'), findsOneWidget);
+    });
+  });
+
+  group('theme-aware default stroke', () {
+    const lightInk = Color(0xFF1E1E1E);
+    final darkInk = AppTheme.dark().colorScheme.onSurface;
+
+    testWidgets('a fresh controller on the dark theme draws in onSurface',
+        (tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      expect(controller.currentStyle.strokeColor, lightInk,
+          reason: "the model's own default is the light theme's ink");
+
+      await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
+      await tester.pump();
+
+      expect(controller.currentStyle.strokeColor, darkInk);
+      expect(darkInk, isNot(lightInk));
+    });
+
+    testWidgets('the default follows a theme toggle, both ways',
+        (tester) async {
+      // `MaterialApp` cross-fades between themes, so each switch is settled
+      // — the stroke tracks the lerp frame by frame and lands on the exact
+      // token at the end.
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(_host(controller, theme: AppTheme.light()));
+      await tester.pumpAndSettle();
+      expect(controller.currentStyle.strokeColor, lightInk);
+
+      await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
+      await tester.pumpAndSettle();
+      expect(controller.currentStyle.strokeColor, darkInk);
+
+      await tester.pumpWidget(_host(controller, theme: AppTheme.light()));
+      await tester.pumpAndSettle();
+      expect(controller.currentStyle.strokeColor, lightInk);
+    });
+
+    testWidgets('a colour the user picked is left alone', (tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_host(controller, theme: AppTheme.light()));
+      await tester.pumpAndSettle();
+      controller.currentStyle =
+          controller.currentStyle.copyWith(strokeColor: stroke);
+
+      await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
+      await tester.pumpAndSettle();
+
+      expect(controller.currentStyle.strokeColor, stroke);
+    });
+
+    testWidgets("the palette's first swatch is the theme's ink",
+        (tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Stroke color'));
+      await tester.pumpAndSettle();
+
+      final first = tester.widget<Swatch>(find.byType(Swatch).first);
+      expect(first.color, darkInk);
+      expect(first.current, isTrue, reason: 'it is what is being drawn with');
+    });
+  });
+
+  group('popovers', () {
+    testWidgets('Escape closes the popover instead of deselecting',
+        (tester) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+      await tester.pumpWidget(_host(controller));
+
+      await tester.tap(find.byTooltip('Stroke color'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PalettePopover), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PalettePopover), findsNothing);
+      expect(controller.selectedIds, {'a'});
+    });
+
+    testWidgets('swatches are named controls', (tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_host(controller));
+
+      await tester.tap(find.byTooltip('Stroke color'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('#E03131'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(PalettePopover),
+          matching: find.byType(InkWell),
+        ),
+        findsNWidgets(SketchToolbarRich.defaultPalette.length),
+      );
+    });
+
+    testWidgets('the stroke-width slider follows a change of selection',
+        (tester) async {
+      final controller = SketchController(initialElements: [
+        SketchRectangle.create(
+          id: 'a',
+          rect: const Rect.fromLTWH(0, 0, 100, 60),
+          style: const SketchStyle(strokeWidth: 6),
+        ),
+        SketchRectangle.create(
+          id: 'b',
+          rect: const Rect.fromLTWH(200, 0, 100, 60),
+          style: const SketchStyle(strokeWidth: 2),
+        ),
+      ]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+      await tester.pumpWidget(_host(controller));
+
+      await tester.tap(find.byTooltip('Stroke width'));
+      await tester.pumpAndSettle();
+      expect(find.text('6.0'), findsOneWidget);
+
+      controller.select('b');
+      await tester.pumpAndSettle();
+
+      expect(find.text('2.0'), findsOneWidget);
+      expect(find.text('6.0'), findsNothing);
+    });
+
+    testWidgets('style chips read as words, not identifiers', (tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_host(controller));
+
+      await tester.tap(find.byTooltip('Fill style'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cross-hatch'), findsOneWidget);
+      expect(find.text('crossHatch'), findsNothing);
+    });
+  });
+
+  testWidgets('Clear says what it did and offers the way back', (tester) async {
+    final controller = SketchController(
+      initialElements: [_rect(id: 'a'), _rect(id: 'b', left: 200)],
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(controller));
+
+    await tester.tap(find.byTooltip('Clear sketches'));
+    await tester.pumpAndSettle();
+
+    expect(controller.elements, isEmpty);
+    expect(find.text('Cleared 2 elements'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pump();
+
+    expect(controller.elements, hasLength(2));
   });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
 
 import 'package:flowcraft/core/theme/app_radius.dart';
 
@@ -43,21 +44,43 @@ class _PopoverButtonState extends State<PopoverButton> {
   final OverlayPortalController _portal = OverlayPortalController();
   final LayerLink _link = LayerLink();
 
-  late final PopoverController _ctrl = PopoverController(
-    () {
-      if (!_portal.isShowing) _portal.show();
-    },
-    () {
-      if (_portal.isShowing) _portal.hide();
-    },
-  );
+  /// Holds focus while the popover is open so Escape reaches it — an open
+  /// popover used to leave focus on the canvas, where Escape meant
+  /// "deselect" and the popover stayed put. Requested explicitly rather
+  /// than via `autofocus`, which only fires when nothing in the scope is
+  /// focused, and the canvas always is. Detaching it on hide hands focus
+  /// back to the enclosing scope, which is the shortcut layer's own.
+  final FocusNode _focus = FocusNode(debugLabel: 'popover');
 
-  void _toggle() {
-    if (_portal.isShowing) {
-      _portal.hide();
-    } else {
-      _portal.show();
+  late final PopoverController _ctrl = PopoverController(_show, _hide);
+
+  void _show() {
+    if (_portal.isShowing) return;
+    _portal.show();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _portal.isShowing) _focus.requestFocus();
+    });
+  }
+
+  void _hide() {
+    if (_portal.isShowing) _portal.hide();
+  }
+
+  void _toggle() => _portal.isShowing ? _hide() : _show();
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
+      _hide();
+      return KeyEventResult.handled;
     }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
   }
 
   @override
@@ -71,30 +94,37 @@ class _PopoverButtonState extends State<PopoverButton> {
             children: [
               Positioned.fill(
                 child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTap: _ctrl.hide,
+                  // Opaque: the click that dismisses a popover is spent on
+                  // dismissing it. Translucent let it fall through to the
+                  // canvas and start a stroke with whichever tool was live.
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _hide,
                 ),
               ),
               Positioned(
                 left: 0,
                 top: 0,
-                  child: CompositedTransformFollower(
-                    link: _link,
-                    showWhenUnlinked: false,
-                    targetAnchor: widget.vertical
-                        ? Alignment.centerRight
-                        : Alignment.bottomLeft,
-                    followerAnchor: widget.vertical
-                        ? Alignment.centerLeft
-                        : Alignment.topLeft,
-                    offset: widget.vertical
-                        ? const Offset(6, 0)
-                        : const Offset(0, 6),
+                child: CompositedTransformFollower(
+                  link: _link,
+                  showWhenUnlinked: false,
+                  targetAnchor: widget.vertical
+                      ? Alignment.centerRight
+                      : Alignment.bottomLeft,
+                  followerAnchor: widget.vertical
+                      ? Alignment.centerLeft
+                      : Alignment.topLeft,
+                  offset: widget.vertical
+                      ? const Offset(6, 0)
+                      : const Offset(0, 6),
+                  child: Focus(
+                    focusNode: _focus,
+                    onKeyEvent: _onKey,
                     child: Material(
-                    elevation: 6,
-                    borderRadius: AppRadius.mdRadius,
-                    clipBehavior: Clip.antiAlias,
-                    child: widget.popoverBuilder(context, _ctrl.hide),
+                      elevation: 6,
+                      borderRadius: AppRadius.mdRadius,
+                      clipBehavior: Clip.antiAlias,
+                      child: widget.popoverBuilder(context, _hide),
+                    ),
                   ),
                 ),
               ),

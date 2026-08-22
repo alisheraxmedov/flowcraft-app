@@ -14,10 +14,10 @@ import 'tool_button.dart';
 
 /// Full-featured Excalidraw-style toolbar.
 ///
-/// Single horizontal bar that exposes:
+/// A horizontal bar or — with [orientation] vertical, as the whiteboard
+/// uses it — a side rail, exposing:
 ///
-///  * Tool picker (select, hand, rectangle, ellipse, diamond, line,
-///    arrow, freedraw, text, eraser).
+///  * Tool picker, one button per [SketchTool] in [tools].
 ///  * Stroke colour + fill colour swatch buttons → palette popover.
 ///  * Stroke width, roughness, stroke style, fill style → slider /
 ///    chip popovers.
@@ -128,10 +128,26 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   /// builders below. See [_resolveDisplayStyle].
   late Set<_MixedField> _mixed;
 
+  /// Shared by the rail's scroll view and its scrollbar, so the bar can show
+  /// the rare overflow (a window shorter than the paired layout) instead of
+  /// leaving the bottom buttons reachable only by a wheel nobody knows to
+  /// turn.
+  final ScrollController _scroll = ScrollController();
+
+  /// The stroke colour the current theme supplies for a "just draw" default
+  /// — see [_retargetDefaultStroke]. Null until the first dependency pass.
+  Color? _themeInk;
+
   @override
   void initState() {
     super.initState();
     _ctrl.addListener(_onChange);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _retargetDefaultStroke(Theme.of(context).colorScheme);
   }
 
   @override
@@ -146,11 +162,55 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   @override
   void dispose() {
     _ctrl.removeListener(_onChange);
+    _scroll.dispose();
     super.dispose();
   }
 
   void _onChange() {
     if (mounted) setState(() {});
+  }
+
+  // ── theme-aware default stroke ─────────────────────────────────────────
+
+  /// `SketchStyle`'s own default stroke: near-black, legible on the light
+  /// canvas and all but invisible on the dark theme's navy surface
+  /// (contrast ≈ 1.1:1).
+  static const Color _lightInk = Color(0xFF1E1E1E);
+
+  /// The stroke colour [scheme] wants a fresh element drawn in: the model's
+  /// own default on the light theme, `onSurface` on the dark one.
+  static Color _inkFor(ColorScheme scheme) =>
+      scheme.brightness == Brightness.dark ? scheme.onSurface : _lightInk;
+
+  /// Follows a theme change with the default stroke colour — but only while
+  /// the colour is *still* the previous theme's default. A stroke the user
+  /// picked deliberately (the red swatch, a hex typed into the panel) is
+  /// theirs, and stays.
+  ///
+  /// Deferred a frame: this runs from `didChangeDependencies`, and the
+  /// controller's listeners include widgets that are not this one's
+  /// descendants, which may not be marked dirty mid-build.
+  void _retargetDefaultStroke(ColorScheme scheme) {
+    final oldInk = _themeInk ?? _lightInk;
+    final newInk = _inkFor(scheme);
+    _themeInk = newInk;
+    if (newInk == oldInk) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final style = _ctrl.currentStyle;
+      if (style.strokeColor != oldInk) return;
+      _ctrl.currentStyle = style.copyWith(strokeColor: newInk);
+    });
+  }
+
+  /// [SketchToolbarRich.palette] with its default first swatch replaced by
+  /// the theme's ink, so the rail offers — and rings as current — the
+  /// colour new elements are actually drawn in. A caller-supplied palette
+  /// is passed through untouched.
+  List<Color> _themedPalette() {
+    final palette = widget.palette;
+    if (palette.isEmpty || palette.first != _lightInk) return palette;
+    return [_themeInk ?? _lightInk, ...palette.skip(1)];
   }
 
   // ── style updates ──────────────────────────────────────────────────────
@@ -256,6 +316,9 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return Container(
+          // Clipped to the pill: when the rail does have to scroll, content
+          // sliding under the rounded ends would otherwise poke out square.
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: bg,
             borderRadius: AppRadius.fullRadius,
@@ -270,13 +333,17 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
           ),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.toolbarGap,
-            vertical: 6,
+            vertical: _railPaddingY,
           ),
-          child: SingleChildScrollView(
-            scrollDirection: vertical ? Axis.vertical : Axis.horizontal,
-            child: vertical
-                ? _buildVertical(style, constraints.maxHeight)
-                : _buildHorizontal(style),
+          child: Scrollbar(
+            controller: _scroll,
+            child: SingleChildScrollView(
+              controller: _scroll,
+              scrollDirection: vertical ? Axis.vertical : Axis.horizontal,
+              child: vertical
+                  ? _buildVertical(style, constraints.maxHeight)
+                  : _buildHorizontal(style),
+            ),
           ),
         );
       },
@@ -381,6 +448,32 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   /// top/bottom margin.
   static const double _groupDividerHeight = 9.0;
 
+  /// Vertical space a section [_divider] occupies — same 1px + 4px margins.
+  static const double _sectionDividerHeight = 9.0;
+
+  /// Height of one row of [PopoverButton] anchors (their 32px hit box; they
+  /// carry horizontal margin only).
+  static const double _anchorRowHeight = 32.0;
+
+  /// Height of one row of [ActionButton]s: 40px plus 2px top/bottom margin.
+  static const double _actionRowHeight = 44.0;
+
+  /// The pill's own vertical padding, per side.
+  static const double _railPaddingY = 6.0;
+
+  /// Everything in the vertical rail that is *not* the tool grid: the
+  /// pill's padding and border, three section dividers, three rows of
+  /// style anchors and two rows of history/clear actions
+  /// (see [_buildVertical]). The tool grid only gets what is left of the
+  /// rail's height after this; comparing the grid alone against the full
+  /// height is how the rail used to pick single-column at 720 px and push
+  /// its bottom buttons off the window.
+  static const double _railChromeHeight = _railPaddingY * 2 +
+      2 /* border */ +
+      3 * _sectionDividerHeight +
+      3 * _anchorRowHeight +
+      2 * _actionRowHeight;
+
   /// Height a single-column tool rail (one [ToolButton] per row, plus a
   /// group divider at each group boundary) would need — matches the
   /// source design's "one icon per row" layout.
@@ -400,9 +493,12 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   /// per row — matching the source design, which never shows two tool
   /// icons side by side. Only falls back to the denser 2-column pairing
   /// when [maxHeight] (the actual space available to the whole toolbar)
-  /// is too short to fit every tool stacked single-file.
+  /// is too short to fit every tool stacked single-file *alongside the
+  /// rest of the rail* — the style anchors and actions below the grid
+  /// need their share of the height too.
   Widget _toolGrid(double maxHeight) {
-    if (_singleColumnToolHeight() <= maxHeight) {
+    final budget = maxHeight - _railChromeHeight;
+    if (_singleColumnToolHeight() <= budget) {
       return _toolColumnSingle();
     }
     return _toolGridPaired();
@@ -503,7 +599,7 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       },
       popoverBuilder: (context, close) {
         return PalettePopover(
-          palette: widget.palette,
+          palette: _themedPalette(),
           selected: mixed ? null : style.strokeColor,
           onPick: (c) {
             _applyStyle((s) => s.copyWith(strokeColor: c));
@@ -615,7 +711,7 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
           label: 'Stroke style',
           options: StrokeStyle.values,
           selected: mixed ? null : style.strokeStyle,
-          labelOf: (s) => s.name,
+          labelOf: (s) => StyleLabels.strokeStyle[s]!,
           onPick: (picked) {
             _applyStyle((s) => s.copyWith(strokeStyle: picked));
             close();
@@ -643,7 +739,7 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
           selected: _mixed.contains(_MixedField.fillStyle)
               ? null
               : style.fillStyle,
-          labelOf: (s) => s.name,
+          labelOf: (s) => StyleLabels.fillStyle[s]!,
           onPick: (picked) {
             _applyStyle((s) => s.withFillStyle(picked));
             close();
@@ -679,8 +775,29 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       tooltip: 'Clear sketches',
       color: _iconColor,
       enabled: _ctrl.elements.isNotEmpty,
-      onTap: _ctrl.clear,
+      onTap: _clearWithUndo,
     );
+  }
+
+  /// Wipes the board and says so, with the way back one tap away. A single
+  /// click under undo/redo that empties everything, silently, reads as a
+  /// destructive accident; a confirm dialog would be the heavier cure. The
+  /// edit was always undoable — this just tells the user.
+  void _clearWithUndo() {
+    final count = _ctrl.elements.length;
+    _ctrl.clear();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cleared $count ${count == 1 ? 'element' : 'elements'}',
+          ),
+          action: SnackBarAction(label: 'Undo', onPressed: _ctrl.undo),
+        ),
+      );
   }
 
   Widget _divider() {

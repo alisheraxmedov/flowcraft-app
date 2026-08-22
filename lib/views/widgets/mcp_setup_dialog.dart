@@ -5,6 +5,7 @@ import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
+import 'package:flowcraft/views/widgets/export_feedback.dart';
 
 /// Shows the copy-pasteable config for every supported AI CLI.
 Future<void> showMcpSetupDialog(
@@ -198,11 +199,16 @@ class _CodeBlock extends StatelessWidget {
   final String snippet;
 
   Future<void> _copy(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: snippet));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied to clipboard')),
-    );
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Clipboard.setData(ClipboardData(text: snippet));
+    } catch (e) {
+      // Same error path as the export menu's copy — a refused platform
+      // call must say so rather than surface as an unhandled async error.
+      ExportFeedback.showError(messenger, 'Could not copy: $e');
+      return;
+    }
+    ExportFeedback.showInfo(messenger, 'Copied to clipboard');
   }
 
   @override

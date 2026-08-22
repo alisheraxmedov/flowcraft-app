@@ -118,6 +118,33 @@ void main() {
     expect(controller.elements, hasLength(2));
   });
 
+  testWidgets('dismissing the dialog mid-read leaves the canvas alone',
+      (tester) async {
+    // Cancel is disabled while busy, but Escape and the barrier still pop
+    // the dialog. The import used to land on the canvas anyway once the
+    // read finished — silently, since there was no dialog left to report
+    // from.
+    plant('board.json', SketchSerializer.serialize([_rect('a'), _rect('b')]));
+
+    await open(tester);
+    await tap(tester, find.text('board.json'));
+
+    await tester.runAsync(() async {
+      // No event-loop turn between the tap and the pop: the file read is
+      // real I/O, which completes only once the loop runs, so the dialog
+      // is gone before the bytes arrive.
+      await tester.tap(find.text('Replace canvas'));
+      Navigator.of(tester.element(find.byType(ImportSceneDialog))).pop();
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await tester.pump();
+    });
+
+    expect(find.byType(ImportSceneDialog), findsNothing);
+    expect(controller.elements.map((e) => e.id), ['on-canvas']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('an unreadable file keeps the dialog open with the reason',
       (tester) async {
     plant('broken.json', 'not json at all');
