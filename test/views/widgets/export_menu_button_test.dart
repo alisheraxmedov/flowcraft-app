@@ -48,6 +48,34 @@ void main() {
     expect(find.text('Copy JSON to clipboard'), findsOneWidget);
   });
 
+  testWidgets('offers the way back in, next to the way out', (tester) async {
+    // `Export as JSON` promises a re-importable file; before these two
+    // entries existed the app had no import path at all.
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+
+    // Live even on an empty canvas — importing is how you fill one.
+    expect(_item(tester, 'Import from file…').onPressed, isNotNull);
+    expect(_item(tester, 'Paste JSON…').onPressed, isNotNull);
+  });
+
+  testWidgets('Paste JSON… opens the paste dialog', (tester) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paste JSON…'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PasteSceneDialog), findsOneWidget);
+  });
+
   testWidgets('disables file export while the canvas is empty',
       (tester) async {
     final controller = SketchController();

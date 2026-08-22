@@ -10,8 +10,16 @@ import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/services/canvas_exporter.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/views/widgets/export_feedback.dart';
+import 'package:flowcraft/views/widgets/import_scene_dialog.dart';
+import 'package:flowcraft/views/widgets/paste_scene_dialog.dart';
 
-/// Top-bar "Export" control: a menu offering PNG, JSON, and clipboard.
+/// Top-bar "Export" control: a menu offering PNG, JSON, clipboard — and,
+/// under a divider, the two ways back in (a file, or pasted JSON).
+///
+/// Import shares the export button rather than taking a second slot in the
+/// top bar because it is the same scene format going the other way: someone
+/// looking for "the JSON thing" opens this menu, and a separate control
+/// would only be found by people who already knew it existed.
 ///
 /// It owns a busy flag because rendering a large scene to PNG is slow
 /// enough that an unresponsive-looking button reads as a broken one, and it
@@ -144,6 +152,23 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
               leadingIcon: const Icon(Icons.copy_all_rounded, size: 18),
               onPressed: _copyJson,
               child: const Text('Copy JSON to clipboard'),
+            ),
+            // The way back in. It lives under the export routes rather than
+            // in a menu of its own because it is the same JSON travelling
+            // the other direction — and because "Export as JSON" promising a
+            // re-importable file with no import in the app was the gap.
+            const Divider(height: 1),
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.file_open_outlined, size: 18),
+              onPressed: () =>
+                  ImportSceneDialog.show(context, widget.controller),
+              child: const Text('Import from file…'),
+            ),
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.content_paste_rounded, size: 18),
+              onPressed: () =>
+                  PasteSceneDialog.show(context, widget.controller),
+              child: const Text('Paste JSON…'),
             ),
           ],
           builder: (context, menu, _) => _ExportPill(
