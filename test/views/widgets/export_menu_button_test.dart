@@ -17,10 +17,7 @@ SketchRectangle _rect() {
 
 MenuItemButton _item(WidgetTester tester, String label) {
   return tester.widget<MenuItemButton>(
-    find.ancestor(
-      of: find.text(label),
-      matching: find.byType(MenuItemButton),
-    ),
+    find.ancestor(of: find.text(label), matching: find.byType(MenuItemButton)),
   );
 }
 
@@ -76,8 +73,7 @@ void main() {
     expect(find.byType(PasteSceneDialog), findsOneWidget);
   });
 
-  testWidgets('disables file export while the canvas is empty',
-      (tester) async {
+  testWidgets('disables file export while the canvas is empty', (tester) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
@@ -90,8 +86,9 @@ void main() {
     expect(_item(tester, 'Copy JSON to clipboard').onPressed, isNotNull);
   });
 
-  testWidgets('enables file export as soon as something is drawn',
-      (tester) async {
+  testWidgets('enables file export as soon as something is drawn', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
@@ -104,8 +101,9 @@ void main() {
     expect(_item(tester, 'Export as PNG').onPressed, isNotNull);
   });
 
-  testWidgets('copying puts the serialized scene on the clipboard',
-      (tester) async {
+  testWidgets('copying puts the serialized scene on the clipboard', (
+    tester,
+  ) async {
     final controller = SketchController(initialElements: [_rect()]);
     addTearDown(controller.dispose);
 
@@ -119,8 +117,12 @@ void main() {
         return null;
       },
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     await tester.pumpWidget(_host(controller));
     await tester.tap(find.text('Export'));

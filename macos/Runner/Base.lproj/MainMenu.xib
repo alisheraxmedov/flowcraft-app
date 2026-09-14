@@ -332,10 +332,21 @@
         </menu>
         <window title="APP_NAME" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" animationBehavior="default" id="QvC-M9-y7g" customClass="MainFlutterWindow" customModule="Runner" customModuleProvider="target">
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
-            <rect key="contentRect" x="335" y="390" width="800" height="600"/>
+            <!-- 1280x720 matches windows/runner/main.cpp and linux/runner/my_application.cc. -->
+            <rect key="contentRect" x="335" y="390" width="1280" height="720"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1577"/>
+            <!-- Minimum content size; the same 980x640 is applied on Windows (WM_GETMINMAXINFO in
+                 win32_window.cpp) and Linux (gtk_widget_set_size_request in my_application.cc).
+                 Width: the top bar's natural width in lib/views/whiteboard_view.dart is ~892 logical px
+                 (56 leading + 24 title spacing + title row 384 [icon 24 + 12 + "FlowCraft" at 24px ~111 +
+                 divider 17 + ProjectTitleField 220] + 24 + actions 404 [Edit ~43 + 3 dividers 51 + five
+                 36px buttons 180 + 12 + Export ~94 + 24 gutter]); +10% and rounded = 980. Height: not
+                 derivable from the layout — the properties panel (maxHeight 640) and the MCP card
+                 already overlap at the 720 default and both it and the tool rail scroll rather than
+                 overflow — so 640 is the audit's fallback value. -->
+            <value key="minSize" type="size" width="980" height="640"/>
             <view key="contentView" wantsLayer="YES" id="EiT-Mj-1SZ">
-                <rect key="frame" x="0.0" y="0.0" width="800" height="600"/>
+                <rect key="frame" x="0.0" y="0.0" width="1280" height="720"/>
                 <autoresizingMask key="autoresizingMask"/>
             </view>
         </window>

@@ -22,13 +22,17 @@ void main() {
     expect(ago(const Duration(days: 14)), '2w ago');
   });
 
-  test('falls back to an absolute date once relative wording stops helping',
-      () {
-    expect(ago(const Duration(days: 90)), '2026-03-17');
-  });
+  test(
+    'falls back to an absolute date once relative wording stops helping',
+    () {
+      expect(ago(const Duration(days: 90)), '2026-03-17');
+    },
+  );
 
   test('reads a future timestamp as "just now" rather than "in 3 hours"', () {
-    expect(RelativeTime.format(now.add(const Duration(hours: 3)), now: now),
-        'just now');
+    expect(
+      RelativeTime.format(now.add(const Duration(hours: 3)), now: now),
+      'just now',
+    );
   });
 }

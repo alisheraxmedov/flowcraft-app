@@ -103,8 +103,13 @@ class _CanvasShortcutsState extends State<CanvasShortcuts> {
       DeleteSelectionIntent: _run<DeleteSelectionIntent>(
         (_) => _ctrl.removeSelected(),
       ),
+      // Cancel before clearing: an edit the editor no longer holds focus
+      // for (Tab moved it away) would otherwise stay open with nothing left
+      // that can close it, which is what the intent's doc promises against.
       ClearSelectionIntent: _run<ClearSelectionIntent>(
-        (_) => _ctrl.clearSelection(),
+        (_) => _ctrl
+          ..cancelTextEdit()
+          ..clearSelection(),
       ),
       UndoCanvasIntent: _run<UndoCanvasIntent>((_) => _ctrl.undo()),
       RedoCanvasIntent: _run<RedoCanvasIntent>((_) => _ctrl.redo()),
@@ -156,7 +161,16 @@ class _CanvasShortcutsState extends State<CanvasShortcuts> {
   Widget build(BuildContext context) {
     return Shortcuts.manager(
       manager: _manager,
-      child: Actions(actions: _actions, child: widget.child),
+      child: Actions(
+        actions: _actions,
+        // The layer's own scope, so that `FocusNode.unfocus()` — which every
+        // text field calls on Enter/Escape, and the inline editor on commit —
+        // parks focus *here* rather than on the route's scope above this
+        // widget. Key events start at the primary focus and walk up; landing
+        // above `Shortcuts` left every canvas key dead after any edit until
+        // the canvas was clicked again.
+        child: FocusScope(child: widget.child),
+      ),
     );
   }
 }

@@ -56,12 +56,16 @@ void main() {
     });
 
     test('sticky without an explicit color keeps its own default style', () {
-      final withColor = parseDiagramElements([
-        {'type': 'sticky', 'strokeColor': '#000000'},
-      ]).single as SketchSticky;
-      final withoutColor = parseDiagramElements([
-        {'type': 'sticky'},
-      ]).single as SketchSticky;
+      final withColor =
+          parseDiagramElements([
+                {'type': 'sticky', 'strokeColor': '#000000'},
+              ]).single
+              as SketchSticky;
+      final withoutColor =
+          parseDiagramElements([
+                {'type': 'sticky'},
+              ]).single
+              as SketchSticky;
 
       expect(withColor.style.strokeColor, const Color(0xFF000000));
       expect(withoutColor.style, isNot(withColor.style));
@@ -162,19 +166,117 @@ void main() {
       expect(rect.style.strokeColor, const Color(0xFF2E7D32));
     });
 
+    test('parses an 8-digit hex color with its alpha', () {
+      final elements = parseDiagramElements([
+        {'type': 'rectangle', 'fillColor': '#802E7D32'},
+      ]);
+
+      expect(
+        (elements.single as SketchRectangle).style.fillColor,
+        const Color(0x802E7D32),
+      );
+    });
+
+    test('refuses hex colors that only look like colors', () {
+      // `int.tryParse` took a sign, and a 3-digit shorthand became a
+      // nearly transparent black rather than the grey it was meant to be.
+      for (final bad in [
+        '#-1',
+        '#FFF',
+        'FFF',
+        '#12345',
+        '#1234567',
+        '#123456789',
+        '#GGGGGG',
+        'red',
+      ]) {
+        expect(
+          () => parseDiagramElements([
+            {'type': 'rectangle', 'strokeColor': bad},
+          ]),
+          throwsA(
+            isA<DiagramSpecException>().having(
+              (e) => e.message,
+              'message',
+              contains('RRGGBB'),
+            ),
+          ),
+          reason: bad,
+        );
+      }
+    });
+
+    test('non-string type/text/color fields are spec errors, not crashes', () {
+      for (final (field, value) in [
+        ('type', 5),
+        ('text', 5),
+        ('text', <String>[]),
+        ('strokeColor', 0xFF0000),
+        ('fillColor', true),
+      ]) {
+        expect(
+          () => parseDiagramElements([
+            {'type': 'rectangle', field: value},
+          ]),
+          throwsA(
+            isA<DiagramSpecException>().having(
+              (e) => e.message,
+              'message',
+              allOf(contains('must be'), contains('$value')),
+            ),
+          ),
+          reason: '$field = $value',
+        );
+      }
+    });
+
+    test('text longer than the cap is refused', () {
+      final atCap = 'x' * maxDiagramTextLength;
+      expect(
+        (parseDiagramElements([
+                  {'type': 'text', 'text': atCap},
+                ]).single
+                as SketchText)
+            .text,
+        atCap,
+        reason: 'the limit is inclusive',
+      );
+
+      for (final type in ['text', 'rectangle', 'sticky']) {
+        expect(
+          () => parseDiagramElements([
+            {'type': type, 'text': '${atCap}x'},
+          ]),
+          throwsA(
+            isA<DiagramSpecException>().having(
+              (e) => e.message,
+              'message',
+              allOf(contains('too long'), contains('$maxDiagramTextLength')),
+            ),
+          ),
+          reason: type,
+        );
+      }
+    });
+
     test('refuses the non-finite numbers JSON can smuggle in', () {
       // `1e999` is the reachable spelling — there is no Infinity literal,
       // so a payload that looks like plain JSON produces one anyway.
-      final decoded = jsonDecode(
-        '[{"type":"rectangle","x":1,"y":2,"width":1e999,"height":10}]',
-      ) as List<dynamic>;
+      final decoded =
+          jsonDecode(
+                '[{"type":"rectangle","x":1,"y":2,"width":1e999,"height":10}]',
+              )
+              as List<dynamic>;
       expect((decoded.single as Map)['width'], double.infinity);
 
       expect(
         () => parseDiagramElements(decoded),
         throwsA(
-          isA<DiagramSpecException>()
-              .having((e) => e.message, 'message', contains('finite')),
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            contains('finite'),
+          ),
         ),
       );
     });
@@ -278,6 +380,308 @@ void main() {
         isA<SketchEllipse>(),
         isA<SketchArrow>(),
       ]);
+    });
+  });
+
+  group('describeDiagramElement', () {
+    test('describes a bounded shape with the draw vocabulary plus id', () {
+      final rect = SketchRectangle.create(
+        id: 'r1',
+        rect: const Rect.fromLTWH(10, 20, 200, 90),
+        style: const SketchStyle(
+          strokeColor: Color(0xFF1E88E5),
+          fillColor: Color(0x80DCEEFB),
+        ),
+        text: 'UserService',
+        fontSize: 18,
+      );
+
+      expect(describeDiagramElement(rect), {
+        'id': 'r1',
+        'type': 'rectangle',
+        'x': 10.0,
+        'y': 20.0,
+        'width': 200.0,
+        'height': 90.0,
+        'text': 'UserService',
+        'fontSize': 18.0,
+        // Eight digits, alpha first, so `_color` reads it back unchanged.
+        'strokeColor': '#ff1e88e5',
+        'fillColor': '#80dceefb',
+      });
+    });
+
+    test('omits text/fontSize for an unlabelled shape and fill when none', () {
+      final ellipse = SketchEllipse.create(
+        id: 'e1',
+        rect: const Rect.fromLTWH(0, 0, 50, 50),
+      );
+      final described = describeDiagramElement(ellipse);
+
+      expect(described['type'], 'ellipse');
+      expect(described.containsKey('text'), isFalse);
+      expect(described.containsKey('fontSize'), isFalse);
+      expect(described.containsKey('fillColor'), isFalse);
+    });
+
+    test('describes a text element by position, text and stroke', () {
+      final text = SketchText.create(
+        id: 't1',
+        position: const Offset(5, 7),
+        text: 'hello',
+        fontSize: 20,
+      );
+      final described = describeDiagramElement(text);
+
+      expect(described['id'], 't1');
+      expect(described['type'], 'text');
+      expect(described['x'], 5.0);
+      expect(described['y'], 7.0);
+      expect(described['text'], 'hello');
+      expect(described['fontSize'], 20.0);
+      expect(described['strokeColor'], isA<String>());
+    });
+
+    test('describes a line/arrow by its endpoints', () {
+      final arrow = SketchArrow.create(
+        id: 'a1',
+        start: const Offset(10, 20),
+        end: const Offset(30, 40),
+      );
+
+      expect(describeDiagramElement(arrow), {
+        'id': 'a1',
+        'type': 'arrow',
+        'fromX': 10.0,
+        'fromY': 20.0,
+        'toX': 30.0,
+        'toY': 40.0,
+        'strokeColor': '#ff1e1e1e',
+      });
+    });
+
+    test('lists a freedraw by its bounding box and stroke only', () {
+      final freedraw = SketchFreedraw.create(
+        id: 'f1',
+        points: const [Offset(0, 0), Offset(30, 40)],
+        style: const SketchStyle(strokeColor: Color(0xFF000000)),
+      );
+      final described = describeDiagramElement(freedraw);
+
+      expect(described['type'], 'freedraw');
+      expect(described['x'], 0.0);
+      expect(described['y'], 0.0);
+      expect(described['width'], 30.0);
+      expect(described['height'], 40.0);
+      expect(described['strokeColor'], '#ff000000');
+      expect(described.containsKey('text'), isFalse);
+    });
+
+    test('describeDiagramElements preserves order', () {
+      final described = describeDiagramElements([
+        SketchRectangle.create(
+          id: 'r',
+          rect: const Rect.fromLTWH(0, 0, 10, 10),
+        ),
+        SketchArrow.create(
+          id: 'a',
+          start: Offset.zero,
+          end: const Offset(1, 1),
+        ),
+      ]);
+
+      expect(described.map((e) => e['id']), ['r', 'a']);
+      expect(described.map((e) => e['type']), ['rectangle', 'arrow']);
+    });
+  });
+
+  group('applyDiagramPatch', () {
+    test('overrides only the named fields, preserving identity', () {
+      final rect = SketchRectangle(
+        id: 'r1',
+        style: const SketchStyle(strokeColor: Color(0xFF123456)),
+        rect: const Rect.fromLTWH(5, 6, 100, 50),
+        text: 'Old',
+        fontSize: 16,
+        angle: 0.4,
+        groupId: 'g1',
+      );
+
+      final patched =
+          applyDiagramPatch(rect, {
+                'x': 20,
+                'text': 'New',
+                'strokeColor': '#FF0000',
+              })
+              as SketchRectangle;
+
+      expect(patched.rect, const Rect.fromLTWH(20, 6, 100, 50));
+      expect(patched.text, 'New');
+      expect(patched.style.strokeColor, const Color(0xFFFF0000));
+      // Everything the patch didn't touch survives, identity included.
+      expect(patched.id, 'r1');
+      expect(patched.angle, 0.4);
+      expect(patched.groupId, 'g1');
+      expect(patched.fontSize, 16);
+    });
+
+    test('describe then re-apply is a round-trip for the shared fields', () {
+      final rect = SketchRectangle(
+        id: 'r1',
+        style: const SketchStyle(
+          strokeColor: Color(0xFF1E88E5),
+          fillColor: Color(0x80DCEEFB),
+        ),
+        rect: const Rect.fromLTWH(5, 6, 100, 50),
+        text: 'Hi',
+        fontSize: 18,
+        angle: 0.4,
+        groupId: 'g1',
+      );
+
+      final described = describeDiagramElement(rect).cast<String, dynamic>();
+      final rebuilt = applyDiagramPatch(rect, described) as SketchRectangle;
+
+      expect(rebuilt.rect, rect.rect);
+      expect(rebuilt.text, 'Hi');
+      expect(rebuilt.fontSize, 18);
+      expect(rebuilt.style.strokeColor, const Color(0xFF1E88E5));
+      expect(rebuilt.style.fillColor, const Color(0x80DCEEFB));
+      expect(rebuilt.id, 'r1');
+      expect(rebuilt.angle, 0.4);
+      expect(rebuilt.groupId, 'g1');
+    });
+
+    test('an empty text clears a bounded shape\'s label', () {
+      final rect = SketchRectangle.create(
+        id: 'r1',
+        rect: const Rect.fromLTWH(0, 0, 100, 50),
+        text: 'label',
+      );
+
+      expect(
+        (applyDiagramPatch(rect, {'text': ''}) as SketchRectangle).text,
+        isNull,
+      );
+    });
+
+    test('a line patch overrides endpoints and stroke, keeps the rest', () {
+      final line = SketchLine.create(
+        id: 'l1',
+        start: const Offset(0, 0),
+        end: const Offset(10, 10),
+      );
+
+      final moved =
+          applyDiagramPatch(line, {
+                'toX': 50,
+                'toY': 60,
+                'strokeColor': '#112233',
+              })
+              as SketchLine;
+
+      expect(moved.start, const Offset(0, 0));
+      expect(moved.end, const Offset(50, 60));
+      expect(moved.style.strokeColor, const Color(0xFF112233));
+      expect(moved.id, 'l1');
+    });
+
+    test('changing an element type is refused', () {
+      final rect = SketchRectangle.create(
+        id: 'r1',
+        rect: const Rect.fromLTWH(0, 0, 10, 10),
+      );
+
+      expect(
+        () => applyDiagramPatch(rect, {'type': 'ellipse'}),
+        throwsA(
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('type'), contains('rectangle')),
+          ),
+        ),
+      );
+    });
+
+    test('emptying a text element is refused (delete it instead)', () {
+      final text = SketchText.create(
+        id: 't1',
+        position: Offset.zero,
+        text: 'hello',
+      );
+
+      expect(
+        () => applyDiagramPatch(text, {'text': ''}),
+        throwsA(
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            contains('flowcraft_delete'),
+          ),
+        ),
+      );
+    });
+
+    test('a freedraw rejects geometry patches but accepts a recolour', () {
+      final freedraw = SketchFreedraw.create(
+        id: 'f1',
+        points: const [Offset(0, 0), Offset(10, 10)],
+      );
+
+      for (final geometry in [
+        {'x': 5},
+        {'width': 20},
+        {'fromX': 1},
+        {'text': 'no'},
+      ]) {
+        expect(
+          () => applyDiagramPatch(freedraw, geometry),
+          throwsA(isA<DiagramSpecException>()),
+          reason: '$geometry',
+        );
+      }
+
+      final recoloured =
+          applyDiagramPatch(freedraw, {'strokeColor': '#00FF00'})
+              as SketchFreedraw;
+      expect(recoloured.style.strokeColor, const Color(0xFF00FF00));
+      expect(recoloured.points, freedraw.points);
+      expect(recoloured.id, 'f1');
+    });
+
+    test('reuses the draw validators for range, finiteness and hex', () {
+      final rect = SketchRectangle.create(
+        id: 'r1',
+        rect: const Rect.fromLTWH(0, 0, 10, 10),
+      );
+
+      expect(
+        () => applyDiagramPatch(rect, {'width': -5}),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      expect(
+        () => applyDiagramPatch(rect, {'x': 1e300}),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      expect(
+        () => applyDiagramPatch(rect, {'strokeColor': 'not-a-color'}),
+        throwsA(isA<DiagramSpecException>()),
+      );
+
+      // `1e999` is the only way a non-finite number reaches the parser —
+      // there is no Infinity literal in JSON.
+      final nonFinite = jsonDecode('{"width":1e999}') as Map<String, dynamic>;
+      expect(
+        () => applyDiagramPatch(rect, nonFinite),
+        throwsA(
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            contains('finite'),
+          ),
+        ),
+      );
     });
   });
 }

@@ -1,4 +1,4 @@
-import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 export 'app_control_exception.dart';
 

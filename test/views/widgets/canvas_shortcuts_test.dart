@@ -38,6 +38,30 @@ Widget _host(
   );
 }
 
+/// The real inline editor inside the layer, the way the whiteboard has it.
+Widget _hostWithEditor(SketchController controller) {
+  return MaterialApp(
+    theme: ThemeData(platform: TargetPlatform.macOS),
+    home: Scaffold(
+      body: CanvasShortcuts(
+        controller: controller,
+        child: Stack(
+          children: [
+            const Focus(
+              autofocus: true,
+              child: SizedBox(width: 100, height: 100),
+            ),
+            SketchTextEditor(
+              controller: controller,
+              viewport: const FlowViewport(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// Holds [modifier] down for one keystroke, the way a real chord arrives.
 Future<void> _chord(
   WidgetTester tester,
@@ -76,19 +100,28 @@ void main() {
       ]) {
         await tester.sendKeyEvent(key);
         await tester.pump();
-        expect(controller.currentTool, tool, reason: 'pressing ${key.keyLabel}');
+        expect(
+          controller.currentTool,
+          tool,
+          reason: 'pressing ${key.keyLabel}',
+        );
       }
     });
 
-    testWidgets('a modifier held turns a tool key back into a command',
-        (tester) async {
+    testWidgets('a modifier held turns a tool key back into a command', (
+      tester,
+    ) async {
       final controller = SketchController(initialElements: [_rect('a')]);
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller));
 
       // ⌘D is duplicate, not "pick the diamond tool".
       controller.select('a');
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyD);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyD,
+      );
 
       expect(controller.currentTool, SketchTool.select);
       expect(controller.elements, hasLength(2));
@@ -101,10 +134,15 @@ void main() {
     // control killed every shortcut until you clicked the canvas again.
     final controller = SketchController();
     addTearDown(controller.dispose);
-    await tester.pumpWidget(_host(
-      controller,
-      beside: ElevatedButton(onPressed: () {}, child: const Text('elsewhere')),
-    ));
+    await tester.pumpWidget(
+      _host(
+        controller,
+        beside: ElevatedButton(
+          onPressed: () {},
+          child: const Text('elsewhere'),
+        ),
+      ),
+    );
 
     await tester.tap(find.text('elsewhere'));
     await tester.pump();
@@ -114,9 +152,103 @@ void main() {
     expect(controller.currentTool, SketchTool.rectangle);
   });
 
+  group('shortcuts come back the moment typing ends', () {
+    // `FocusNode.unfocus()` — which every field calls on Enter/Escape and
+    // the inline editor on commit — parks focus on the nearest enclosing
+    // scope. Without a scope of its own inside the layer, that was the
+    // route's scope *above* `Shortcuts`, and every key went dead until the
+    // canvas was clicked again.
+    Future<SketchController> editing(WidgetTester tester) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      controller.add(
+        SketchText.create(
+          id: 't',
+          position: Offset.zero,
+          text: 'hello',
+          fontSize: 16,
+        ),
+      );
+      await tester.pumpWidget(_hostWithEditor(controller));
+      controller.beginTextEdit(elementId: 't');
+      await tester.pump();
+      await tester.pump();
+      expect(controller.editingElementId, 't');
+      return controller;
+    }
+
+    testWidgets('a tool key works after the inline editor commits with Enter', (
+      tester,
+    ) async {
+      final controller = await editing(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(controller.editingElementId, isNull, reason: 'precondition');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+      await tester.pump();
+
+      expect(controller.currentTool, SketchTool.rectangle);
+    });
+
+    testWidgets(
+      'a tool key works after the inline editor cancels with Escape',
+      (tester) async {
+        final controller = await editing(tester);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(controller.editingElementId, isNull, reason: 'precondition');
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+        await tester.pump();
+
+        expect(controller.currentTool, SketchTool.rectangle);
+      },
+    );
+
+    testWidgets('a tool key works after Enter in a properties-style field', (
+      tester,
+    ) async {
+      // `TextField` unfocuses itself on `TextInputAction.done` — the
+      // properties panel's X/Y/W/H and hex fields, and the project title.
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_host(controller, beside: const TextField()));
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
+      await tester.pump();
+
+      expect(controller.currentTool, SketchTool.rectangle);
+    });
+  });
+
+  testWidgets('Escape abandons an open text edit', (tester) async {
+    // The intent's doc promises it; an edit whose editor has lost focus
+    // (Tab) has nothing else left that can close it.
+    final controller = SketchController(initialElements: [_rect('a')]);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(controller));
+    controller.select('a');
+    controller.beginTextEdit(elementId: 'a');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    expect(controller.editingElementId, isNull);
+    expect(controller.selectedIds, isEmpty);
+  });
+
   group('typing must not fire canvas shortcuts', () {
-    testWidgets('a tool letter typed into a field leaves the tool alone',
-        (tester) async {
+    testWidgets('a tool letter typed into a field leaves the tool alone', (
+      tester,
+    ) async {
       final controller = SketchController();
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller, beside: const TextField()));
@@ -125,8 +257,11 @@ void main() {
       // whole claim being tested.
       await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
       await tester.pump();
-      expect(controller.currentTool, SketchTool.rectangle,
-          reason: 'precondition: the shortcut works when not typing');
+      expect(
+        controller.currentTool,
+        SketchTool.rectangle,
+        reason: 'precondition: the shortcut works when not typing',
+      );
 
       await tester.tap(find.byType(TextField));
       await tester.pump();
@@ -136,8 +271,9 @@ void main() {
       expect(controller.currentTool, SketchTool.rectangle);
     });
 
-    testWidgets('Backspace in a field does not delete the selection',
-        (tester) async {
+    testWidgets('Backspace in a field does not delete the selection', (
+      tester,
+    ) async {
       final controller = SketchController(initialElements: [_rect('a')]);
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller, beside: const TextField()));
@@ -151,16 +287,20 @@ void main() {
       expect(controller.elements, hasLength(1));
     });
 
-    testWidgets('⌘A in a field does not select every element',
-        (tester) async {
-      final controller =
-          SketchController(initialElements: [_rect('a'), _rect('b', x: 40)]);
+    testWidgets('⌘A in a field does not select every element', (tester) async {
+      final controller = SketchController(
+        initialElements: [_rect('a'), _rect('b', x: 40)],
+      );
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller, beside: const TextField()));
 
       await tester.tap(find.byType(TextField));
       await tester.pump();
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyA);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyA,
+      );
 
       expect(controller.selectedIds, isEmpty);
     });
@@ -175,16 +315,18 @@ void main() {
       final focus = FocusNode();
       addTearDown(focus.dispose);
 
-      await tester.pumpWidget(_host(
-        controller,
-        beside: EditableText(
-          controller: text,
-          focusNode: focus,
-          style: const TextStyle(),
-          cursorColor: const Color(0xFF000000),
-          backgroundCursorColor: const Color(0xFF000000),
+      await tester.pumpWidget(
+        _host(
+          controller,
+          beside: EditableText(
+            controller: text,
+            focusNode: focus,
+            style: const TextStyle(),
+            cursorColor: const Color(0xFF000000),
+            backgroundCursorColor: const Color(0xFF000000),
+          ),
         ),
-      ));
+      );
       focus.requestFocus();
       await tester.pump();
 
@@ -202,7 +344,11 @@ void main() {
       await tester.pumpWidget(_host(controller));
       controller.add(_rect('a'));
 
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyZ);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyZ,
+      );
       expect(controller.elements, isEmpty);
 
       await _chord(
@@ -214,14 +360,20 @@ void main() {
       expect(controller.elements, hasLength(1));
     });
 
-    testWidgets('Delete removes the selection and Escape drops it',
-        (tester) async {
-      final controller =
-          SketchController(initialElements: [_rect('a'), _rect('b', x: 40)]);
+    testWidgets('Delete removes the selection and Escape drops it', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [_rect('a'), _rect('b', x: 40)],
+      );
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller));
 
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyA);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyA,
+      );
       expect(controller.selectedIds, hasLength(2));
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -235,26 +387,35 @@ void main() {
     });
 
     testWidgets('⌘] moves the selection up the stack', (tester) async {
-      final controller =
-          SketchController(initialElements: [_rect('a'), _rect('b', x: 40)]);
+      final controller = SketchController(
+        initialElements: [_rect('a'), _rect('b', x: 40)],
+      );
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller));
       controller.select('a');
 
-      await _chord(tester, LogicalKeyboardKey.metaLeft,
-          LogicalKeyboardKey.bracketRight);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.bracketRight,
+      );
 
       expect(controller.elements.map((e) => e.id), ['b', 'a']);
     });
 
     testWidgets('⌘G groups and ⇧⌘G ungroups', (tester) async {
-      final controller =
-          SketchController(initialElements: [_rect('a'), _rect('b', x: 40)]);
+      final controller = SketchController(
+        initialElements: [_rect('a'), _rect('b', x: 40)],
+      );
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller));
       controller.selectMany(['a', 'b']);
 
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyG);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyG,
+      );
       expect(controller.elements.first.groupId, isNotNull);
 
       await _chord(
@@ -284,8 +445,12 @@ void main() {
           return null;
         },
       );
-      addTearDown(() => tester.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, null));
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
       return written;
     }
 
@@ -302,12 +467,20 @@ void main() {
           return null;
         },
       );
-      addTearDown(() => tester.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, null));
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
 
       await tester.pumpWidget(_host(controller));
       controller.select('a');
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyC);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyC,
+      );
       await tester.pumpAndSettle();
 
       expect(copied, contains('"rectangle"'));
@@ -321,7 +494,11 @@ void main() {
 
       await tester.pumpWidget(_host(controller));
       controller.select('a');
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyX);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyX,
+      );
       await tester.pumpAndSettle();
 
       expect(controller.elements, isEmpty);
@@ -330,11 +507,17 @@ void main() {
     testWidgets('⌘V adds whatever scene the clipboard holds', (tester) async {
       final controller = SketchController();
       addTearDown(controller.dispose);
-      mockClipboard(tester,
-          holding: SketchSerializer.serialize([_rect('from-elsewhere')]));
+      mockClipboard(
+        tester,
+        holding: SketchSerializer.serialize([_rect('from-elsewhere')]),
+      );
 
       await tester.pumpWidget(_host(controller));
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyV);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyV,
+      );
       await tester.pumpAndSettle();
 
       expect(controller.elements, hasLength(1));
@@ -348,7 +531,11 @@ void main() {
       mockClipboard(tester, holding: 'milk, eggs, bread');
 
       await tester.pumpWidget(_host(controller));
-      await _chord(tester, LogicalKeyboardKey.metaLeft, LogicalKeyboardKey.keyV);
+      await _chord(
+        tester,
+        LogicalKeyboardKey.metaLeft,
+        LogicalKeyboardKey.keyV,
+      );
       await tester.pumpAndSettle();
 
       expect(controller.elements, isEmpty);
@@ -374,8 +561,9 @@ void main() {
       expect(controller.elements.single.bounds.top, 10);
     });
 
-    testWidgets('a run of nudges collapses into one undo entry',
-        (tester) async {
+    testWidgets('a run of nudges collapses into one undo entry', (
+      tester,
+    ) async {
       final controller = SketchController(initialElements: [_rect('a')]);
       addTearDown(controller.dispose);
       await tester.pumpWidget(_host(controller));
@@ -408,16 +596,17 @@ void main() {
     expect(find.text('Bring to front'), findsOneWidget);
   });
 
-  testWidgets('Ctrl is the modifier away from Apple platforms',
-      (tester) async {
+  testWidgets('Ctrl is the modifier away from Apple platforms', (tester) async {
     final controller = SketchController(initialElements: [_rect('a')]);
     addTearDown(controller.dispose);
-    await tester
-        .pumpWidget(_host(controller, platform: TargetPlatform.linux));
+    await tester.pumpWidget(_host(controller, platform: TargetPlatform.linux));
     controller.select('a');
 
     await _chord(
-        tester, LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.keyD);
+      tester,
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.keyD,
+    );
 
     expect(controller.elements, hasLength(2));
   });

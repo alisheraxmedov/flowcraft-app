@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
+import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 import 'package:flowcraft/core/interactions/sketch_drag_session.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -16,20 +17,28 @@ import 'package:flowcraft/core/rendering/rough_generator.dart';
 ///
 /// Kept separate from [SketchPainter] so the heavy element layer can stay
 /// stable while the preview-only frame updates as the pointer moves.
+///
+/// The preview is painted in the session's own [SketchStyle] — the stroke
+/// colour, width and dash pattern the element will be committed with. It
+/// used to take a fixed `previewColor` that nothing ever overrode, so every
+/// rubber-band shape was near-black whatever colour the user had picked,
+/// and invisible against a dark canvas.
 class SketchPreviewPainter extends CustomPainter {
   SketchPreviewPainter({
     required this.session,
     required this.revision,
     required this.viewport,
     required this.marqueeColor,
-    required this.previewColor,
   });
+
+  /// Opacity the in-progress stroke is drawn at, on top of the style's own,
+  /// so the preview reads as "not yet committed".
+  static const double previewAlpha = 0.85;
 
   final SketchDragSession? session;
   final int revision;
   final FlowViewport viewport;
   final Color marqueeColor;
-  final Color previewColor;
 
   static final Paint _strokePaint = Paint()
     ..style = PaintingStyle.stroke
@@ -43,6 +52,10 @@ class SketchPreviewPainter extends CustomPainter {
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1.0;
 
+  /// The colour a preview for [style] is stroked in.
+  static Color previewColorFor(SketchStyle style) =>
+      style.strokeColor.withValues(alpha: style.opacity * previewAlpha);
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = session;
@@ -54,7 +67,7 @@ class SketchPreviewPainter extends CustomPainter {
 
     final style = s.style;
     _strokePaint
-      ..color = previewColor.withValues(alpha: 0.85)
+      ..color = previewColorFor(style)
       ..strokeWidth = style.strokeWidth;
 
     switch (s.kind) {
@@ -64,9 +77,10 @@ class SketchPreviewPainter extends CustomPainter {
       case SketchSessionKind.createFreedraw:
         final points = s.freedrawPoints;
         if (points != null && points.length > 1) {
-          canvas.drawPath(
+          _drawStroke(
+            canvas,
             RoughGenerator.polyline(points, roughness: 0.0, seed: style.seed),
-            _strokePaint,
+            style,
           );
         }
         break;
@@ -113,54 +127,59 @@ class SketchPreviewPainter extends CustomPainter {
 
     switch (tool) {
       case SketchTool.rectangle:
-        canvas.drawPath(
+        _drawStroke(
+          canvas,
           RoughGenerator.rectangle(
             rect,
             roughness: style.roughness,
             seed: style.seed,
             doubleStroke: false,
           ),
-          _strokePaint,
+          style,
         );
         break;
       case SketchTool.ellipse:
-        canvas.drawPath(
+        _drawStroke(
+          canvas,
           RoughGenerator.ellipse(
             rect,
             roughness: style.roughness,
             seed: style.seed,
             doubleStroke: false,
           ),
-          _strokePaint,
+          style,
         );
         break;
       case SketchTool.diamond:
-        canvas.drawPath(
+        _drawStroke(
+          canvas,
           RoughGenerator.diamond(
             rect,
             roughness: style.roughness,
             seed: style.seed,
             doubleStroke: false,
           ),
-          _strokePaint,
+          style,
         );
         break;
       case SketchTool.triangle:
-        canvas.drawPath(
+        _drawStroke(
+          canvas,
           RoughGenerator.triangle(
             rect,
             roughness: style.roughness,
             seed: style.seed,
             doubleStroke: false,
           ),
-          _strokePaint,
+          style,
         );
         break;
       case SketchTool.sticky:
         _paintStickyPreview(canvas, rect);
         break;
       case SketchTool.line:
-        canvas.drawPath(
+        _drawStroke(
+          canvas,
           RoughGenerator.line(
             s.startCanvas,
             s.currentCanvas,
@@ -168,11 +187,12 @@ class SketchPreviewPainter extends CustomPainter {
             seed: style.seed,
             doubleStroke: false,
           ),
-          _strokePaint,
+          style,
         );
         break;
       case SketchTool.arrow:
-        canvas.drawPath(
+        _drawStroke(
+          canvas,
           RoughGenerator.line(
             s.startCanvas,
             s.currentCanvas,
@@ -180,35 +200,68 @@ class SketchPreviewPainter extends CustomPainter {
             seed: style.seed,
             doubleStroke: false,
           ),
-          _strokePaint,
+          style,
         );
-        _paintArrowHead(canvas, s.startCanvas, s.currentCanvas, style.strokeWidth);
+        _paintArrowHead(canvas, s.startCanvas, s.currentCanvas, style);
         break;
       default:
         break;
     }
   }
 
-  void _paintStickyPreview(Canvas canvas, Rect rect) {
-    final rr = RRect.fromRectAndRadius(rect, const Radius.circular(4));
-    _marqueeFill.color = SketchSticky.defaultColor.withValues(alpha: 0.9);
-    canvas.drawRRect(rr, _marqueeFill);
+  /// Strokes [path] in [style]'s colour, width and dash pattern — the
+  /// same three things `SketchRenderCache` bakes into the committed
+  /// element's outline, so the preview and the result match.
+  void _drawStroke(Canvas canvas, Path path, SketchStyle style) {
     _strokePaint
-      ..color = previewColor.withValues(alpha: 0.5)
-      ..strokeWidth = 1.0;
-    canvas.drawRRect(rr, _strokePaint);
+      ..color = previewColorFor(style)
+      ..strokeWidth = style.strokeWidth;
+    canvas.drawPath(
+      RoughGenerator.dash(path, style.strokeStyle.pattern),
+      _strokePaint,
+    );
   }
 
-  void _paintArrowHead(Canvas canvas, Offset start, Offset end, double strokeWidth) {
-    final size = math.max(10.0, strokeWidth * 6.0);
+  /// Previews the note as the bubble it will become, not as the rectangle it
+  /// is being dragged out as — including the floor the commit applies, so a
+  /// press with no drag shows the note it is about to leave behind.
+  void _paintStickyPreview(Canvas canvas, Rect rect) {
+    final settled = SketchSticky.rectFor(rect);
+    final bubble = StickyBubbleGeometry.bubblePath(
+      settled,
+      SketchSticky.defaultCornerRadius,
+    );
+    // The note's own default colours rather than the preview tint: the
+    // preview is the note, a frame early.
+    _marqueeFill.color = SketchSticky.defaultColor.withValues(alpha: 0.9);
+    canvas.drawPath(bubble, _marqueeFill);
+    _strokePaint
+      ..color = SketchSticky.defaultEdgeColor.withValues(alpha: 0.9)
+      ..strokeWidth = SketchSticky.defaultStrokeWidth;
+    canvas.drawPath(bubble, _strokePaint);
+  }
+
+  void _paintArrowHead(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    SketchStyle style,
+  ) {
+    final size = math.max(10.0, style.strokeWidth * 6.0);
     final path = ArrowHead.path(start, end, size);
-    _marqueeFill.color = previewColor.withValues(alpha: 0.85);
+    _marqueeFill.color = previewColorFor(style);
     canvas.drawPath(path, _marqueeFill);
   }
 
   void _paintMarquee(Canvas canvas, SketchDragSession s) {
-    final tl = ViewportTransform.canvasToScreen(s.currentRect.topLeft, viewport);
-    final br = ViewportTransform.canvasToScreen(s.currentRect.bottomRight, viewport);
+    final tl = ViewportTransform.canvasToScreen(
+      s.currentRect.topLeft,
+      viewport,
+    );
+    final br = ViewportTransform.canvasToScreen(
+      s.currentRect.bottomRight,
+      viewport,
+    );
     final rect = Rect.fromLTRB(tl.dx, tl.dy, br.dx, br.dy);
     _marqueeStroke.color = marqueeColor;
     _marqueeFill.color = marqueeColor.withValues(alpha: 0.12);
@@ -220,6 +273,5 @@ class SketchPreviewPainter extends CustomPainter {
   bool shouldRepaint(SketchPreviewPainter old) =>
       revision != old.revision ||
       viewport != old.viewport ||
-      marqueeColor != old.marqueeColor ||
-      previewColor != old.previewColor;
+      marqueeColor != old.marqueeColor;
 }

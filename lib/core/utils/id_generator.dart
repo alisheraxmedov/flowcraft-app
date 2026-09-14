@@ -9,7 +9,10 @@ class IdGenerator {
   /// Format: `prefix_timestamp_randomHex`
   static String generate([String prefix = 'fc']) {
     final timestamp = DateTime.now().microsecondsSinceEpoch;
-    final randomPart = _random.nextInt(0xFFFF).toRadixString(16).padLeft(4, '0');
+    final randomPart = _random
+        .nextInt(0xFFFF)
+        .toRadixString(16)
+        .padLeft(4, '0');
     return '${prefix}_${timestamp}_$randomPart';
   }
 }

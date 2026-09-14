@@ -2,10 +2,7 @@ import 'package:flowcraft/models/sketch_element.dart';
 
 /// Immutable snapshot of the sketch scene used for undo/redo.
 class SketchSnapshot {
-  const SketchSnapshot({
-    required this.elements,
-    required this.selectedIds,
-  });
+  const SketchSnapshot({required this.elements, required this.selectedIds});
 
   final List<SketchElement> elements;
   final Set<String> selectedIds;

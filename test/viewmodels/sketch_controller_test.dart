@@ -10,9 +10,9 @@ import 'package:flowcraft/models/sketch_tool.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 SketchRectangle _rect({String? id, Rect? rect}) => SketchRectangle.create(
-      id: id,
-      rect: rect ?? const Rect.fromLTWH(0, 0, 10, 10),
-    );
+  id: id,
+  rect: rect ?? const Rect.fromLTWH(0, 0, 10, 10),
+);
 
 void main() {
   group('SketchController.add / remove', () {
@@ -51,6 +51,94 @@ void main() {
       expect(removed, 2);
       expect(c.elements.map((e) => e.id), ['b']);
       expect(c.hasSelection, isFalse);
+    });
+  });
+
+  group('SketchController.updateAll', () {
+    test('replaces matching elements as one undo entry, returns count', () {
+      // Seeded through the constructor, not `add`, so the only history entry
+      // in play is the one `updateAll` itself pushes.
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a', rect: const Rect.fromLTWH(0, 0, 10, 10)),
+          _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
+        ],
+      );
+      expect(c.canUndo, isFalse);
+
+      final replaced = c.updateAll([
+        _rect(id: 'a', rect: const Rect.fromLTWH(5, 5, 10, 10)),
+        _rect(id: 'b', rect: const Rect.fromLTWH(60, 5, 10, 10)),
+      ]);
+
+      expect(replaced, 2);
+      expect(c.elements[0].bounds.left, 5);
+      expect(c.elements[1].bounds.left, 60);
+
+      // The whole batch is a single undo, and one `undo()` restores both.
+      expect(c.canUndo, isTrue);
+      c.undo();
+      expect(c.elements[0].bounds.left, 0);
+      expect(c.elements[1].bounds.left, 50);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('replaces only the matching subset', () {
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a', rect: const Rect.fromLTWH(0, 0, 10, 10)),
+        ],
+      );
+      final replaced = c.updateAll([
+        _rect(id: 'a', rect: const Rect.fromLTWH(9, 9, 10, 10)),
+        _rect(id: 'ghost'),
+      ]);
+
+      expect(replaced, 1);
+      expect(c.elements.single.bounds.left, 9);
+    });
+
+    test('an all-stale batch changes nothing and leaves no undo entry', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      final replaced = c.updateAll([_rect(id: 'ghost')]);
+
+      expect(replaced, 0);
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.canUndo, isFalse);
+    });
+  });
+
+  group('SketchController.removeIds', () {
+    test('removes matching ids as one undo entry, returns count', () {
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
+      );
+      c.select('a');
+
+      final removed = c.removeIds(['a', 'c', 'ghost']);
+
+      expect(removed, 2);
+      expect(c.elements.map((e) => e.id), ['b']);
+      // A deleted id must not outlive its element in the selection.
+      expect(c.isSelected('a'), isFalse);
+
+      expect(c.canUndo, isTrue);
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a', 'b', 'c']);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('an all-stale delete changes nothing and leaves no undo entry', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      final removed = c.removeIds(['ghost']);
+
+      expect(removed, 0);
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.canUndo, isFalse);
     });
   });
 
@@ -117,8 +205,7 @@ void main() {
       final c = SketchController();
       var notified = 0;
       c.addListener(() => notified++);
-      c.currentStyle =
-          const SketchStyle(strokeColor: Color(0xFFFF0000));
+      c.currentStyle = const SketchStyle(strokeColor: Color(0xFFFF0000));
       expect(notified, 1);
     });
   });
@@ -188,13 +275,18 @@ void main() {
 
     test('restyles every selected element in one history entry', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
       );
       c.selectMany({'a', 'b'});
       expect(c.canUndo, isFalse);
 
-      final changed =
-          c.applyStyleToSelected((s) => s.copyWith(strokeColor: red));
+      final changed = c.applyStyleToSelected(
+        (s) => s.copyWith(strokeColor: red),
+      );
 
       expect(changed, 2);
       expect(c.elements[0].style.strokeColor, red);
@@ -263,7 +355,10 @@ void main() {
 
       expect(c.elements.single.style.strokeWidth, 5);
       c.undo();
-      expect(c.elements.single.style.strokeWidth, const SketchStyle().strokeWidth);
+      expect(
+        c.elements.single.style.strokeWidth,
+        const SketchStyle().strokeWidth,
+      );
       expect(c.canUndo, isFalse);
     });
   });
@@ -306,12 +401,160 @@ void main() {
     });
   });
 
+  group('replaceAll', () {
+    test('prunes the selection of elements it removed', () {
+      // An MCP `flowcraft_draw` with mode "replace" while something is
+      // selected: the properties panel thought there was a selection, and
+      // Delete reported "2 removed", pushed an undo entry and bumped
+      // `paintGen` (an autosave write) while removing nothing.
+      final c = SketchController()
+        ..add(_rect(id: 'x'))
+        ..add(_rect(id: 'y'));
+      c.selectMany({'x', 'y'});
+
+      c.replaceAll([_rect(id: 'z')]);
+
+      expect(c.hasSelection, isFalse);
+      expect(c.selectedIds, isEmpty);
+      expect(c.isSelected('x'), isFalse);
+      final gen = c.paintGen;
+      expect(c.removeSelected(), 0);
+      expect(c.paintGen, gen);
+      expect(c.elements.single.id, 'z');
+    });
+
+    test('keeps a selected element that survives by id', () {
+      final c = SketchController()
+        ..add(_rect(id: 'x'))
+        ..add(_rect(id: 'y'));
+      c.selectMany({'x', 'y'});
+
+      c.replaceAll([_rect(id: 'y', rect: const Rect.fromLTWH(5, 5, 5, 5))]);
+
+      expect(c.selectedIds, {'y'});
+    });
+
+    test('abandons a text edit whose element vanished', () {
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.beginTextEdit(elementId: 'x');
+
+      c.replaceAll([_rect(id: 'z')]);
+
+      expect(c.editingElementId, isNull);
+      expect(c.editingCanvasPosition, isNull);
+    });
+
+    test('keeps a pending new-text edit — it references no element', () {
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.beginTextEdit(canvasPosition: const Offset(3, 4));
+
+      c.replaceAll([_rect(id: 'z')]);
+
+      expect(c.editingCanvasPosition, const Offset(3, 4));
+    });
+  });
+
+  group('select', () {
+    test('selecting an unknown id clears the selection consistently', () {
+      // The clear happened before the id was validated, and the early
+      // return skipped the cache invalidation — so `selectedIds` kept
+      // answering {x} while `isSelected`/`hasSelection` said nothing was.
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.select('x');
+      expect(c.selectedIds, {'x'});
+      var notified = 0;
+      c.addListener(() => notified++);
+
+      c.select('does-not-exist');
+
+      expect(c.isSelected('x'), isFalse);
+      expect(c.hasSelection, isFalse);
+      expect(c.selectedIds, isEmpty);
+      expect(notified, 1);
+    });
+
+    test('an unknown id with clearExisting false changes nothing', () {
+      final c = SketchController()..add(_rect(id: 'x'));
+      c.select('x');
+      var notified = 0;
+      c.addListener(() => notified++);
+
+      c.select('does-not-exist', clearExisting: false);
+
+      expect(c.selectedIds, {'x'});
+      expect(notified, 0);
+    });
+  });
+
+  group('undo during a drag session', () {
+    test('does not leave a stale snapshot', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      c.select('a');
+      c.add(_rect(id: 'b'));
+
+      // Ctrl+Z with the pointer still down, then the pointer moves.
+      c.beginDragSession();
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+      c.translateSelected(const Offset(5, 0));
+      c.endDragSession();
+
+      // The drag got its own entry, taken *after* the undo — so undoing it
+      // lands on the post-undo scene, never on the pre-undo one.
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.elements.single.bounds, const Rect.fromLTWH(0, 0, 10, 10));
+      expect(c.canRedo, isTrue);
+    });
+
+    test('an MCP draw landing mid-drag survives the first undo after it', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      c.select('a');
+
+      c.beginDragSession();
+      c.addAll([_rect(id: 'agent')]); // flowcraft_draw, pointer still down
+      c.translateSelected(const Offset(5, 0));
+      c.endDragSession();
+
+      c.undo(); // the drag
+      expect(c.elements.map((e) => e.id), ['a', 'agent']);
+      expect(c.elements.first.bounds, const Rect.fromLTWH(0, 0, 10, 10));
+      c.undo(); // the agent's draw
+      expect(c.elements.map((e) => e.id), ['a']);
+    });
+  });
+
+  group('pasteElements', () {
+    test('mints fresh ids, selects the copies, one history entry', () {
+      final c = SketchController()..add(_rect(id: 'a'));
+
+      final added = c.pasteElements([
+        _rect(id: 'a'),
+        _rect(id: 'b'),
+      ], offset: Offset.zero);
+
+      expect(added, 2);
+      expect(c.elements, hasLength(3));
+      expect(c.elements.map((e) => e.id).toSet(), hasLength(3));
+      expect(c.selectedIds, hasLength(2));
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a']);
+    });
+
+    test('an empty list is a no-op with no history entry', () {
+      final c = SketchController()..add(_rect(id: 'a'));
+      final gen = c.paintGen;
+      expect(c.pasteElements(const []), 0);
+      expect(c.paintGen, gen);
+    });
+  });
+
   group('SketchController.updateLinear', () {
     SketchLine line() => SketchLine.create(
-          id: 'l',
-          start: Offset.zero,
-          end: const Offset(10, 0),
-        );
+      id: 'l',
+      start: Offset.zero,
+      end: const Offset(10, 0),
+    );
 
     test('moves one endpoint and leaves the other alone', () {
       final c = SketchController(initialElements: [line()]);
@@ -323,14 +566,16 @@ void main() {
     });
 
     test('moves an arrow, and does nothing to a non-linear element', () {
-      final c = SketchController(initialElements: [
-        SketchArrow.create(
-          id: 'a',
-          start: Offset.zero,
-          end: const Offset(5, 5),
-        ),
-        _rect(id: 'r'),
-      ]);
+      final c = SketchController(
+        initialElements: [
+          SketchArrow.create(
+            id: 'a',
+            start: Offset.zero,
+            end: const Offset(5, 5),
+          ),
+          _rect(id: 'r'),
+        ],
+      );
 
       c.updateLinear('a', start: const Offset(1, 1));
       expect((c.elements.first as SketchArrow).start, const Offset(1, 1));
@@ -371,10 +616,12 @@ void main() {
 
   group('SketchController.duplicateSelected', () {
     test('copies get fresh ids, the offset, and the selection', () {
-      final c = SketchController(initialElements: [
-        _rect(id: 'a'),
-        _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
-      ]);
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
+        ],
+      );
       c.selectMany({'a', 'b'});
 
       expect(c.duplicateSelected(), 2);
@@ -406,7 +653,10 @@ void main() {
 
     test('duplicating a group makes a second, independent group', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -437,7 +687,10 @@ void main() {
   group('SketchController copy / paste', () {
     test('a copied selection pastes back with fresh ids', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.select('a');
 
@@ -525,12 +778,14 @@ void main() {
   });
 
   group('SketchController z-order', () {
-    SketchController scene() => SketchController(initialElements: [
-          _rect(id: 'a'),
-          _rect(id: 'b'),
-          _rect(id: 'c'),
-          _rect(id: 'd'),
-        ]);
+    SketchController scene() => SketchController(
+      initialElements: [
+        _rect(id: 'a'),
+        _rect(id: 'b'),
+        _rect(id: 'c'),
+        _rect(id: 'd'),
+      ],
+    );
 
     List<String> order(SketchController c) =>
         c.elements.map((e) => e.id).toList();
@@ -599,7 +854,11 @@ void main() {
   group('SketchController grouping', () {
     test('groupSelected puts the selection in one new group', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
       );
       c.selectMany({'a', 'b'});
 
@@ -616,12 +875,14 @@ void main() {
     });
 
     test('flattens a selection spanning two groups into one', () {
-      final c = SketchController(initialElements: [
-        _rect(id: 'a'),
-        _rect(id: 'b'),
-        _rect(id: 'c'),
-        _rect(id: 'd'),
-      ]);
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+          _rect(id: 'd'),
+        ],
+      );
       c.selectMany({'a', 'b'});
       c.groupSelected();
       final first = c.elements[0].groupId;
@@ -641,7 +902,10 @@ void main() {
 
     test('re-grouping an intact group records nothing', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -667,7 +931,10 @@ void main() {
 
     test('ungroupSelected clears the group in one entry', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -682,7 +949,10 @@ void main() {
 
     test('ungroupSelected records nothing when nothing is grouped', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       c.selectMany({'a', 'b'});
 
@@ -693,7 +963,11 @@ void main() {
 
     test('expandToGroups pulls in the rest of a group', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b'), _rect(id: 'c')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
       );
       c.selectMany({'a', 'b'});
       c.groupSelected();
@@ -706,7 +980,10 @@ void main() {
 
     test('expandToGroups sees grouping done after its first call', () {
       final c = SketchController(
-        initialElements: [_rect(id: 'a'), _rect(id: 'b')],
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+        ],
       );
       // Primes the cached group index; a stale one would keep selecting
       // yesterday's groups on every click.
@@ -755,6 +1032,224 @@ void main() {
 
       c.acknowledgePartialScene();
       expect(notified, 1);
+    });
+  });
+
+  group('sticky notes collapse when the edit ends', () {
+    const rect = Rect.fromLTWH(20, 30, 200, 90);
+
+    SketchController withNote({String? text}) {
+      final c = SketchController();
+      c.add(SketchSticky.create(id: 'note', rect: rect, text: text));
+      return c;
+    }
+
+    SketchSticky noteIn(SketchController c) =>
+        c.elements.single as SketchSticky;
+
+    test('committing text collapses the note to its badge', () {
+      final c = withNote();
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit('buy milk');
+
+      final note = noteIn(c);
+      expect(note.text, 'buy milk');
+      expect(note.collapsed, isTrue);
+      // The bubble's geometry survives underneath, so reopening restores the
+      // size and position the user had.
+      expect(note.rect, rect);
+    });
+
+    test('committing text that overflows grows the bubble first', () {
+      // A messenger bubble takes the height of its message; the grow has
+      // to happen *before* the collapse, because a badge has no bubble to
+      // measure.
+      final c = withNote();
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit(
+        'A note long enough that it has to wrap onto several lines, which '
+        'the default height was never meant to hold, and then some more.',
+      );
+      final note = noteIn(c);
+      expect(note.collapsed, isTrue);
+      expect(note.rect.height, greaterThan(rect.height));
+      expect(note.rect.width, rect.width);
+    });
+
+    test('collapse, growth and text land in one undo entry', () {
+      final c = withNote();
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit('buy milk');
+      expect(noteIn(c).collapsed, isTrue);
+      expect(noteIn(c).text, 'buy milk');
+
+      // All must come back together. Collapsing through a second mutation
+      // would leave the user undoing the collapse first and finding a bubble
+      // with text they had already undone away.
+      c.undo();
+      expect(noteIn(c).collapsed, isFalse);
+      expect(noteIn(c).text, isNull);
+      expect(noteIn(c).rect, rect);
+      expect(c.canUndo, isTrue, reason: 'only the add remains');
+      c.undo();
+      expect(c.elements, isEmpty);
+    });
+
+    test('cancelling leaves the note exactly as it found it', () {
+      // Commit means "done with this note"; cancel means "forget I started".
+      final c = withNote(text: 'already here');
+      c.beginTextEdit(elementId: 'note');
+      c.cancelTextEdit();
+
+      expect(noteIn(c).collapsed, isFalse);
+      expect(noteIn(c).text, 'already here');
+    });
+
+    test('an emptied note collapses like any other, and is not deleted', () {
+      // Nothing is exempt from "click away, it closes": a note left open
+      // because it was blank is a note that looks stuck. And it is not
+      // removed the way an empty SketchText is — it still has its colour,
+      // position and size.
+      final c = withNote(text: 'was here');
+      c.beginTextEdit(elementId: 'note');
+      c.commitTextEdit('   ');
+
+      expect(c.elements, hasLength(1));
+      expect(noteIn(c).text, isNull);
+      expect(noteIn(c).collapsed, isTrue);
+    });
+
+    test('a shape label is untouched by any of this', () {
+      final c = SketchController();
+      c.add(_rect(id: 'box'));
+      c.beginTextEdit(elementId: 'box');
+      c.commitTextEdit('label');
+      expect((c.elements.single as SketchRectangle).text, 'label');
+    });
+  });
+
+  group('SketchController.setStickyCollapsed', () {
+    const rect = Rect.fromLTWH(0, 0, 200, 90);
+
+    SketchController withCollapsedNote() {
+      final c = SketchController();
+      c.add(
+        SketchSticky.create(
+          id: 'note',
+          rect: rect,
+          text: 'hi',
+          collapsed: true,
+        ),
+      );
+      return c;
+    }
+
+    test('expanding restores the original geometry, not a default', () {
+      final c = withCollapsedNote();
+      c.setStickyCollapsed('note', false);
+      final note = c.elements.single as SketchSticky;
+      expect(note.collapsed, isFalse);
+      expect(note.rect, rect);
+      expect(note.bounds, rect);
+    });
+
+    test('is view state: it repaints but is not undoable', () {
+      // Open-or-closed is a side-effect of clicks whose purpose was
+      // something else; an undo entry per toggle would make Ctrl+Z reopen
+      // a note instead of undoing the thing the user actually did. It does
+      // bump paintGen, because it is persisted — autosave has to see it.
+      final c = withCollapsedNote();
+      final gen = c.paintGen;
+      c.setStickyCollapsed('note', false);
+      expect(c.paintGen, greaterThan(gen));
+
+      c.undo();
+      // The only entry on the stack is the add, so one undo empties the
+      // canvas rather than re-collapsing the note.
+      expect(c.elements, isEmpty);
+    });
+
+    test('is a no-op when the note is already in that state', () {
+      final c = withCollapsedNote();
+      final gen = c.paintGen;
+      c.setStickyCollapsed('note', true);
+      expect(c.paintGen, gen);
+    });
+
+    test('ignores ids that are missing or not notes', () {
+      final c = SketchController();
+      c.add(_rect(id: 'box'));
+      final gen = c.paintGen;
+      c.setStickyCollapsed('box', true);
+      c.setStickyCollapsed('nobody', true);
+      expect(c.paintGen, gen);
+      expect(c.elements.single, isA<SketchRectangle>());
+    });
+  });
+
+  group('SketchController.collapseExpandedStickies', () {
+    const rect = Rect.fromLTWH(0, 0, 200, 90);
+
+    SketchController board() {
+      final c = SketchController();
+      c.addAll([
+        SketchSticky.create(id: 'a', rect: rect, text: 'a'),
+        SketchSticky.create(
+          id: 'b',
+          rect: rect.shift(const Offset(300, 0)),
+          text: 'b',
+        ),
+        SketchSticky.create(
+          id: 'c',
+          rect: rect.shift(const Offset(600, 0)),
+          text: 'c',
+          collapsed: true,
+        ),
+        _rect(id: 'box'),
+      ]);
+      return c;
+    }
+
+    bool collapsed(SketchController c, String id) =>
+        (c.elements.firstWhere((e) => e.id == id) as SketchSticky).collapsed;
+
+    test('closes every open note but the one kept', () {
+      final c = board();
+      expect(c.collapseExpandedStickies(except: 'b'), 1);
+      expect(collapsed(c, 'a'), isTrue);
+      expect(collapsed(c, 'b'), isFalse);
+      expect(collapsed(c, 'c'), isTrue);
+    });
+
+    test('with nothing kept, closes them all', () {
+      final c = board();
+      expect(c.collapseExpandedStickies(), 2);
+      expect(collapsed(c, 'a'), isTrue);
+      expect(collapsed(c, 'b'), isTrue);
+    });
+
+    test('reports zero and does not repaint when nothing was open', () {
+      final c = board();
+      c.collapseExpandedStickies();
+      final gen = c.paintGen;
+      expect(c.collapseExpandedStickies(), 0);
+      expect(c.paintGen, gen);
+    });
+
+    test('leaves no undo entry', () {
+      final c = board();
+      c.collapseExpandedStickies();
+      c.undo();
+      // The one entry is the addAll; undoing it empties the board rather
+      // than reopening the notes.
+      expect(c.elements, isEmpty);
+    });
+
+    test('keeps the rect underneath, so reopening restores it', () {
+      final c = board();
+      c.collapseExpandedStickies();
+      c.setStickyCollapsed('a', false);
+      expect((c.elements.first as SketchSticky).rect, rect);
     });
   });
 }

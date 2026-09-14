@@ -110,8 +110,12 @@ class _ImportSceneDialogState extends State<ImportSceneDialog> {
       return;
     }
 
-    final result = SceneImporter.import(widget.controller, json, mode: mode);
+    // Before the import, not after it: Escape or a barrier tap can close
+    // this dialog while the file is still being read, and a replace that
+    // lands on the canvas after the user walked away — with no snackbar,
+    // because there is no dialog left to report from — is a silent edit.
     if (!mounted) return;
+    final result = SceneImporter.import(widget.controller, json, mode: mode);
     if (!result.succeeded) {
       _fail(result.error!);
       return;
@@ -134,6 +138,7 @@ class _ImportSceneDialogState extends State<ImportSceneDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: const Text('Import a scene'),
       content: SizedBox(
         width: 560,

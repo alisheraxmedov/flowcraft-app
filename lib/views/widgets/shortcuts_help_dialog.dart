@@ -35,7 +35,20 @@ class ShortcutsHelpDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final group in CanvasShortcutTable.groups(platform))
-                _Group(group: group, platform: platform),
+                _Group(
+                  title: group.title,
+                  rows: ShortcutLabel.merge(group.shortcuts, platform),
+                ),
+              // Modifier behaviour and the editor's own keys — display
+              // only, same rows, so the sheet reads as one list.
+              for (final group in CanvasShortcutTable.modifierGroups(platform))
+                _Group(
+                  title: group.title,
+                  rows: [
+                    for (final hint in group.hints)
+                      (label: hint.label, keys: hint.keys),
+                  ],
+                ),
             ],
           ),
         ),
@@ -52,10 +65,10 @@ class ShortcutsHelpDialog extends StatelessWidget {
 }
 
 class _Group extends StatelessWidget {
-  const _Group({required this.group, required this.platform});
+  const _Group({required this.title, required this.rows});
 
-  final CanvasShortcutGroup group;
-  final TargetPlatform platform;
+  final String title;
+  final List<({String label, String keys})> rows;
 
   @override
   Widget build(BuildContext context) {
@@ -66,14 +79,13 @@ class _Group extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            group.title.toUpperCase(),
+            title.toUpperCase(),
             style: AppTypography.caption.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: AppSpacing.toolbarGap),
-          for (final row in ShortcutLabel.merge(group.shortcuts, platform))
-            _Row(label: row.label, keys: row.keys),
+          for (final row in rows) _Row(label: row.label, keys: row.keys),
         ],
       ),
     );

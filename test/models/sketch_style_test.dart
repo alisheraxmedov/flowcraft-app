@@ -74,4 +74,89 @@ void main() {
       expect(next, style.withFillColor(null));
     });
   });
+
+  group('SketchStyle.fromJson', () {
+    // The constructor's range checks are asserts, which release builds
+    // strip: a file with `"opacity": 7` loaded cleanly in release and went
+    // straight to Skia, while the same file threw in debug. Out-of-range
+    // values are clamped, not refused — a shape with a silly opacity is
+    // still the user's shape.
+    Map<String, dynamic> json({
+      Object? strokeWidth,
+      Object? roughness,
+      Object? opacity,
+    }) => <String, dynamic>{
+      ...const SketchStyle().toJson(),
+      'strokeWidth': ?strokeWidth,
+      'roughness': ?roughness,
+      'opacity': ?opacity,
+    };
+
+    test('round-trips in-range values untouched', () {
+      const style = SketchStyle(
+        strokeWidth: 3.5,
+        roughness: 1.7,
+        opacity: 0.4,
+        seed: 99,
+      );
+      expect(SketchStyle.fromJson(style.toJson()), style);
+    });
+
+    test('clamps opacity into 0..1', () {
+      expect(SketchStyle.fromJson(json(opacity: 7)).opacity, 1.0);
+      expect(SketchStyle.fromJson(json(opacity: -2)).opacity, 0.0);
+    });
+
+    test('clamps strokeWidth to a positive, finite width', () {
+      expect(
+        SketchStyle.fromJson(json(strokeWidth: -3)).strokeWidth,
+        SketchStyle.minStrokeWidth,
+      );
+      expect(
+        SketchStyle.fromJson(json(strokeWidth: 0)).strokeWidth,
+        SketchStyle.minStrokeWidth,
+      );
+      expect(
+        SketchStyle.fromJson(json(strokeWidth: 1e6)).strokeWidth,
+        SketchStyle.maxStrokeWidth,
+      );
+      expect(SketchStyle.fromJson(json(strokeWidth: 12)).strokeWidth, 12);
+    });
+
+    test('clamps roughness to non-negative', () {
+      expect(SketchStyle.fromJson(json(roughness: -1)).roughness, 0.0);
+      expect(
+        SketchStyle.fromJson(json(roughness: 500)).roughness,
+        SketchStyle.maxRoughness,
+      );
+    });
+
+    test('a non-finite number takes the default rather than NaN', () {
+      const defaults = SketchStyle();
+      expect(
+        SketchStyle.fromJson(json(opacity: double.nan)).opacity,
+        defaults.opacity,
+      );
+      expect(
+        SketchStyle.fromJson(json(strokeWidth: double.infinity)).strokeWidth,
+        defaults.strokeWidth,
+      );
+      expect(
+        SketchStyle.fromJson(
+          json(roughness: double.negativeInfinity),
+        ).roughness,
+        defaults.roughness,
+      );
+    });
+
+    test('is identical in debug and release: never asserts', () {
+      // Reached through fromJson, an out-of-range value must not trip the
+      // constructor's assert — that is the whole point of clamping first.
+      expect(() => SketchStyle.fromJson(json(opacity: 7)), returnsNormally);
+      expect(
+        () => SketchStyle.fromJson(json(strokeWidth: -3)),
+        returnsNormally,
+      );
+    });
+  });
 }

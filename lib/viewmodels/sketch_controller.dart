@@ -22,10 +22,10 @@ class SketchController extends ChangeNotifier {
     SketchTool currentTool = SketchTool.select,
     SketchStyle currentStyle = const SketchStyle(),
     int maxHistory = 50,
-  })  : _elements = [...?initialElements],
-        _currentTool = currentTool,
-        _currentStyle = currentStyle,
-        _history = SketchHistory(maxHistory: maxHistory);
+  }) : _elements = [...?initialElements],
+       _currentTool = currentTool,
+       _currentStyle = currentStyle,
+       _history = SketchHistory(maxHistory: maxHistory);
 
   final List<SketchElement> _elements;
   final Set<String> _selectedIds = <String>{};
@@ -139,6 +139,32 @@ class SketchController extends ChangeNotifier {
     _bumpPaint();
   }
 
+  /// Replaces every element whose id matches one in [elements], as a single
+  /// history entry, and returns how many were actually replaced.
+  ///
+  /// The batch sibling of [update], the way [addAll] is [add]'s: [update]
+  /// pushes one history entry per call, so an MCP `flowcraft_update`
+  /// correcting five shapes at once would otherwise cost five `undo()`s to
+  /// take back — and would let a mid-batch failure leave a half-applied
+  /// scene behind a run of undo entries. Ids not on the canvas are skipped
+  /// rather than added, so a patch that addresses only stale ids changes
+  /// nothing. Like [addAll], it snapshots and bumps paint only when at least
+  /// one element matched, so an all-stale batch leaves no empty undo entry.
+  int updateAll(Iterable<SketchElement> elements) {
+    final replacements = <int, SketchElement>{};
+    for (final element in elements) {
+      final idx = _indexOf(element.id);
+      if (idx < 0) continue;
+      replacements[idx] = element;
+    }
+    if (replacements.isEmpty) return 0;
+    _pushHistory();
+    replacements.forEach((i, el) => _elements[i] = el);
+    _invalidateCache();
+    _bumpPaint();
+    return replacements.length;
+  }
+
   /// Removes the element with [id]. No-op if absent.
   void remove(String id) {
     final idx = _indexOf(id);
@@ -162,6 +188,36 @@ class SketchController extends ChangeNotifier {
     _cachedSelectedIds = null;
     _bumpPaint();
     return toRemove.length;
+  }
+
+  /// Removes every element whose id is in [ids], as a single history entry,
+  /// and returns how many were removed.
+  ///
+  /// The batch sibling of [remove], modelled on [removeSelected]: an MCP
+  /// `flowcraft_delete` naming several ids should be one undo, not one per
+  /// id. Deleted ids are also dropped from the selection, the way [remove]
+  /// drops the one it takes, so a selection can't outlive the element it
+  /// pointed at. Ids not on the canvas are ignored, and when none match it
+  /// makes no history entry and no paint bump — an all-stale delete is a
+  /// genuine no-op rather than an empty undo step.
+  int removeIds(Iterable<String> ids) {
+    final target = ids.toSet();
+    if (target.isEmpty) return 0;
+    final survivors = <SketchElement>[
+      for (final el in _elements)
+        if (!target.contains(el.id)) el,
+    ];
+    final removed = _elements.length - survivors.length;
+    if (removed == 0) return 0;
+    _pushHistory();
+    _elements
+      ..clear()
+      ..addAll(survivors);
+    _selectedIds.removeAll(target);
+    _invalidateCache();
+    _cachedSelectedIds = null;
+    _bumpPaint();
+    return removed;
   }
 
   /// Translates all selected elements by [delta]. Suitable for drag.
@@ -204,6 +260,55 @@ class SketchController extends ChangeNotifier {
     _elements[idx] = updated;
     _invalidateCache();
     _bumpPaint();
+  }
+
+  /// Collapses a sticky note to its badge, or expands it back to its bubble.
+  ///
+  /// No-op for any other element type, and for a note already in that state.
+  /// The note's `rect` is untouched, which is what makes expanding restore
+  /// the geometry the user had rather than a default.
+  ///
+  /// **Not history-tracked**, deliberately — see [collapseExpandedStickies],
+  /// which is where most collapses come from.
+  void setStickyCollapsed(String id, bool collapsed) {
+    final idx = _indexOf(id);
+    if (idx < 0) return;
+    final el = _elements[idx];
+    if (el is! SketchSticky || el.collapsed == collapsed) return;
+    _elements[idx] = el.copyWith(collapsed: collapsed);
+    _invalidateCache();
+    _bumpPaint();
+  }
+
+  /// Collapses every expanded sticky note other than [except], returning
+  /// how many it closed.
+  ///
+  /// This is what a click anywhere on the canvas does on its way down: a
+  /// note stays open only while the pointer is on it. The caller passes the
+  /// element the press landed on — the note itself, a handle of it — and
+  /// everything else closes.
+  ///
+  /// Like [setStickyCollapsed], it leaves **no undo entry**. Open-or-closed
+  /// is view state in the way selection is, not content: it is cheap to
+  /// redo by hand (one click), it is a side-effect of clicks whose *purpose*
+  /// was something else, and an entry for each of those would make Ctrl+Z
+  /// unpredictable — the user clicks a rectangle, and their next undo
+  /// reopens a note instead of undoing the thing they did to the rectangle.
+  /// Unlike selection it *is* persisted, because a board's worth of notes
+  /// should come back the way it was left; `paintGen` is bumped so autosave
+  /// sees it.
+  int collapseExpandedStickies({String? except}) {
+    var closed = 0;
+    for (var i = 0; i < _elements.length; i++) {
+      final el = _elements[i];
+      if (el is! SketchSticky || el.collapsed || el.id == except) continue;
+      _elements[i] = el.copyWith(collapsed: true);
+      closed++;
+    }
+    if (closed == 0) return 0;
+    _invalidateCache();
+    _bumpPaint();
+    return closed;
   }
 
   /// Moves a linear element's (line/arrow) [start] and/or [end] point.
@@ -280,12 +385,28 @@ class SketchController extends ChangeNotifier {
   void endDragSession() {
     _dragInProgress = false;
     _pendingDragSnapshot = null;
+    _rearmDragSnapshot = false;
   }
+
+  /// Set when a history entry from *outside* the drag — an MCP draw landing
+  /// while the pointer is down — was pushed after [beginDragSession] armed
+  /// its snapshot. That snapshot predates the foreign change, so pushing it
+  /// would make the first undo after the drag rewind past the agent's
+  /// elements; instead the drag re-snapshots at its first move.
+  bool _rearmDragSnapshot = false;
 
   /// Pushes the snapshot [beginDragSession] armed, the first time the drag
   /// mutates something. Later calls in the same session are no-ops, so one
   /// continuous drag stays exactly one history entry.
   void _commitDragHistory() {
+    if (_rearmDragSnapshot) {
+      // Called before the mutation, so this is the scene as the foreign
+      // change left it and the drag found it.
+      _rearmDragSnapshot = false;
+      _pendingDragSnapshot = null;
+      _history.push(_currentSnapshot());
+      return;
+    }
     final pending = _pendingDragSnapshot;
     if (pending == null) return;
     _pendingDragSnapshot = null;
@@ -306,10 +427,7 @@ class SketchController extends ChangeNotifier {
   /// decoded (see [SketchSerializer.load]). Pass it, and the scene is marked
   /// [sceneIsPartial] until [acknowledgePartialScene] clears it — see that
   /// getter for what the caller owes the user before saving.
-  void loadScene(
-    Iterable<SketchElement> newElements, {
-    int droppedOnLoad = 0,
-  }) {
+  void loadScene(Iterable<SketchElement> newElements, {int droppedOnLoad = 0}) {
     _elements
       ..clear()
       ..addAll(newElements);
@@ -318,6 +436,7 @@ class SketchController extends ChangeNotifier {
     _history.clear();
     _dragInProgress = false;
     _pendingDragSnapshot = null;
+    _rearmDragSnapshot = false;
     _editingElementId = null;
     _editingCanvasPosition = null;
     _invalidateCache();
@@ -326,12 +445,25 @@ class SketchController extends ChangeNotifier {
   }
 
   /// Replaces the entire element list. Snapshots prior state.
+  ///
+  /// Selection and any text edit survive only for elements that are still
+  /// on the canvas by id afterwards. Leaving a stale selection behind let
+  /// Delete report "2 removed", push an undo entry and trigger an autosave
+  /// while removing nothing, after an MCP `replace` had swapped the scene
+  /// under it.
   void replaceAll(Iterable<SketchElement> newElements) {
     _pushHistory();
     _elements
       ..clear()
       ..addAll(newElements);
+    _selectedIds.removeWhere((id) => _indexOf(id) < 0);
+    final editing = _editingElementId;
+    if (editing != null && _indexOf(editing) < 0) {
+      _editingElementId = null;
+      _editingCanvasPosition = null;
+    }
     _invalidateCache();
+    _cachedSelectedIds = null;
     _bumpPaint();
   }
 
@@ -401,9 +533,20 @@ class SketchController extends ChangeNotifier {
     } catch (_) {
       return 0;
     }
-    if (parsed.isEmpty) return 0;
+    return pasteElements(parsed, offset: offset);
+  }
+
+  /// [pasteFromJson] for elements a caller has already decoded: fresh ids,
+  /// remapped groups, one history entry, the copies selected. Returns how
+  /// many were added.
+  ///
+  /// Exists so a file import that has *already* parsed its payload — to
+  /// count what it could not read — doesn't hand the same text over to be
+  /// parsed a second time on the UI isolate.
+  int pasteElements(List<SketchElement> elements, {Offset? offset}) {
+    if (elements.isEmpty) return 0;
     _pushHistory();
-    return _addCopies(parsed, offset ?? const Offset(16, 16));
+    return _addCopies(elements, offset ?? const Offset(16, 16));
   }
 
   // ── Z-order ────────────────────────────────────────────────────────────
@@ -540,9 +683,21 @@ class SketchController extends ChangeNotifier {
 
   // ── Selection (NOT history-tracked) ────────────────────────────────────
 
+  /// Selects [id], replacing the current selection unless [clearExisting]
+  /// is false. An id that is not on the canvas selects nothing — but still
+  /// clears, exactly as [selectMany] with no valid id does, so the three
+  /// views of the selection ([selectedIds], [isSelected], [hasSelection])
+  /// never disagree about what just happened.
   void select(String id, {bool clearExisting = true}) {
+    final had = _selectedIds.isNotEmpty;
     if (clearExisting) _selectedIds.clear();
-    if (!_elements.any((e) => e.id == id)) return;
+    if (_indexOf(id) < 0) {
+      if (clearExisting && had) {
+        _cachedSelectedIds = null;
+        notifyListeners();
+      }
+      return;
+    }
     _selectedIds.add(id);
     _cachedSelectedIds = null;
     notifyListeners();
@@ -601,6 +756,13 @@ class SketchController extends ChangeNotifier {
   /// Commits [text] to the element currently being edited. Empty input
   /// removes the text from a bounded shape, or skips creation for a
   /// pending new [SketchText].
+  ///
+  /// Committing a sticky note also grows it to fit and collapses it — see
+  /// [_withText]. [cancelTextEdit] does neither: commit is "I'm done with
+  /// this note", cancel is "forget I started", and a cancelled edit leaves
+  /// the note exactly as it found it. A cancelled note is not stranded
+  /// open, though — the next click anywhere else closes it like any other
+  /// expanded note ([collapseExpandedStickies]).
   void commitTextEdit(String text) {
     final id = _editingElementId;
     final pos = _editingCanvasPosition;
@@ -634,11 +796,9 @@ class SketchController extends ChangeNotifier {
         }
       }
     } else if (pos != null && trimmed.isNotEmpty) {
-      add(SketchText.create(
-        position: pos,
-        text: trimmed,
-        style: _currentStyle,
-      ));
+      add(
+        SketchText.create(position: pos, text: trimmed, style: _currentStyle),
+      );
       return;
     }
 
@@ -652,6 +812,7 @@ class SketchController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [el] as committing [text] to it leaves it.
   SketchElement? _withText(SketchElement el, String? text) {
     switch (el) {
       case SketchRectangle r:
@@ -663,7 +824,28 @@ class SketchController extends ChangeNotifier {
       case SketchTriangle tri:
         return tri.copyWith(text: text);
       case SketchSticky s:
-        return s.copyWith(text: text);
+        // Finishing a note grows it to fit what was typed and collapses it
+        // to its badge. Collapsing on commit is what Enter gets — a click
+        // away has already closed the note on its way down, through
+        // `collapseExpandedStickies`, before the editor's commit fires, and
+        // the `copyWith` below is then a no-op on that axis.
+        //
+        // An emptied note collapses like any other. It is not removed the
+        // way an empty `SketchText` is: a `SketchText` *is* its text and has
+        // nothing left when emptied, while a note the user deliberately
+        // placed still has its colour, its position and its size. Nor does
+        // it stay open as a visible reminder that it is blank — the one rule
+        // the user can hold is "click away, it closes", and a note exempt
+        // from that is a note that looks stuck.
+        //
+        // Fit before collapsing: `fittedToText` measures the *bubble*, and a
+        // collapsed note has none to measure. Text, growth and collapse
+        // land in one element, so the single history entry this commit
+        // pushes undoes all three together.
+        return s
+            .copyWith(text: text, collapsed: false)
+            .fittedToText()
+            .copyWith(collapsed: true);
       case SketchText t:
         if (text == null || text.isEmpty) {
           // Empty text on a SketchText → remove it.
@@ -677,16 +859,29 @@ class SketchController extends ChangeNotifier {
 
   // ── Undo / redo ────────────────────────────────────────────────────────
 
+  /// Undo and redo both drop a snapshot armed by [beginDragSession]: it was
+  /// taken against the scene *before* this jump, and letting the drag's
+  /// next move push it would stack a stale pre-undo scene on top of the
+  /// restored one — the first Ctrl+Z after the drag would then rewind to
+  /// a state the user never saw. A drag still in progress re-snapshots at
+  /// its next move instead, so it keeps an entry of its own.
   void undo() {
     final snap = _history.popUndo(_currentSnapshot());
     if (snap == null) return;
+    _dropArmedSnapshot();
     _applySnapshot(snap);
   }
 
   void redo() {
     final snap = _history.popRedo(_currentSnapshot());
     if (snap == null) return;
+    _dropArmedSnapshot();
     _applySnapshot(snap);
+  }
+
+  void _dropArmedSnapshot() {
+    _pendingDragSnapshot = null;
+    _rearmDragSnapshot = _dragInProgress;
   }
 
   // ── internal ───────────────────────────────────────────────────────────
@@ -700,17 +895,17 @@ class SketchController extends ChangeNotifier {
 
   /// Endpoints of a linear element, `null` for anything else.
   static (Offset, Offset)? _endpointsOf(SketchElement el) => switch (el) {
-        SketchLine l => (l.start, l.end),
-        SketchArrow a => (a.start, a.end),
-        _ => null,
-      };
+    SketchLine l => (l.start, l.end),
+    SketchArrow a => (a.start, a.end),
+    _ => null,
+  };
 
   /// Selected elements in stacking order — the order they were drawn in,
   /// not the order they happen to have been clicked in.
   List<SketchElement> _selectedInOrder() => [
-        for (final el in _elements)
-          if (_selectedIds.contains(el.id)) el,
-      ];
+    for (final el in _elements)
+      if (_selectedIds.contains(el.id)) el,
+  ];
 
   (List<SketchElement>, List<SketchElement>) _partitionBySelection() {
     final selected = <SketchElement>[];
@@ -842,6 +1037,12 @@ class SketchController extends ChangeNotifier {
 
   void _pushHistory() {
     _history.push(_currentSnapshot());
+    if (_pendingDragSnapshot != null) {
+      // A foreign entry landed under an armed drag — see
+      // [_rearmDragSnapshot].
+      _pendingDragSnapshot = null;
+      _rearmDragSnapshot = true;
+    }
   }
 
   SketchSnapshot _currentSnapshot() {

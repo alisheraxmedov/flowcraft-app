@@ -3,6 +3,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
+import 'package:flowcraft/views/widgets/shortcuts/tool_shortcuts.dart';
 
 /// A single tool-picker button in the rich sketch toolbar — an icon that
 /// highlights when [selected] and invokes [onTap] to switch tools.
@@ -37,7 +38,9 @@ class ToolButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Tooltip(
-      message: tool.name,
+      // The user-facing name plus its key — not `tool.name`, which printed
+      // the Dart identifier ("freedraw", "sticky") and taught nobody `P`.
+      message: ToolShortcuts.tooltip(tool),
       child: InkWell(
         borderRadius: AppRadius.mdRadius,
         hoverColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
@@ -105,6 +108,10 @@ class ToolGlyph extends StatelessWidget {
       case SketchTool.text:
         return Icons.text_fields_rounded;
       case SketchTool.eraser:
+        // Material's own glyph set has no eraser. The Symbols font is 32 MB
+        // in the pub cache, but Flutter's icon tree-shaker keeps only the
+        // glyphs a `const IconData` references — verified in the release
+        // bundle — so this costs one glyph, not the font. Keep it const.
         return Symbols.ink_eraser_rounded;
     }
   }

@@ -61,7 +61,11 @@ void main() {
       ];
 
       for (final id in escapes) {
-        expect(FlowProject.isValidId(id), isFalse, reason: '"$id" is not an id');
+        expect(
+          FlowProject.isValidId(id),
+          isFalse,
+          reason: '"$id" is not an id',
+        );
         expect(
           () => FlowProject.fromJson({'id': id}),
           throwsA(isA<FormatException>()),

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/core/utils/id_generator.dart';
 import 'package:flowcraft/models/sketch_style.dart';
@@ -23,6 +24,16 @@ sealed class SketchElement {
   final SketchStyle style;
 
   /// Rotation in radians, around the centre of [bounds].
+  ///
+  /// Reserved: no tool sets it yet, so it is `0.0` for every element a user
+  /// can make, and it is kept in the schema for the same reason
+  /// [SketchBinding] is — a field that first appears in a later release
+  /// makes every v1 file forward-incompatible. It is honoured consistently
+  /// where it does appear (a hand-edited or MCP file): the painter rotates
+  /// the element, [bounds] is the box of the *rotated* element, and the hit
+  /// tests unrotate the pointer into the element's own frame. What is not
+  /// rotation-aware is editing — resize handles and endpoint drags work on
+  /// the stored geometry as if [angle] were zero.
   final double angle;
 
   /// Group this element belongs to, or `null` when it stands alone.
@@ -33,8 +44,26 @@ sealed class SketchElement {
   /// grouping at all.
   final String? groupId;
 
-  /// Axis-aligned bounding box in canvas-space (ignoring rotation).
-  Rect get bounds;
+  /// Axis-aligned bounding box in canvas-space of the element *as drawn* —
+  /// that is, after [angle].
+  ///
+  /// This is what culling, marquee selection, selection boxes, snapping and
+  /// export reason about, so it has to enclose what the painter puts on
+  /// screen. For the unrotated case (every element today) it is exactly
+  /// [unrotatedBounds], returned as the same instance so per-element caches
+  /// behind that getter are not defeated here.
+  Rect get bounds {
+    final local = unrotatedBounds;
+    if (angle == 0.0) return local;
+    return _rotatedAabb(local, angle);
+  }
+
+  /// The element's box in its own frame, before [angle] is applied.
+  ///
+  /// The rect the painter draws into under its rotation transform and the
+  /// one the hit tests unrotate the pointer into. Its centre is the pivot,
+  /// which is also the centre of [bounds].
+  Rect get unrotatedBounds;
 
   SketchElement copyWithStyle(SketchStyle newStyle);
   SketchElement translate(Offset delta);
@@ -101,7 +130,7 @@ sealed class _SketchBoundedShape extends SketchElement {
   final double fontSize;
 
   @override
-  Rect get bounds => rect;
+  Rect get unrotatedBounds => rect;
 }
 
 class SketchRectangle extends _SketchBoundedShape {
@@ -116,6 +145,12 @@ class SketchRectangle extends _SketchBoundedShape {
     super.groupId,
   });
 
+  /// Reserved — not rendered in v1.
+  ///
+  /// Parsed and written back so a file that carries it keeps it, but the
+  /// rough generator draws square corners regardless, nothing in the UI
+  /// sets it, and the hit test is the sharp [rect]. Kept in the schema so
+  /// that rounding can ship later without a format bump.
   final double cornerRadius;
 
   SketchRectangle copyWith({
@@ -145,8 +180,7 @@ class SketchRectangle extends _SketchBoundedShape {
       copyWith(style: newStyle);
 
   @override
-  SketchRectangle translate(Offset delta) =>
-      copyWith(rect: rect.shift(delta));
+  SketchRectangle translate(Offset delta) => copyWith(rect: rect.shift(delta));
 
   @override
   SketchRectangle withId(String id) => copyWith(id: id);
@@ -164,7 +198,7 @@ class SketchRectangle extends _SketchBoundedShape {
   }) {
     return SketchRectangle(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       rect: rect,
       cornerRadius: cornerRadius,
       text: text,
@@ -174,26 +208,26 @@ class SketchRectangle extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'rectangle',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'cornerRadius': cornerRadius,
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'rectangle',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'cornerRadius': cornerRadius,
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchRectangle.fromJson(Map<String, dynamic> json) {
     return SketchRectangle(
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 0.0,
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      cornerRadius: _cornerRadiusFromJson(json, fallback: 0.0),
+      angle: _angleFromJson(json),
       text: json['text'] as String?,
-      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      fontSize: _fontSizeFromJson(json, fallback: 16.0),
       groupId: json['groupId'] as String?,
     );
   }
@@ -252,7 +286,7 @@ class SketchEllipse extends _SketchBoundedShape {
   }) {
     return SketchEllipse(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       rect: rect,
       text: text,
       fontSize: fontSize,
@@ -261,24 +295,24 @@ class SketchEllipse extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'ellipse',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'ellipse',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchEllipse.fromJson(Map<String, dynamic> json) {
     return SketchEllipse(
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      angle: _angleFromJson(json),
       text: json['text'] as String?,
-      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      fontSize: _fontSizeFromJson(json, fallback: 16.0),
       groupId: json['groupId'] as String?,
     );
   }
@@ -337,7 +371,7 @@ class SketchDiamond extends _SketchBoundedShape {
   }) {
     return SketchDiamond(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       rect: rect,
       text: text,
       fontSize: fontSize,
@@ -346,24 +380,24 @@ class SketchDiamond extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'diamond',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'diamond',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchDiamond.fromJson(Map<String, dynamic> json) {
     return SketchDiamond(
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      angle: _angleFromJson(json),
       text: json['text'] as String?,
-      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      fontSize: _fontSizeFromJson(json, fallback: 16.0),
       groupId: json['groupId'] as String?,
     );
   }
@@ -422,7 +456,7 @@ class SketchTriangle extends _SketchBoundedShape {
   }) {
     return SketchTriangle(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       rect: rect,
       text: text,
       fontSize: fontSize,
@@ -431,24 +465,24 @@ class SketchTriangle extends _SketchBoundedShape {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'triangle',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'triangle',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchTriangle.fromJson(Map<String, dynamic> json) {
     return SketchTriangle(
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      angle: _angleFromJson(json),
       text: json['text'] as String?,
-      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      fontSize: _fontSizeFromJson(json, fallback: 16.0),
       groupId: json['groupId'] as String?,
     );
   }
@@ -460,16 +494,168 @@ class SketchSticky extends _SketchBoundedShape {
     required super.style,
     required super.rect,
     super.text,
-    super.fontSize,
+    super.fontSize = defaultFontSize,
     super.angle,
     super.groupId,
-    this.cornerRadius = 4.0,
+    this.cornerRadius = defaultCornerRadius,
+    this.collapsed = false,
   });
 
-  /// Default sticky-note background colour (Excalidraw-style yellow).
-  static const Color defaultColor = Color(0xFFFFEC99);
+  /// Default sticky-note paper colour.
+  ///
+  /// A saturated amber rather than the pale Excalidraw yellow it replaced.
+  /// The note is drawn as a messenger bubble, and a messenger's bubble is a
+  /// *coloured* container — against a near-white canvas the pale wash read
+  /// as a stain, not a surface, and beside the board's black-stroked shapes
+  /// it had no presence at all. Nothing else on the canvas casts a shadow,
+  /// so a stronger fill is how the bubble earns its edge.
+  static const Color defaultColor = Color(0xFFFFD54F);
+
+  /// Default outline colour: the paper, darkened. A hairline in a deeper
+  /// shade is what gives the bubble a crisp edge on both light and dark
+  /// canvases without a shadow.
+  static const Color defaultEdgeColor = Color(0xFFE3A400);
+
+  /// Default outline width. Thinner than `SketchStyle`'s 2px: the edge is
+  /// definition, not a drawn line, and at 2px it competed with the text.
+  static const double defaultStrokeWidth = 1.5;
+
+  /// Size a note takes when the gesture that created it didn't say — a press
+  /// with no real drag — and the floor a drag-created one is grown to.
+  ///
+  /// There was no default before: the sticky tool made a note exactly the
+  /// size of the drag rect, and a plain click produced a 0×0 rect that the
+  /// commit path then discarded, so clicking with the sticky tool did
+  /// nothing at all. Sized for two lines of [defaultFontSize] text inside
+  /// [StickyBubbleGeometry]'s insets and tail band; a note that needs more
+  /// grows on commit — see [fittedToText].
+  static const Size defaultSize = Size(180, 72);
+
+  /// Label size. Was 20, against 16 for every other element's text; that
+  /// extra 25% is most of what made notes feel oversized, because a note has
+  /// to be dragged big enough to fit its own label.
+  static const double defaultFontSize = 16.0;
+
+  /// Body rounding. A chat bubble is round; the old 4px read as a rectangle
+  /// with softened corners.
+  static const double defaultCornerRadius = 12.0;
+
+  /// Style a note gets when its creator doesn't supply one. Stroke is the
+  /// outline (see [defaultEdgeColor]), fill is the paper; a sticky is always
+  /// filled, which is what makes it a bubble rather than a box.
+  static const SketchStyle defaultStyle = SketchStyle(
+    strokeColor: defaultEdgeColor,
+    fillColor: defaultColor,
+    fillStyle: FillStyle.solid,
+    strokeWidth: defaultStrokeWidth,
+  );
+
+  /// Glyph colour used for dark notes, matching `SketchStyle`'s default ink.
+  static const Color _darkInk = Color(0xFF1E1E1E);
+
+  /// Glyph colour used for dark-papered notes.
+  static const Color _lightInk = Color(0xFFF8F8F8);
 
   final double cornerRadius;
+
+  /// Whether the note is showing as its badge instead of its bubble.
+  ///
+  /// Only the presentation changes: [rect] keeps the expanded geometry
+  /// underneath, so expanding restores the size and position the user had
+  /// rather than a default. [bounds] is what moves — see below.
+  final bool collapsed;
+
+  /// The box this note actually occupies on the canvas.
+  ///
+  /// Overridden because a collapsed note draws as a small badge, and bounds
+  /// that disagree with what is drawn desynchronise selection rectangles,
+  /// hit-testing, marquee selection, viewport culling and PNG export all at
+  /// once — the same failure `SketchText.bounds` shipped when it guessed a
+  /// width the painter never used.
+  @override
+  Rect get unrotatedBounds =>
+      StickyBubbleGeometry.boundsOf(rect, collapsed: collapsed);
+
+  /// Measured label sizes, one per note instance — see [labelSize].
+  static final Expando<Size> _labelSizes = Expando<Size>(
+    'SketchSticky.labelSize',
+  );
+
+  /// Colour this note's glyphs take — its label, and its badge's mark.
+  ///
+  /// Derived from the paper's luminance, not read from the style. On a
+  /// sticky, [SketchStyle.strokeColor] is the bubble's *outline*, and glyphs
+  /// drawn in the outline colour are either invisible (files saved before
+  /// the outline existed have stroke == fill) or merely muddy (the default
+  /// edge is a darker shade of the paper). A messenger never asks which
+  /// colour the text in a bubble should be; it is whichever reads against
+  /// the bubble — and that stays true when the user repaints the paper from
+  /// the palette. A note with no fill at all is just an outline, and its
+  /// text takes that outline's colour like any other shape's label.
+  Color get inkColor {
+    final paper = style.fillColor;
+    if (paper == null || style.fillStyle == FillStyle.none) {
+      return style.strokeColor;
+    }
+    return paper.computeLuminance() > 0.5 ? _darkInk : _lightInk;
+  }
+
+  /// The rect a note dragged out as [drawn] actually gets.
+  ///
+  /// A note is a text container, not a free-form shape: below the size its
+  /// own label needs it is unusable, so each axis is floored at
+  /// [defaultSize]. That is also what makes a plain click work — a 0×0 drag
+  /// rect becomes a default-sized note at the press point instead of being
+  /// discarded, which is what used to happen.
+  ///
+  /// Shared by the commit path and the drag preview so the note that lands
+  /// is the note that was shown.
+  static Rect rectFor(Rect drawn) => Rect.fromLTWH(
+    drawn.left,
+    drawn.top,
+    math.max(drawn.width, defaultSize.width),
+    math.max(drawn.height, defaultSize.height),
+  );
+
+  /// Where this note's label is laid out and how big it comes out, through
+  /// the one layout the painter also draws with.
+  ///
+  /// Measured once per instance: the note is immutable, so the answer can
+  /// never change under it, and [TextMetrics.measure]'s global cache is
+  /// only the *first* measurement's source. Going through that cache on
+  /// every read keyed the lookup on the whole label string, and once a
+  /// board held more distinct strings than the cache could hold, every
+  /// read was a full text layout.
+  Size get labelSize {
+    final label = text;
+    if (label == null) return Size.zero;
+    return _labelSizes[this] ??= TextMetrics.measure(
+      text: label,
+      fontSize: fontSize,
+      maxWidth: StickyBubbleGeometry.textBoxOf(rect).width,
+    );
+  }
+
+  /// This note grown, if need be, until its text fits — the way a messenger
+  /// bubble takes the height of its message rather than clipping it.
+  ///
+  /// Grows only, never shrinks: a user who has deliberately made a note
+  /// taller than its text keeps that, and a note whose text is shortened
+  /// stays where it was rather than snapping about under the cursor. Width
+  /// is left alone too; the text wraps to it.
+  ///
+  /// A note narrower than one em is skipped — wrapping a label one glyph
+  /// per line into a 10px-wide sliver would grow it into a tower, which is
+  /// worse than the clipping it would otherwise get.
+  SketchSticky fittedToText() {
+    if (text == null || collapsed) return this;
+    if (StickyBubbleGeometry.textBoxOf(rect).width < fontSize) return this;
+    final needed = StickyBubbleGeometry.heightFor(labelSize.height);
+    if (needed <= rect.height) return this;
+    return copyWith(
+      rect: Rect.fromLTWH(rect.left, rect.top, rect.width, needed),
+    );
+  }
 
   SketchSticky copyWith({
     String? id,
@@ -480,6 +666,7 @@ class SketchSticky extends _SketchBoundedShape {
     Object? text = _unset,
     double? fontSize,
     Object? groupId = _unset,
+    bool? collapsed,
   }) {
     return SketchSticky(
       id: id ?? this.id,
@@ -490,6 +677,7 @@ class SketchSticky extends _SketchBoundedShape {
       text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+      collapsed: collapsed ?? this.collapsed,
     );
   }
 
@@ -510,47 +698,50 @@ class SketchSticky extends _SketchBoundedShape {
     required Rect rect,
     SketchStyle? style,
     String? text,
-    double fontSize = 20.0,
-    double cornerRadius = 4.0,
+    double fontSize = defaultFontSize,
+    double cornerRadius = defaultCornerRadius,
+    bool collapsed = false,
   }) {
     return SketchSticky(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style ??
-          const SketchStyle(
-            strokeColor: defaultColor,
-            fillColor: defaultColor,
-            fillStyle: FillStyle.solid,
-          ),
+      style: _seeded(style ?? defaultStyle),
       rect: rect,
       text: text,
       fontSize: fontSize,
       cornerRadius: cornerRadius,
+      collapsed: collapsed,
     );
   }
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'sticky',
-        'id': id,
-        'style': style.toJson(),
-        'rect': _rectToJson(rect),
-        'angle': angle,
-        'cornerRadius': cornerRadius,
-        if (text != null) 'text': text,
-        'fontSize': fontSize,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'sticky',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    'cornerRadius': cornerRadius,
+    if (text != null) 'text': text,
+    'fontSize': fontSize,
+    if (groupId != null) 'groupId': groupId,
+    // Written only when set, and defaulted on read, which is what keeps
+    // this a schema-version-1 payload in both directions: a scene with no
+    // collapsed notes serialises byte-for-byte as it did before the field
+    // existed, and a scene saved by an older build still loads here.
+    if (collapsed) 'collapsed': true,
+  };
 
   factory SketchSticky.fromJson(Map<String, dynamic> json) {
     return SketchSticky(
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
-      cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 4.0,
+      angle: _angleFromJson(json),
+      cornerRadius: _cornerRadiusFromJson(json, fallback: defaultCornerRadius),
       text: json['text'] as String?,
-      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 20.0,
+      fontSize: _fontSizeFromJson(json, fallback: defaultFontSize),
       groupId: json['groupId'] as String?,
+      collapsed: json['collapsed'] as bool? ?? false,
     );
   }
 }
@@ -574,14 +765,17 @@ sealed class _SketchLinear extends SketchElement {
   final Offset start;
   final Offset end;
 
-  @override
-  Rect get bounds {
+  /// The box spanned by the two endpoints alone.
+  Rect get _segmentBounds {
     final left = math.min(start.dx, end.dx);
     final top = math.min(start.dy, end.dy);
     final right = math.max(start.dx, end.dx);
     final bottom = math.max(start.dy, end.dy);
     return Rect.fromLTRB(left, top, right, bottom);
   }
+
+  @override
+  Rect get unrotatedBounds => _segmentBounds;
 }
 
 class SketchLine extends _SketchLinear {
@@ -633,7 +827,7 @@ class SketchLine extends _SketchLinear {
   }) {
     return SketchLine(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       start: start,
       end: end,
     );
@@ -641,14 +835,14 @@ class SketchLine extends _SketchLinear {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'line',
-        'id': id,
-        'style': style.toJson(),
-        'start': _offsetToJson(start),
-        'end': _offsetToJson(end),
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'line',
+    'id': id,
+    'style': style.toJson(),
+    'start': _offsetToJson(start),
+    'end': _offsetToJson(end),
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchLine.fromJson(Map<String, dynamic> json) {
     return SketchLine(
@@ -656,7 +850,7 @@ class SketchLine extends _SketchLinear {
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       start: _offsetFromJson(json['start'] as Map<String, dynamic>),
       end: _offsetFromJson(json['end'] as Map<String, dynamic>),
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
     );
   }
@@ -683,6 +877,40 @@ class SketchArrow extends _SketchLinear {
 
   /// Shape this arrow's head is attached to — reserved, see [startBinding].
   final SketchBinding? endBinding;
+
+  /// Half-angle of the head's wings, in radians — the `0.5` in
+  /// `ArrowHead.path`, which is what the painter draws with.
+  static const double _headHalfAngle = 0.5;
+
+  /// Length of the head as painted: the larger of [arrowSize] and six
+  /// stroke widths, so a thick arrow keeps its proportions. Mirrors
+  /// `SketchPainter._drawArrowHead`; the two must agree or [bounds] lies.
+  double get headLength => math.max(arrowSize, style.strokeWidth * 6.0);
+
+  /// The segment's box grown to take in the head.
+  ///
+  /// The head is a triangle with its tip at [end] and two wings
+  /// [headLength] back along the shaft, swung ±[_headHalfAngle] off it —
+  /// so on an axis-aligned arrow the wings stick out sideways by
+  /// `headLength * sin(0.5)` on both sides of a box that was, until now,
+  /// zero pixels tall. Export padding only just covered that, and the
+  /// selection box never did.
+  @override
+  Rect get unrotatedBounds {
+    var box = _segmentBounds;
+    final shaft = end - start;
+    if (shaft == Offset.zero) return box;
+    final direction = math.atan2(shaft.dy, shaft.dx);
+    final size = headLength;
+    for (final side in const <double>[-_headHalfAngle, _headHalfAngle]) {
+      final wing = Offset(
+        end.dx - size * math.cos(direction + side),
+        end.dy - size * math.sin(direction + side),
+      );
+      box = box.expandToInclude(Rect.fromPoints(wing, wing));
+    }
+    return box;
+  }
 
   SketchArrow copyWith({
     String? id,
@@ -734,7 +962,7 @@ class SketchArrow extends _SketchLinear {
   }) {
     return SketchArrow(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       start: start,
       end: end,
       arrowSize: arrowSize,
@@ -743,17 +971,17 @@ class SketchArrow extends _SketchLinear {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'arrow',
-        'id': id,
-        'style': style.toJson(),
-        'start': _offsetToJson(start),
-        'end': _offsetToJson(end),
-        'arrowSize': arrowSize,
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-        if (startBinding != null) 'startBinding': startBinding!.toJson(),
-        if (endBinding != null) 'endBinding': endBinding!.toJson(),
-      };
+    'type': 'arrow',
+    'id': id,
+    'style': style.toJson(),
+    'start': _offsetToJson(start),
+    'end': _offsetToJson(end),
+    'arrowSize': arrowSize,
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+    if (startBinding != null) 'startBinding': startBinding!.toJson(),
+    if (endBinding != null) 'endBinding': endBinding!.toJson(),
+  };
 
   factory SketchArrow.fromJson(Map<String, dynamic> json) {
     return SketchArrow(
@@ -761,8 +989,13 @@ class SketchArrow extends _SketchLinear {
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       start: _offsetFromJson(json['start'] as Map<String, dynamic>),
       end: _offsetFromJson(json['end'] as Map<String, dynamic>),
-      arrowSize: (json['arrowSize'] as num?)?.toDouble() ?? 10.0,
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      arrowSize: _clampedDouble(
+        json['arrowSize'],
+        min: 0.0,
+        max: _maxArrowSize,
+        fallback: 10.0,
+      ),
+      angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
       startBinding: _bindingFromJson(json['startBinding']),
       endBinding: _bindingFromJson(json['endBinding']),
@@ -799,10 +1032,10 @@ class SketchBinding {
   final double gap;
 
   Map<String, dynamic> toJson() => {
-        'elementId': elementId,
-        'focus': focus,
-        'gap': gap,
-      };
+    'elementId': elementId,
+    'focus': focus,
+    'gap': gap,
+  };
 
   factory SketchBinding.fromJson(Map<String, dynamic> json) {
     return SketchBinding(
@@ -837,13 +1070,13 @@ class SketchFreedraw extends SketchElement {
     required List<Offset> points,
     super.angle,
     super.groupId,
-  })  : assert(points.isNotEmpty, 'freedraw must contain at least one point'),
-        points = List<Offset>.unmodifiable(points);
+  }) : assert(points.isNotEmpty, 'freedraw must contain at least one point'),
+       points = List<Offset>.unmodifiable(points);
 
   final List<Offset> points;
 
   @override
-  Rect get bounds {
+  Rect get unrotatedBounds {
     double minX = points.first.dx, minY = points.first.dy;
     double maxX = minX, maxY = minY;
     for (var i = 1; i < points.length; i++) {
@@ -884,9 +1117,7 @@ class SketchFreedraw extends SketchElement {
 
   @override
   SketchFreedraw translate(Offset delta) {
-    final shifted = <Offset>[
-      for (final p in points) p + delta,
-    ];
+    final shifted = <Offset>[for (final p in points) p + delta];
     return copyWith(points: shifted);
   }
 
@@ -897,32 +1128,34 @@ class SketchFreedraw extends SketchElement {
   }) {
     return SketchFreedraw(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       points: points,
     );
   }
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'freedraw',
-        'id': id,
-        'style': style.toJson(),
-        'points': [
-          for (final p in points) _offsetToJson(p),
-        ],
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'freedraw',
+    'id': id,
+    'style': style.toJson(),
+    'points': [for (final p in points) _offsetToJson(p)],
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchFreedraw.fromJson(Map<String, dynamic> json) {
     final raw = json['points'] as List<dynamic>;
+    if (raw.isEmpty) {
+      throw const FormatException('freedraw must contain at least one point');
+    }
     return SketchFreedraw(
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
-      points: [
-        for (final p in raw) _offsetFromJson(p as Map<String, dynamic>),
-      ],
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      // Every point goes through `_offsetFromJson`, which is where a
+      // non-finite coordinate is refused — one `1e999` in a 5 000-point
+      // stroke drops the stroke, not the file.
+      points: [for (final p in raw) _offsetFromJson(p as Map<String, dynamic>)],
+      angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
     );
   }
@@ -947,11 +1180,30 @@ class SketchText extends SketchElement {
   final double fontSize;
   final String? fontFamily;
 
+  /// Measured boxes, one per text instance — see [unrotatedBounds].
+  ///
+  /// An [Expando] rather than a `late final` field because the constructor
+  /// is `const`; it is keyed on identity and collected with the element, so
+  /// there is no eviction policy to fall off.
+  static final Expando<Rect> _measuredBounds = Expando<Rect>(
+    'SketchText.bounds',
+  );
+
+  /// Measured through the same layout the painter draws with, so the box
+  /// hit-testing and culling see is exactly the box the user sees. An
+  /// approximation here silently desynchronises the two.
+  ///
+  /// Measured once per instance. The element is immutable, so nothing the
+  /// measurement depends on can change; and going through
+  /// [TextMetrics.measure]'s global cache on every read meant building a
+  /// key from the whole string each time, then — on a board with more
+  /// distinct strings than that cache holds — a full text layout per read,
+  /// per element, per frame. The global cache is still what serves the
+  /// first measurement, so a re-typed label is not laid out twice.
   @override
-  Rect get bounds {
-    // Measured through the same layout the painter draws with, so the box
-    // hit-testing and culling see is exactly the box the user sees. An
-    // approximation here silently desynchronises the two.
+  Rect get unrotatedBounds => _measuredBounds[this] ??= _measure();
+
+  Rect _measure() {
     final size = TextMetrics.measure(
       text: text,
       fontSize: fontSize,
@@ -965,7 +1217,7 @@ class SketchText extends SketchElement {
     Offset? position,
     String? text,
     double? fontSize,
-    String? fontFamily,
+    Object? fontFamily = _unset,
     SketchStyle? style,
     double? angle,
     Object? groupId = _unset,
@@ -976,7 +1228,11 @@ class SketchText extends SketchElement {
       position: position ?? this.position,
       text: text ?? this.text,
       fontSize: fontSize ?? this.fontSize,
-      fontFamily: fontFamily ?? this.fontFamily,
+      // Sentinel, not `??`: `null` is a real value here — the platform
+      // default face — and has to be settable back once a family was chosen.
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
       angle: angle ?? this.angle,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
@@ -986,8 +1242,7 @@ class SketchText extends SketchElement {
   SketchText copyWithStyle(SketchStyle newStyle) => copyWith(style: newStyle);
 
   @override
-  SketchText translate(Offset delta) =>
-      copyWith(position: position + delta);
+  SketchText translate(Offset delta) => copyWith(position: position + delta);
 
   @override
   SketchText withId(String id) => copyWith(id: id);
@@ -1005,7 +1260,7 @@ class SketchText extends SketchElement {
   }) {
     return SketchText(
       id: id ?? IdGenerator.generate('sketch'),
-      style: style,
+      style: _seeded(style),
       position: position,
       text: text,
       fontSize: fontSize,
@@ -1015,16 +1270,16 @@ class SketchText extends SketchElement {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'text',
-        'id': id,
-        'style': style.toJson(),
-        'position': _offsetToJson(position),
-        'text': text,
-        'fontSize': fontSize,
-        if (fontFamily != null) 'fontFamily': fontFamily,
-        'angle': angle,
-        if (groupId != null) 'groupId': groupId,
-      };
+    'type': 'text',
+    'id': id,
+    'style': style.toJson(),
+    'position': _offsetToJson(position),
+    'text': text,
+    'fontSize': fontSize,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
 
   factory SketchText.fromJson(Map<String, dynamic> json) {
     return SketchText(
@@ -1032,33 +1287,160 @@ class SketchText extends SketchElement {
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       position: _offsetFromJson(json['position'] as Map<String, dynamic>),
       text: json['text'] as String,
-      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 16.0,
+      fontSize: _fontSizeFromJson(json, fallback: 16.0),
       fontFamily: json['fontFamily'] as String?,
-      angle: (json['angle'] as num?)?.toDouble() ?? 0.0,
+      angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
     );
   }
 }
 
+// ─── Creation helpers ──────────────────────────────────────────────────────
+
+final math.Random _seedSource = math.Random();
+
+/// A fresh [SketchStyle.seed] for a newly created element.
+///
+/// Drawn from `1..0x7FFFFFFE`, open at both ends of the Park–Miller range
+/// the rough generator runs on: a state of `0` or of the modulus itself
+/// collapses its stream to a constant, i.e. a perfectly straight "sketch".
+int _freshSeed() => 1 + _seedSource.nextInt(0x7FFFFFFE);
+
+/// [style] with a seed of its own, unless the caller chose one.
+///
+/// Every `create` factory goes through this so no two shapes wobble
+/// identically — the default [SketchStyle] carries [SketchStyle.defaultSeed],
+/// and before this nothing ever replaced it, so every same-sized shape on a
+/// board had the very same jitter. `fromJson` does not: a file's seeds are
+/// the file's, and a scene has to render the same on every open.
+SketchStyle _seeded(SketchStyle style) => style.seed == SketchStyle.defaultSeed
+    ? style.copyWith(seed: _freshSeed())
+    : style;
+
+// ─── Geometry helpers ──────────────────────────────────────────────────────
+
+/// Axis-aligned box of [rect] rotated by [angle] radians about its centre.
+///
+/// The centre is the pivot, so the result shares it with [rect] — which is
+/// what lets [SketchElement.bounds] and the painter agree on where to
+/// rotate without either reading the other.
+Rect _rotatedAabb(Rect rect, double angle) {
+  final c = rect.center;
+  final cos = math.cos(angle);
+  final sin = math.sin(angle);
+  var minX = double.infinity, minY = double.infinity;
+  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+  for (final corner in <Offset>[
+    rect.topLeft,
+    rect.topRight,
+    rect.bottomRight,
+    rect.bottomLeft,
+  ]) {
+    final dx = corner.dx - c.dx;
+    final dy = corner.dy - c.dy;
+    final x = c.dx + dx * cos - dy * sin;
+    final y = c.dy + dx * sin + dy * cos;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return Rect.fromLTRB(minX, minY, maxX, maxY);
+}
+
 // ─── JSON helpers ──────────────────────────────────────────────────────────
+
+/// Widest label any element will lay out, in logical pixels. Matches the
+/// MCP layer's cap; past it a single glyph is a canvas-sized paragraph.
+const double _maxFontSize = 512.0;
+
+/// Longest arrow head a file may ask for. Generous — the UI maxes out at a
+/// fraction of this — but finite, so a head can't be wider than the board.
+const double _maxArrowSize = 512.0;
 
 Map<String, double> _offsetToJson(Offset o) => {'dx': o.dx, 'dy': o.dy};
 
-Offset _offsetFromJson(Map<String, dynamic> json) => Offset(
-      (json['dx'] as num).toDouble(),
-      (json['dy'] as num).toDouble(),
-    );
+Offset _offsetFromJson(Map<String, dynamic> json) =>
+    Offset(_finite(json['dx'], 'dx'), _finite(json['dy'], 'dy'));
 
 Map<String, double> _rectToJson(Rect r) => {
-      'l': r.left,
-      't': r.top,
-      'w': r.width,
-      'h': r.height,
-    };
+  'l': r.left,
+  't': r.top,
+  'w': r.width,
+  'h': r.height,
+};
 
 Rect _rectFromJson(Map<String, dynamic> json) => Rect.fromLTWH(
-      (json['l'] as num).toDouble(),
-      (json['t'] as num).toDouble(),
-      (json['w'] as num).toDouble(),
-      (json['h'] as num).toDouble(),
-    );
+  _finite(json['l'], 'l'),
+  _finite(json['t'], 't'),
+  _finite(json['w'], 'w'),
+  _finite(json['h'], 'h'),
+);
+
+/// A required geometry coordinate: present, numeric and finite.
+///
+/// `jsonDecode('1e999')` is `double.infinity`, and an infinite edge makes an
+/// element that is invisible, unhittable — and unserialisable, so from then
+/// on every autosave of the whole project throws. Refused here as a
+/// [FormatException], which `SketchSerializer.load` catches per element:
+/// the bad shape is dropped and reported, the file survives.
+double _finite(Object? raw, String key) {
+  if (raw is! num) {
+    throw FormatException('"$key" must be a number, got: $raw');
+  }
+  final value = raw.toDouble();
+  if (!value.isFinite) {
+    throw FormatException('"$key" must be a finite number, got: $raw');
+  }
+  return value;
+}
+
+/// An optional numeric field clamped into [min]..[max].
+///
+/// Missing, or present but not finite, yields [fallback]; a wrong type is
+/// still an error, like every other field. Clamped rather than refused
+/// because these are *style* numbers — a font size of `1e6` is a file worth
+/// rescuing, where a coordinate of `1e999` is not.
+double _clampedDouble(
+  Object? raw, {
+  required double min,
+  required double max,
+  required double fallback,
+}) {
+  if (raw == null) return fallback;
+  if (raw is! num) {
+    throw FormatException('expected a number, got: $raw');
+  }
+  final value = raw.toDouble();
+  if (!value.isFinite) return fallback;
+  return value.clamp(min, max);
+}
+
+double _fontSizeFromJson(
+  Map<String, dynamic> json, {
+  required double fallback,
+}) => _clampedDouble(
+  json['fontSize'],
+  min: 1.0,
+  max: _maxFontSize,
+  fallback: fallback,
+);
+
+double _cornerRadiusFromJson(
+  Map<String, dynamic> json, {
+  required double fallback,
+}) => _clampedDouble(
+  json['cornerRadius'],
+  min: 0.0,
+  max: double.infinity,
+  fallback: fallback,
+);
+
+/// Rotation is a coordinate of sorts: a NaN angle makes every rotated
+/// corner NaN, so it gets the fallback rather than poisoning [bounds].
+double _angleFromJson(Map<String, dynamic> json) => _clampedDouble(
+  json['angle'],
+  min: double.negativeInfinity,
+  max: double.infinity,
+  fallback: 0.0,
+);

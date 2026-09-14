@@ -33,6 +33,31 @@ class CanvasShortcutGroup {
   final bool inMenu;
 }
 
+/// A keyboard behaviour the reference sheet explains but that is not a
+/// bindable keystroke: a modifier held during a pointer gesture, or a key
+/// the inline text editor answers to itself.
+///
+/// Display-only by construction — it carries no activator and no intent, so
+/// it can never land in the `Shortcuts` map or the Edit menu.
+@immutable
+class CanvasModifierHint {
+  const CanvasModifierHint(this.label, this.keys);
+
+  final String label;
+
+  /// Already platform-spelled ("⇧ click" / "Shift+click").
+  final String keys;
+}
+
+/// A titled block of display-only hints. See [CanvasModifierHint].
+@immutable
+class CanvasModifierGroup {
+  const CanvasModifierGroup(this.title, this.hints);
+
+  final String title;
+  final List<CanvasModifierHint> hints;
+}
+
 /// Every canvas shortcut, in one place.
 ///
 /// The `Shortcuts` map, the `?` reference sheet and the top-bar Edit menu
@@ -185,6 +210,42 @@ class CanvasShortcutTable {
           CharacterActivator('?'),
           ShowShortcutsIntent(),
         ),
+      ]),
+    ];
+  }
+
+  /// What the modifier keys do during pointer gestures, and what the inline
+  /// text editor answers to — behaviour that lives in the gesture handler
+  /// and the editor rather than in [groups], and that the sheet would
+  /// otherwise leave out. Alt-to-unsnap and Shift-to-lock-aspect are the
+  /// two people never find on their own.
+  ///
+  /// Kept beside the bindings so the sheet stays one file's reading; the
+  /// spellings follow [platform] the way `ShortcutLabel` spells chords.
+  static List<CanvasModifierGroup> modifierGroups([TargetPlatform? platform]) {
+    final apple = _isApple(platform ?? defaultTargetPlatform);
+    final shift = apple ? '⇧' : 'Shift';
+    final alt = apple ? '⌥' : 'Alt';
+    final sep = apple ? ' ' : '+';
+
+    return <CanvasModifierGroup>[
+      CanvasModifierGroup('Pointer modifiers', <CanvasModifierHint>[
+        CanvasModifierHint(
+          'Add to / remove from selection',
+          '$shift${sep}click',
+        ),
+        CanvasModifierHint(
+          'Keep aspect ratio while resizing',
+          '$shift${sep}drag',
+        ),
+        CanvasModifierHint('Disable snapping while dragging', '$alt${sep}drag'),
+        const CanvasModifierHint('Edit text', 'Double-click'),
+      ]),
+      CanvasModifierGroup('While editing text', <CanvasModifierHint>[
+        const CanvasModifierHint('Commit', 'Enter'),
+        CanvasModifierHint('New line', '$shift${sep}Enter'),
+        const CanvasModifierHint('Cancel edit', 'Esc'),
+        const CanvasModifierHint('Cancel project rename', 'Esc'),
       ]),
     ];
   }

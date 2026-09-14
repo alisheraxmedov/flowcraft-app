@@ -82,7 +82,7 @@ registering the server below.
 ```bash
 claude mcp add flowcraft -- /absolute/path/to/build/flowcraft_mcp_server
 # with an explicit app path:
-claude mcp add flowcraft -e FLOWCRAFT_APP_PATH=/Applications/FlowCraft.app \
+claude mcp add flowcraft -e FLOWCRAFT_APP_PATH=/Applications/flowcraft.app \
   -- /absolute/path/to/build/flowcraft_mcp_server
 ```
 
@@ -95,7 +95,7 @@ In `~/.codex/config.toml` (or a project-scoped `.codex/config.toml`):
 command = "/absolute/path/to/build/flowcraft_mcp_server"
 
 [mcp_servers.flowcraft.env]
-FLOWCRAFT_APP_PATH = "/Applications/FlowCraft.app"
+FLOWCRAFT_APP_PATH = "/Applications/flowcraft.app"
 ```
 
 ### Gemini CLI
@@ -109,7 +109,7 @@ In `~/.gemini/settings.json` (or a project-scoped `.gemini/settings.json`):
       "command": "/absolute/path/to/build/flowcraft_mcp_server",
       "args": [],
       "env": {
-        "FLOWCRAFT_APP_PATH": "/Applications/FlowCraft.app"
+        "FLOWCRAFT_APP_PATH": "/Applications/flowcraft.app"
       }
     }
   }

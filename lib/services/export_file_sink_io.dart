@@ -16,7 +16,8 @@ class ExportFileSink {
   /// Absolute path of the export folder for the current user. Not
   /// guaranteed to exist yet — [write] creates it on demand.
   static String defaultDirectoryPath() {
-    final home = Platform.environment['HOME'] ??
+    final home =
+        Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
         '.';
     final sep = Platform.pathSeparator;
@@ -29,6 +30,11 @@ class ExportFileSink {
   /// directory through it so they never touch the real `$HOME`. Throws
   /// [FileSystemException] on permission/disk failures — callers surface
   /// the message rather than swallowing it.
+  ///
+  /// Never overwrites: a name already taken gets `-2`, `-3`, … before its
+  /// extension. The timestamp in an export name has one-second resolution,
+  /// so a double-click on the menu item produced two exports with one
+  /// name, and the second silently replaced the first.
   static Future<String> write({
     required String fileName,
     required List<int> bytes,
@@ -36,13 +42,27 @@ class ExportFileSink {
   }) async {
     final directory = Directory(directoryPath ?? defaultDirectoryPath());
     await directory.create(recursive: true);
-    final file =
-        File('${directory.path}${Platform.pathSeparator}$fileName');
+    final file = await _unclaimed(directory, fileName);
     // `flush: true` so the path we hand the user in the "Saved to …"
     // snackbar is readable by the file manager the moment they click
     // Reveal, not once the OS gets around to flushing its page cache.
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
+  }
+
+  /// [fileName] inside [directory], or the first `-N` variant of it that
+  /// does not exist yet. The suffix goes before the *first* dot so a
+  /// compound extension (`.flowcraft.json`) stays intact.
+  static Future<File> _unclaimed(Directory directory, String fileName) async {
+    final sep = Platform.pathSeparator;
+    final dot = fileName.indexOf('.');
+    final stem = dot < 0 ? fileName : fileName.substring(0, dot);
+    final extension = dot < 0 ? '' : fileName.substring(dot);
+    var candidate = File('${directory.path}$sep$fileName');
+    for (var n = 2; await candidate.exists(); n++) {
+      candidate = File('${directory.path}$sep$stem-$n$extension');
+    }
+    return candidate;
   }
 
   /// Opens the platform file manager with [path] selected. Returns whether
@@ -64,8 +84,7 @@ class ExportFileSink {
       if (Platform.isLinux) {
         // No portable "select this file" verb on Linux; opening the parent
         // folder is the closest equivalent every desktop environment has.
-        final result =
-            await Process.run('xdg-open', [File(path).parent.path]);
+        final result = await Process.run('xdg-open', [File(path).parent.path]);
         return result.exitCode == 0;
       }
       return false;

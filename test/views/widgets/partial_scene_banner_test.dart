@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 SketchRectangle _rect(String id) {
-  return SketchRectangle.create(id: id, rect: const Rect.fromLTWH(0, 0, 10, 10));
+  return SketchRectangle.create(
+    id: id,
+    rect: const Rect.fromLTWH(0, 0, 10, 10),
+  );
 }
 
 Widget _host(SketchController controller) {
@@ -22,8 +25,7 @@ void main() {
     expect(find.textContaining('could not be read'), findsNothing);
   });
 
-  testWidgets('says how many were lost and that saving is off',
-      (tester) async {
+  testWidgets('says how many were lost and that saving is off', (tester) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 

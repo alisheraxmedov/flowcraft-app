@@ -4,6 +4,7 @@ import 'dart:typed_data' show BytesBuilder;
 
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
+import 'app_version.dart';
 import 'mcp_tools.dart';
 
 /// Path the MCP endpoint is served from, relative to the control server's
@@ -108,12 +109,14 @@ Future<void> refuseOversizedBody(
   }
   final payload = utf8.encode(jsonEncode(body));
   socket
-    ..add(utf8.encode(
-      'HTTP/1.1 413 Request Entity Too Large\r\n'
-      'Content-Type: application/json; charset=utf-8\r\n'
-      'Content-Length: ${payload.length}\r\n'
-      'Connection: close\r\n\r\n',
-    ))
+    ..add(
+      utf8.encode(
+        'HTTP/1.1 413 Request Entity Too Large\r\n'
+        'Content-Type: application/json; charset=utf-8\r\n'
+        'Content-Length: ${payload.length}\r\n'
+        'Connection: close\r\n\r\n',
+      ),
+    )
     ..add(payload);
   await socket.flush();
   await socket.close();
@@ -158,15 +161,14 @@ class McpHttpHandler {
     required SketchController controller,
     required String token,
     List<McpTool> tools = flowcraftMcpTools,
-  })  : _controller = controller,
-        _token = token,
-        _tools = tools;
+  }) : _controller = controller,
+       _token = token,
+       _tools = tools;
 
   /// Identifies this server in the `initialize` handshake. The version is
-  /// pinned by hand against `pubspec.yaml` — reading the real one at
-  /// runtime needs a plugin, and this app ships zero plugins on purpose.
+  /// the app's own — see [appVersion] for where a release build gets it.
   static const String serverName = 'flowcraft';
-  static const String serverVersion = '1.0.0';
+  static const String serverVersion = appVersion;
 
   /// Server-level guidance handed to the model at handshake time. Carried
   /// over from the stdio bridge so agents behave the same as before, minus
@@ -175,7 +177,10 @@ class McpHttpHandler {
       'Draws diagrams live on the FlowCraft desktop whiteboard app. Call '
       'flowcraft_status to check connectivity, then flowcraft_draw with '
       'shapes (rectangles for classes/modules, arrows for relations) to '
-      'render the diagram you have analyzed.';
+      'render the diagram you have analyzed. To correct a diagram, call '
+      'flowcraft_read to get each element and its id, then flowcraft_update '
+      'or flowcraft_delete to change or remove specific elements by id — no '
+      'need to clear the board and redraw everything.';
 
   static const String tokenHeader = 'X-Flowcraft-Token';
 
@@ -310,7 +315,9 @@ class McpHttpHandler {
         return const {'result': <String, Object?>{}};
       case 'tools/list':
         return {
-          'result': {'tools': [for (final tool in _tools) tool.toJson()]},
+          'result': {
+            'tools': [for (final tool in _tools) tool.toJson()],
+          },
         };
       case 'tools/call':
         return _callTool(params);
@@ -376,15 +383,10 @@ class McpHttpHandler {
   }
 
   Map<String, Object?> _error(int code, String message) => {
-        'error': {'code': code, 'message': message},
-      };
+    'error': {'code': code, 'message': message},
+  };
 
-  void _replyError(
-    HttpRequest request,
-    int status,
-    int code,
-    String message,
-  ) {
+  void _replyError(HttpRequest request, int status, int code, String message) {
     _replyJson(request, status, {
       'jsonrpc': '2.0',
       'id': null,

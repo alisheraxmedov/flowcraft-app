@@ -37,8 +37,9 @@ This is not bureaucracy. It is because:
 - **Some things are deliberate.** This repository contains several decisions
   that look like bugs and are not: the macOS App Sandbox is switched off on
   purpose, the MCP port is hard-coded rather than falling back to a free one,
-  `mcp_server/` is excluded from `flutter analyze`, and lockfiles are
-  gitignored. Each has a written reason in
+  `mcp_server/` is excluded from `flutter analyze`, and the app's lockfiles
+  (`pubspec.lock`, `macos/Podfile.lock`, `ios/Podfile.lock` — not
+  `mcp_server/pubspec.lock`) are gitignored. Each has a written reason in
   [`CLAUDE.md`](CLAUDE.md). A PR that "fixes" one of these will be closed, and
   you will have spent your evening for nothing.
 - **The roadmap has an order.** Some of what looks missing is missing on
@@ -78,7 +79,8 @@ sometimes the best fix for the problem you have is not the one you had in mind.
 3. Branch from `main`. Name it after the work: `fix/arrow-endpoint-drag`,
    `feat/svg-export`.
 4. Make the change. Keep it to the one thing the issue is about.
-5. Make sure `flutter analyze` and `flutter test` are both clean.
+5. Make sure `dart format .`, `flutter analyze --fatal-infos` and `flutter test` are all clean
+   (CI runs exactly these on your pull request).
 6. Open a pull request against `main` and link the issue (`Closes #123`).
 7. Respond to review. The maintainer merges.
 
@@ -256,8 +258,12 @@ Small fixes do not need one. If in doubt, ask in the issue.
 
 **Every pull request is reviewed and merged by the maintainer.** `main` is
 protected: it requires a pull request, a passing `Test` job, an approving review
-from the code owner, and all review conversations resolved. Nobody merges their
-own work here, and that includes contributors with the best of intentions.
+from the code owner, and all review conversations resolved. The `Test` check
+(`dart format`, `flutter analyze --fatal-infos`, `flutter test`) runs on every
+PR; the three platform builds run only on pushes to `main` and on release tags.
+Contributors never merge their own work; the maintainer merges via admin
+override after review, which is also how the maintainer's own PRs land in a
+one-person project.
 
 What to expect:
 

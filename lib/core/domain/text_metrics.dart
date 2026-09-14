@@ -1,5 +1,7 @@
 import 'package:flutter/painting.dart';
 
+import 'package:flowcraft/core/theme/app_typography.dart';
+
 /// The single place that decides how a [SketchText]'s glyphs are laid out.
 ///
 /// `SketchText.bounds` and `SketchPainter._drawText` both go through
@@ -22,16 +24,33 @@ class TextMetrics {
 
   static final Map<String, Size> _sizes = <String, Size>{};
 
+  /// Face used when an element carries no [SketchText.fontFamily] — Inter,
+  /// the bundled chrome face `AppTypography` documents as the canvas
+  /// default and the properties panel reports for a `null` family. Left to
+  /// `null`, the engine picked the OS face instead (SF / Segoe / DejaVu), so
+  /// the same file measured — and therefore hit-tested — differently on
+  /// each platform.
+  static const String defaultFontFamily = AppTypography.interFamily;
+
+  /// The face [layout] actually uses for [fontFamily]. Anything that lays
+  /// canvas text out *next to* the painter (the inline editor) should
+  /// resolve through this, or its glyphs reflow against the painted ones.
+  static String resolveFontFamily(String? fontFamily) =>
+      fontFamily ?? defaultFontFamily;
+
   /// Lays out [text] the way the painter draws it. The caller owns the
   /// returned painter.
   ///
   /// [color] affects painting only, never metrics — which is why [measure]
-  /// can cache without it in the key.
+  /// can cache without it in the key. [maxWidth] is where a sticky note's
+  /// label wraps; free text passes nothing and runs as long as it likes.
   static TextPainter layout({
     required String text,
     required double fontSize,
     String? fontFamily,
     Color color = const Color(0xFF000000),
+    double maxWidth = double.infinity,
+    TextAlign textAlign = TextAlign.start,
   }) {
     return TextPainter(
       text: TextSpan(
@@ -39,20 +58,23 @@ class TextMetrics {
         style: TextStyle(
           color: color,
           fontSize: fontSize,
-          fontFamily: fontFamily,
+          fontFamily: resolveFontFamily(fontFamily),
         ),
       ),
+      textAlign: textAlign,
       textDirection: TextDirection.ltr,
-    )..layout();
+    )..layout(maxWidth: maxWidth);
   }
 
-  /// Laid-out size of [text], cached by (text, fontSize, fontFamily).
+  /// Laid-out size of [text], cached by (text, fontSize, fontFamily,
+  /// maxWidth).
   static Size measure({
     required String text,
     required double fontSize,
     String? fontFamily,
+    double maxWidth = double.infinity,
   }) {
-    final key = '$fontSize|${fontFamily ?? ''}|$text';
+    final key = '$fontSize|${fontFamily ?? ''}|$maxWidth|$text';
     final hit = _sizes[key];
     if (hit != null) return hit;
 
@@ -60,6 +82,7 @@ class TextMetrics {
       text: text,
       fontSize: fontSize,
       fontFamily: fontFamily,
+      maxWidth: maxWidth,
     );
     final size = painter.size;
     painter.dispose();

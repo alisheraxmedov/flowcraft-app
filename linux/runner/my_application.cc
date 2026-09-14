@@ -52,7 +52,22 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "FlowCraft");
   }
 
+  // Resolve the window/taskbar icon from the installed hicolor theme
+  // (usr/share/icons/hicolor/*/apps/flowcraft.png, placed by build_deb.sh).
+  gtk_window_set_icon_name(window, "flowcraft");
+
   gtk_window_set_default_size(window, 1280, 720);
+  // Minimum window size. The same 980x640 is set on macOS (minSize in
+  // MainMenu.xib) and Windows (WM_GETMINMAXINFO in win32_window.cpp).
+  // Width: the top bar's natural width in lib/views/whiteboard_view.dart is
+  // ~892 logical px (56 leading + 24 title spacing + title row 384 [icon 24 +
+  // 12 + "FlowCraft" at 24px ~111 + divider 17 + ProjectTitleField 220] + 24 +
+  // actions 404 [Edit ~43 + 3 dividers 51 + five 36px buttons 180 + 12 +
+  // Export ~94 + 24 gutter]); +10% and rounded = 980. Height: not derivable
+  // from the layout — the properties panel (maxHeight 640) and the MCP card
+  // already overlap at the 720 default, and both it and the tool rail scroll
+  // rather than overflow — so 640 is the audit's fallback value.
+  gtk_widget_set_size_request(GTK_WIDGET(window), 980, 640);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

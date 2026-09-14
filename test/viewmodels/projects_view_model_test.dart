@@ -40,14 +40,16 @@ void main() {
   SketchController canvas() => container.read(sketchControllerProvider);
 
   group('startup', () {
-    test('starts a project when the library is empty, so edits are saved',
-        () async {
-      await model().ready;
+    test(
+      'starts a project when the library is empty, so edits are saved',
+      () async {
+        await model().ready;
 
-      expect(state().isLoading, isFalse);
-      expect(state().projects, hasLength(1));
-      expect(state().active?.name, 'Untitled project');
-    });
+        expect(state().isLoading, isFalse);
+        expect(state().projects, hasLength(1));
+        expect(state().active?.name, 'Untitled project');
+      },
+    );
 
     test('resumes the most recently edited project', () async {
       final old = await repository.create('Old');
@@ -68,10 +70,10 @@ void main() {
       expect(canvas().elements.single.id, 'a');
     });
 
-    test('lists a corrupt project without letting it become active',
-        () async {
-      File('${tempDir.path}${Platform.pathSeparator}proj_bad.json')
-          .writeAsStringSync('not json');
+    test('lists a corrupt project without letting it become active', () async {
+      File(
+        '${tempDir.path}${Platform.pathSeparator}proj_bad.json',
+      ).writeAsStringSync('not json');
 
       await model().ready;
 
@@ -81,29 +83,30 @@ void main() {
   });
 
   group('switching projects', () {
-    test('a debounced edit lands in the outgoing project, never the new one',
-        () async {
-      await model().ready;
-      final first = state().activeId!;
-      await model().createProject('Second');
-      final second = state().activeId!;
-      await model().openProject(first);
+    test(
+      'a debounced edit lands in the outgoing project, never the new one',
+      () async {
+        await model().ready;
+        final first = state().activeId!;
+        await model().createProject('Second');
+        final second = state().activeId!;
+        await model().openProject(first);
 
-      // Arms the 800ms debounce, then switches long before it could fire.
-      canvas().add(_rect('drawn-in-first'));
-      await model().openProject(second);
-      await model().flush();
+        // Arms the 800ms debounce, then switches long before it could fire.
+        canvas().add(_rect('drawn-in-first'));
+        await model().openProject(second);
+        await model().flush();
 
-      expect(
-        (await repository.load(first)).elements.single.id,
-        'drawn-in-first',
-      );
-      expect((await repository.load(second)).elements, isEmpty);
-      expect(canvas().elements, isEmpty);
-    });
+        expect(
+          (await repository.load(first)).elements.single.id,
+          'drawn-in-first',
+        );
+        expect((await repository.load(second)).elements, isEmpty);
+        expect(canvas().elements, isEmpty);
+      },
+    );
 
-    test('overlapping switches serialize instead of crossing scenes',
-        () async {
+    test('overlapping switches serialize instead of crossing scenes', () async {
       await model().ready;
       final a = state().activeId!;
       await model().createProject('B');
@@ -125,21 +128,23 @@ void main() {
       expect(canvas().elements, isEmpty);
     });
 
-    test('a tap landing mid-restore does not race the resumed project',
-        () async {
-      final older = await repository.create('Older');
-      await repository.save(id: older.id, elements: [_rect('a')]);
-      await repository.create('Newest');
+    test(
+      'a tap landing mid-restore does not race the resumed project',
+      () async {
+        final older = await repository.create('Older');
+        await repository.save(id: older.id, elements: [_rect('a')]);
+        await repository.create('Newest');
 
-      // Deliberately not awaiting `ready` first.
-      final tap = model().openProject(older.id);
-      await model().ready;
-      await tap;
+        // Deliberately not awaiting `ready` first.
+        final tap = model().openProject(older.id);
+        await model().ready;
+        await tap;
 
-      expect(state().activeId, older.id);
-      expect(canvas().elements.single.id, 'a');
-      expect(state().error, isNull);
-    });
+        expect(state().activeId, older.id);
+        expect(canvas().elements.single.id, 'a');
+        expect(state().error, isNull);
+      },
+    );
 
     test('opening a project swaps the canvas contents', () async {
       await model().ready;
@@ -163,21 +168,23 @@ void main() {
       expect(canvas().elements.single.id, 'a');
     });
 
-    test('a failed open keeps the canvas and keeps saving to the old project',
-        () async {
-      await model().ready;
-      final active = state().activeId!;
-      canvas().add(_rect('a'));
+    test(
+      'a failed open keeps the canvas and keeps saving to the old project',
+      () async {
+        await model().ready;
+        final active = state().activeId!;
+        canvas().add(_rect('a'));
 
-      await model().openProject('proj_missing');
+        await model().openProject('proj_missing');
 
-      expect(state().error, contains('Could not open project'));
-      expect(state().activeId, active);
-      expect(canvas().elements.single.id, 'a');
+        expect(state().error, contains('Could not open project'));
+        expect(state().activeId, active);
+        expect(canvas().elements.single.id, 'a');
 
-      await model().flush();
-      expect((await repository.load(active)).elements, hasLength(1));
-    });
+        await model().flush();
+        expect((await repository.load(active)).elements, hasLength(1));
+      },
+    );
   });
 
   group('mutations', () {
@@ -213,21 +220,24 @@ void main() {
       expect(state().active?.name, 'Untitled project');
     });
 
-    test('deleting does not resurrect the file via a pending autosave',
-        () async {
-      await model().ready;
-      final doomed = state().activeId!;
-      canvas().add(_rect('a'));
+    test(
+      'deleting does not resurrect the file via a pending autosave',
+      () async {
+        await model().ready;
+        final doomed = state().activeId!;
+        canvas().add(_rect('a'));
 
-      await model().deleteProject(doomed);
-      await model().flush();
+        await model().deleteProject(doomed);
+        await model().flush();
 
-      expect(
-        File('${tempDir.path}${Platform.pathSeparator}$doomed.json')
-            .existsSync(),
-        isFalse,
-      );
-    });
+        expect(
+          File(
+            '${tempDir.path}${Platform.pathSeparator}$doomed.json',
+          ).existsSync(),
+          isFalse,
+        );
+      },
+    );
   });
 
   group('partially-readable project files', () {
@@ -236,19 +246,22 @@ void main() {
     /// user hand-edited.
     Future<(FlowProject, File)> plantPartial() async {
       final project = await repository.create('Partial');
-      final file =
-          File('${tempDir.path}${Platform.pathSeparator}${project.id}.json');
-      file.writeAsStringSync(jsonEncode({
-        'version': 1,
-        'project': project.toJson(),
-        'scene': {
+      final file = File(
+        '${tempDir.path}${Platform.pathSeparator}${project.id}.json',
+      );
+      file.writeAsStringSync(
+        jsonEncode({
           'version': 1,
-          'elements': [
-            _rect('keeps-loading').toJson(),
-            {'id': 'from_the_future', 'type': 'hexagon'},
-          ],
-        },
-      }));
+          'project': project.toJson(),
+          'scene': {
+            'version': 1,
+            'elements': [
+              _rect('keeps-loading').toJson(),
+              {'id': 'from_the_future', 'type': 'hexagon'},
+            ],
+          },
+        }),
+      );
       return (project, file);
     }
 
@@ -290,10 +303,10 @@ void main() {
       await model().flush();
 
       expect(file.readAsStringSync(), isNot(contains('from_the_future')));
-      expect(
-        (await repository.load(project.id)).elements.map((e) => e.id),
-        ['keeps-loading', 'drawn-after-opening'],
-      );
+      expect((await repository.load(project.id)).elements.map((e) => e.id), [
+        'keeps-loading',
+        'drawn-after-opening',
+      ]);
     });
   });
 }

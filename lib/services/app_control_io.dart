@@ -16,9 +16,9 @@ class AppControlServer {
   /// and tests can ask for port 0 — `flutter test` runs files in parallel,
   /// and a fixed port would have them fighting over one socket.
   AppControlServer({required SketchController controller, required int port})
-      : _server = _isDesktop
-            ? FlowcraftControlServer(controller: controller, port: port)
-            : null;
+    : _server = _isDesktop
+          ? FlowcraftControlServer(controller: controller, port: port)
+          : null;
 
   static bool get _isDesktop =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -32,9 +32,11 @@ class AppControlServer {
   String? get token => _server?.boundPort == null ? null : _server?.token;
 
   /// Throws [AppControlStartException] when the socket can't be bound —
-  /// overwhelmingly "something else already holds the port". Translated
-  /// here rather than left as a raw [SocketException] so the view model
-  /// can surface a reason without importing `dart:io`.
+  /// overwhelmingly "something else already holds the port" — or when the
+  /// auth token can't be read or written. Translated here rather than left
+  /// as raw `dart:io` exceptions so the view model can surface a reason
+  /// without importing `dart:io`, and so the MCP card shows one short
+  /// sentence rather than a `toString()` full of errno and absolute paths.
   Future<void> start() async {
     final server = _server;
     if (server == null) return;
@@ -47,6 +49,14 @@ class AppControlServer {
       final detail = e.osError?.message ?? e.message;
       throw AppControlStartException(
         'Port ${server.port} is unavailable: $detail',
+      );
+    } on FileSystemException catch (e) {
+      // The token lives in `~/.flowcraft`; a read-only or missing home is
+      // the realistic way to land here.
+      final detail = e.osError?.message ?? e.message;
+      throw AppControlStartException(
+        'Could not create the auth token in ${server.configDir.path}: '
+        '$detail',
       );
     }
   }

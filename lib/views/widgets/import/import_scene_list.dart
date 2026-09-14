@@ -44,17 +44,23 @@ class ImportSceneList extends StatelessWidget {
       );
     }
 
-    return ListView.builder(
-      shrinkWrap: true,
-      itemCount: scenes.length,
-      itemBuilder: (context, index) {
-        final scene = scenes[index];
-        return _SceneTile(
-          scene: scene,
-          selected: scene.path == selectedPath,
-          onTap: () => onSelect(scene.path),
-        );
-      },
+    // An eager column in a scroll view rather than a lazy `ListView`: the
+    // host dialog is `scrollable`, which sizes its body by intrinsic height,
+    // and a lazy viewport refuses to report one. The list is one folder of
+    // exports — small enough that laziness bought nothing anyway.
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final scene in scenes)
+            _SceneTile(
+              scene: scene,
+              selected: scene.path == selectedPath,
+              onTap: () => onSelect(scene.path),
+            ),
+        ],
+      ),
     );
   }
 }

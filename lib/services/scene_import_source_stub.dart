@@ -1,5 +1,7 @@
 import 'package:flowcraft/services/importable_scene.dart';
 
+export 'package:flowcraft/services/scene_import_exception.dart';
+
 /// Web fallback for [SceneImportSource] — listing and reading files needs
 /// `dart:io`. Selected in place of `scene_import_source_io.dart` by the
 /// `dart.library.io` conditional import in `scene_import_source.dart`.
@@ -18,8 +20,8 @@ class SceneImportSource {
       const <ImportableScene>[];
 
   static Future<String> read(String path) async => throw UnsupportedError(
-        'Reading files from disk is not available on the web build.',
-      );
+    'Reading files from disk is not available on the web build.',
+  );
 
   static String expandHome(String path) => path;
 }

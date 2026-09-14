@@ -18,17 +18,6 @@ import 'package:flowcraft/views/widgets/project_tile.dart';
 /// and it keeps the dismiss off the far side of an `await`. Nothing here
 /// assumes a [Scaffold] or a [Navigator]; [onProjectOpened] exists for
 /// hosts that need to react to the same event.
-///
-/// Wiring — two lines in `whiteboard_view.dart`: add the drawer to the
-/// `Scaffold`, and let the `AppBar` supply the button that opens it by
-/// flipping `_TopBar`'s `automaticallyImplyLeading: false` to `true`.
-///
-/// ```dart
-/// return Scaffold(
-///   drawer: const ProjectDrawer(),
-///   // ...
-/// );
-/// ```
 class ProjectDrawer extends ConsumerWidget {
   const ProjectDrawer({super.key, this.onProjectOpened});
 

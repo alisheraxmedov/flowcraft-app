@@ -90,34 +90,36 @@ void main() {
     expect(find.text('Alpha'), findsOneWidget);
   });
 
-  testWidgets('commits to the project the edit began on, not the one now open',
-      (tester) async {
-    // Renaming Alpha and then clicking a sidebar row both opens Beta and
-    // blurs this field — the typed name must still land on Alpha.
-    final repository = FakeProjectRepository();
-    final alpha = await repository.create('Alpha');
-    final beta = await repository.create('Beta');
-    final container = await pumpTitle(tester, repository);
-    await container
-        .read(projectsViewModelProvider.notifier)
-        .openProject(alpha.id);
-    await tester.pumpAndSettle();
+  testWidgets(
+    'commits to the project the edit began on, not the one now open',
+    (tester) async {
+      // Renaming Alpha and then clicking a sidebar row both opens Beta and
+      // blurs this field — the typed name must still land on Alpha.
+      final repository = FakeProjectRepository();
+      final alpha = await repository.create('Alpha');
+      final beta = await repository.create('Beta');
+      final container = await pumpTitle(tester, repository);
+      await container
+          .read(projectsViewModelProvider.notifier)
+          .openProject(alpha.id);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Alpha'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Renamed');
+      await tester.tap(find.text('Alpha'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Renamed');
 
-    await container
-        .read(projectsViewModelProvider.notifier)
-        .openProject(beta.id);
-    await tester.pumpAndSettle();
-    tester.binding.focusManager.primaryFocus?.unfocus();
-    await tester.pumpAndSettle();
+      await container
+          .read(projectsViewModelProvider.notifier)
+          .openProject(beta.id);
+      await tester.pumpAndSettle();
+      tester.binding.focusManager.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
 
-    final projects = await repository.list();
-    expect(projects.firstWhere((p) => p.id == alpha.id).name, 'Renamed');
-    expect(projects.firstWhere((p) => p.id == beta.id).name, 'Beta');
-  });
+      final projects = await repository.list();
+      expect(projects.firstWhere((p) => p.id == alpha.id).name, 'Renamed');
+      expect(projects.firstWhere((p) => p.id == beta.id).name, 'Beta');
+    },
+  );
 
   testWidgets('renders nothing when no project is open', (tester) async {
     await pumpTitle(tester, _CreateFailsRepository());

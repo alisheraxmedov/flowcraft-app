@@ -42,21 +42,61 @@ void main() {
   test('reads a file back verbatim', () async {
     final file = write('scene.json', '{"version": 1, "elements": []}');
 
-    expect(await SceneImportSource.read(file.path),
-        '{"version": 1, "elements": []}');
+    expect(
+      await SceneImportSource.read(file.path),
+      '{"version": 1, "elements": []}',
+    );
   });
 
-  test('expands a leading ~, which is how people write paths by hand', () {
-    final home = Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'];
+  test(
+    'expands a leading ~, which is how people write paths by hand',
+    () {
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
 
-    expect(SceneImportSource.expandHome('~/board.json'), '$home/board.json');
-    expect(SceneImportSource.expandHome('/tmp/board.json'), '/tmp/board.json');
-  }, skip: (Platform.environment['HOME'] ??
-              Platform.environment['USERPROFILE']) ==
-          null
-      ? 'no home directory in this environment'
-      : null);
+      expect(SceneImportSource.expandHome('~/board.json'), '$home/board.json');
+      expect(SceneImportSource.expandHome('~'), home);
+      expect(
+        SceneImportSource.expandHome('/tmp/board.json'),
+        '/tmp/board.json',
+      );
+    },
+    skip:
+        (Platform.environment['HOME'] ?? Platform.environment['USERPROFILE']) ==
+            null
+        ? 'no home directory in this environment'
+        : null,
+  );
+
+  test('only a bare ~ or ~/ is expanded', () {
+    // `~bob/x` names another user's home; substituting ours for the `~`
+    // alone produced `/Users/alicebob/x`.
+    expect(SceneImportSource.expandHome('~bob/x.json'), '~bob/x.json');
+    expect(SceneImportSource.expandHome('~~'), '~~');
+    expect(SceneImportSource.expandHome('a~/x.json'), 'a~/x.json');
+  });
+
+  test('refuses a file over the import size cap without reading it', () async {
+    // A sparse file: the size is real, the bytes were never written, so
+    // creating it is instant — and reading it would not be.
+    final huge = File('${tempDir.path}${Platform.pathSeparator}huge.json');
+    final raf = huge.openSync(mode: FileMode.write);
+    raf.setPositionSync(maxSceneImportBytes);
+    raf.writeFromSync([0x7D]); // one trailing byte, past the cap
+    raf.closeSync();
+    expect(huge.lengthSync(), maxSceneImportBytes + 1, reason: 'precondition');
+
+    await expectLater(
+      SceneImportSource.read(huge.path),
+      throwsA(
+        isA<SceneImportTooLargeException>().having(
+          (e) => '$e',
+          'message',
+          allOf(contains('too large'), contains('64 MB')),
+        ),
+      ),
+    );
+  });
 
   test('surfaces the real reason a path cannot be read', () {
     expect(

@@ -169,17 +169,16 @@ class RoughGenerator {
     final path = Path();
     if (points.isEmpty) return path;
     if (points.length == 1) {
-      path.addOval(
-        Rect.fromCircle(center: points.first, radius: 0.5),
-      );
+      path.addOval(Rect.fromCircle(center: points.first, radius: 0.5));
       return path;
     }
 
     final rng = _Rng(seed);
     final jitter = roughness;
 
-    Offset jit(Offset p) =>
-        jitter == 0 ? p : p + Offset((rng.next() - 0.5) * jitter, (rng.next() - 0.5) * jitter);
+    Offset jit(Offset p) => jitter == 0
+        ? p
+        : p + Offset((rng.next() - 0.5) * jitter, (rng.next() - 0.5) * jitter);
 
     final first = jit(points.first);
     path.moveTo(first.dx, first.dy);
@@ -206,10 +205,36 @@ class RoughGenerator {
     return path;
   }
 
+  /// Upper bound on hachure lines per direction. A rect large enough to
+  /// need more (≈ 16 000 canvas units across at the default gap) is legal
+  /// in a scene file, and building tens of thousands of jittered cubics for
+  /// one element on the UI thread is not; such a shape falls back to a
+  /// solid fill instead (see [hachureFits]).
+  static const int maxHachureSteps = 2000;
+
+  /// Whether [hachure] will pattern [rect] rather than give up on it.
+  static bool hachureFits(
+    Rect rect, {
+    double gap = 8.0,
+    double angleDeg = -41.0,
+  }) => _hachureSteps(rect, gap, angleDeg) <= maxHachureSteps;
+
+  static int _hachureSteps(Rect rect, double gap, double angleDeg) {
+    final angle = angleDeg * math.pi / 180.0;
+    // Diagonal extent ≈ |w·cos| + |h·sin|, walked in [gap]-sized steps.
+    final extent =
+        rect.width * math.cos(angle).abs() +
+        rect.height * math.sin(angle).abs();
+    return (extent / gap).floor() + 1;
+  }
+
   /// Builds a hachure (parallel-line) fill pattern inside [rect].
   ///
   /// Lines are oriented at [angleDeg] degrees and spaced [gap] units
   /// apart. The pattern is clipped to the rect bounds before drawing.
+  /// Returns an empty path when the rect would need more than
+  /// [maxHachureSteps] lines; callers check [hachureFits] first and draw a
+  /// solid fill in that case.
   static Path hachure(
     Rect rect, {
     double gap = 8.0,
@@ -219,6 +244,8 @@ class RoughGenerator {
   }) {
     final path = Path();
     if (rect.width <= 0 || rect.height <= 0 || gap <= 0) return path;
+    final steps = _hachureSteps(rect, gap, angleDeg);
+    if (steps > maxHachureSteps) return path;
     final rng = _Rng(seed);
     final angle = angleDeg * math.pi / 180.0;
     final sin = math.sin(angle);
@@ -226,9 +253,7 @@ class RoughGenerator {
 
     // Convert hachure to axis-aligned by rotating sample coordinates.
     // We walk perpendicular to the hachure direction in [gap]-sized steps,
-    // emitting one line per step. Diagonal extent ≈ |w·cos| + |h·sin|.
-    final extent = rect.width * cos.abs() + rect.height * sin.abs();
-    final steps = (extent / gap).floor() + 1;
+    // emitting one line per step.
     final cx = rect.center.dx;
     final cy = rect.center.dy;
     final halfLen = math.max(rect.width, rect.height);
@@ -250,6 +275,32 @@ class RoughGenerator {
     return path;
   }
 
+  /// Cuts [src] into the on/off runs of [pattern] (alternating dash and
+  /// gap lengths, in the path's own units) and returns the dashes as one
+  /// path of open sub-paths. A pattern shorter than two entries returns
+  /// [src] unchanged.
+  ///
+  /// Drawn with round caps, the merged path is indistinguishable from one
+  /// `drawPath` per dash — which is what the painter used to issue, per
+  /// element, per frame; built once and cached, a dotted outline costs the
+  /// same to draw as a solid one.
+  static Path dash(Path src, List<double> pattern) {
+    if (pattern.length < 2) return src;
+    final out = Path();
+    for (final metric in src.computeMetrics()) {
+      var dist = 0.0;
+      var idx = 0;
+      while (dist < metric.length) {
+        final len = pattern[idx % pattern.length];
+        final end = math.min(dist + len, metric.length);
+        if (idx.isEven) out.addPath(metric.extractPath(dist, end), Offset.zero);
+        dist = end;
+        idx++;
+      }
+    }
+    return out;
+  }
+
   // ── internal ─────────────────────────────────────────────────────────────
 
   static void _line(
@@ -263,16 +314,16 @@ class RoughGenerator {
   }) {
     final len = (p2 - p1).distance;
     if (len == 0) return;
-    final offsetMag = (roughness * 1.5 * math.min(len * 0.07, 5.0)).clamp(0.0, 8.0);
+    final offsetMag = (roughness * 1.5 * math.min(len * 0.07, 5.0)).clamp(
+      0.0,
+      8.0,
+    );
     final maxOffset = math.max(0.5, offsetMag);
 
-    final divergePoint = 0.5 +
-        (rng.next() - 0.5) * 0.4; // 0.3–0.7
+    final divergePoint = 0.5 + (rng.next() - 0.5) * 0.4; // 0.3–0.7
 
-    Offset jit() => Offset(
-          (rng.next() - 0.5) * maxOffset,
-          (rng.next() - 0.5) * maxOffset,
-        );
+    Offset jit() =>
+        Offset((rng.next() - 0.5) * maxOffset, (rng.next() - 0.5) * maxOffset);
 
     final mid1 = Offset(
       p1.dx + (p2.dx - p1.dx) * divergePoint,
@@ -300,11 +351,7 @@ class RoughGenerator {
 
   /// Liang-Barsky line clipping against [rect].
   /// Returns the clipped segment, or null if entirely outside.
-  static (Offset, Offset)? _clipSegmentToRect(
-    Offset p1,
-    Offset p2,
-    Rect rect,
-  ) {
+  static (Offset, Offset)? _clipSegmentToRect(Offset p1, Offset p2, Rect rect) {
     final dx = p2.dx - p1.dx;
     final dy = p2.dy - p1.dy;
     final p = [-dx, dx, -dy, dy];
@@ -340,13 +387,27 @@ class RoughGenerator {
 /// Tiny linear-congruential PRNG. Stable across platforms and Dart
 /// versions, unlike [math.Random] whose sequence is implementation-defined.
 class _Rng {
-  _Rng(int seed) : _state = (seed == 0 ? 1 : seed) & 0xFFFFFFFF;
+  /// Park–Miller needs `1 <= state <= m - 1` (m = 0x7FFFFFFF): a state of 0
+  /// is a fixed point that returns 0 forever, which `seed & 0xFFFFFFFF`
+  /// produced for every multiple of m (and `seed == 0` was only one of
+  /// those). Seeds already in range are used as-is so every existing
+  /// board keeps the exact wobble it was saved with; anything else is
+  /// reduced modulo `m - 1` plus one, which lands in range for negative
+  /// seeds too (Dart's `%` is never negative).
+  _Rng(int seed)
+    : _state = (seed >= 1 && seed < _modulus)
+          ? seed
+          : (seed % _modulusMinusOne) + 1;
+
+  static const int _modulus = 0x7FFFFFFF;
+  static const int _modulusMinusOne = 0x7FFFFFFE;
+
   int _state;
 
   /// Returns a double in `[0, 1)`.
   double next() {
     // Park-Miller multiplicative LCG.
-    _state = (_state * 48271) % 0x7FFFFFFF;
-    return _state / 0x7FFFFFFF;
+    _state = (_state * 48271) % _modulus;
+    return _state / _modulus;
   }
 }

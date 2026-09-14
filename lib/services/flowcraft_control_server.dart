@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
+import 'app_version.dart';
 import 'diagram_spec.dart';
 import 'mcp_http_handler.dart';
 
@@ -36,18 +37,24 @@ class FlowcraftControlServer {
     required SketchController controller,
     this.port = 5199,
     Directory? configDir,
-  })  : _controller = controller,
-        _configDir = configDir ?? _defaultConfigDir();
+  }) : _controller = controller,
+       _configDir = configDir ?? _defaultConfigDir();
 
   static Directory _defaultConfigDir() {
     final home =
-        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
+        Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ??
+        '.';
     return Directory('$home${Platform.pathSeparator}.flowcraft');
   }
 
   final SketchController _controller;
   final int port;
   final Directory _configDir;
+
+  /// Where the auth token lives — `~/.flowcraft` unless a test overrides
+  /// it. Exposed so a token-file failure can name the place that refused.
+  Directory get configDir => _configDir;
 
   HttpServer? _server;
 
@@ -58,13 +65,6 @@ class FlowcraftControlServer {
   /// The shared auth token mutating requests must send via the
   /// `X-Flowcraft-Token` header (or `Authorization: Bearer` on `/mcp`).
   String get token => _token;
-
-  /// The URL to register with an AI CLI, once [start] has bound a port.
-  /// Null before that — the port isn't known until the socket exists.
-  String? get mcpEndpoint {
-    final port = boundPort;
-    return port == null ? null : 'http://127.0.0.1:$port$mcpEndpointPath';
-  }
 
   /// Built lazily so the token file is only touched when the server
   /// actually starts, not when this class is merely constructed.
@@ -102,8 +102,9 @@ class FlowcraftControlServer {
     return token;
   }
 
-  static const String _ownerOnlyFileMode = '600';
-  static const String _ownerOnlyDirMode = '700';
+  static const int _ownerOnlyFileMode = 0x180; // 0600
+  static const int _ownerOnlyDirMode = 0x1C0; // 0700
+  static const int _permissionBits = 0x1FF; // rwxrwxrwx
 
   /// Takes the group and world bits off [entity].
   ///
@@ -113,13 +114,19 @@ class FlowcraftControlServer {
   /// mode bits to clear: `%USERPROFILE%` already inherits an ACL granting
   /// only the profile owner, and an `icacls` call here would restate it.
   ///
+  /// The mode is read first and the spawn skipped when it is already
+  /// right: this runs synchronously on the UI isolate during the splash,
+  /// and a `chmod` process costs 3–15 ms against a microsecond for `stat`.
+  ///
   /// Best effort by design. A token the whole machine can read is bad; a
   /// whiteboard that refuses to open because `chmod` was missing is worse,
   /// so a failure is printed for the developer and stepped over.
-  static void _restrictToOwner(FileSystemEntity entity, String mode) {
+  static void _restrictToOwner(FileSystemEntity entity, int mode) {
     if (Platform.isWindows) return;
     try {
-      final result = Process.runSync('chmod', [mode, entity.path]);
+      if ((entity.statSync().mode & _permissionBits) == mode) return;
+      final octal = mode.toRadixString(8);
+      final result = Process.runSync('chmod', [octal, entity.path]);
       if (result.exitCode != 0) {
         debugPrint(
           'FlowCraft could not restrict ${entity.path}: ${result.stderr}',
@@ -159,9 +166,15 @@ class FlowcraftControlServer {
       }
       switch ('${request.method} ${request.uri.path}') {
         case 'GET /health':
+          // Unauthenticated on purpose — the legacy bridge uses it as a
+          // liveness probe before it has read the token — so it says only
+          // that the app is up and which build it is. What is *on* the
+          // canvas is the user's, and comes back only with the token.
           _reply(request, 200, {
             'status': 'ok',
-            'elements': _controller.elements.length,
+            'version': appVersion,
+            if (_hasValidToken(request))
+              'elements': _controller.elements.length,
           });
         case 'POST /draw':
           await _requireAuth(request, () async {
@@ -217,12 +230,16 @@ class FlowcraftControlServer {
     HttpRequest request,
     Future<void> Function() action,
   ) async {
-    final header = request.headers.value(McpHttpHandler.tokenHeader);
-    if (header == null || !constantTimeEquals(header, _token)) {
+    if (!_hasValidToken(request)) {
       _reply(request, 401, {'error': 'missing or invalid token'});
       return;
     }
     await action();
+  }
+
+  bool _hasValidToken(HttpRequest request) {
+    final header = request.headers.value(McpHttpHandler.tokenHeader);
+    return header != null && constantTimeEquals(header, _token);
   }
 
   Future<Map<String, dynamic>> _readJson(HttpRequest request) async {

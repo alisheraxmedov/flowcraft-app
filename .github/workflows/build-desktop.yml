@@ -4,11 +4,22 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
+  # Branch protection on `main` requires the `Test` check; running it on
+  # pull requests is what makes that check exist on a PR at all. The three
+  # build jobs are skipped for PRs (see their `if:`) — they are slow and
+  # their output is only useful for a push that can ship.
+  pull_request:
+    branches:
+      - main
   workflow_dispatch: {}
 
 concurrency:
   group: build-desktop-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a tag build: a second push would abandon a half-uploaded
+  # release.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -22,22 +33,29 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # Pinned in .fvmrc — bump it by PR, never implicitly through
+          # `channel: stable`, so a release and its hotfix build with the
+          # same engine.
+          flutter-version-file: .fvmrc
+          cache: true
 
       - run: flutter pub get
-      - run: flutter analyze
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze --fatal-infos
       - run: flutter test
 
   build-macos:
     name: macOS (.dmg)
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version-file: .fvmrc
+          cache: true
 
       - name: Read app version
         id: version
@@ -62,20 +80,56 @@ jobs:
       # apply), pod install against the now-migrated Podfile, then build
       # again for real.
       - name: Prime CocoaPods (expected to fail once)
-        run: flutter build macos --release || true
+        run: >-
+          flutter build macos --release
+          --dart-define=FLOWCRAFT_VERSION=${{ steps.version.outputs.version }}
+          || true
 
       - name: Install CocoaPods dependencies
         working-directory: macos
         run: pod install --repo-update
 
-      - run: flutter build macos --release
+      - run: >-
+          flutter build macos --release
+          --dart-define=FLOWCRAFT_VERSION=${{ steps.version.outputs.version }}
 
+      # The bundle is ad-hoc signed by Xcode (no paid certificate yet). This
+      # does not sign anything — it only fails the build if a nested
+      # framework's seal no longer matches, which is what produces the
+      # "app is damaged" variant of the Gatekeeper dialog for users.
+      - name: Verify ad-hoc code signature
+        run: codesign --verify --deep --strict --verbose=2 build/macos/Build/Products/Release/flowcraft.app
+
+      # The eraser glyph comes from material_symbols_icons, whose three fonts
+      # are 32 MB in the pub cache. Release builds tree-shake icon fonts down
+      # to the glyphs actually referenced (a few KB each); if that ever stops
+      # happening — a non-const IconData, a flag change — the app would grow
+      # by ~32 MB silently. Fail here instead.
+      - name: Assert icon fonts were tree-shaken
+        run: |
+          set -euo pipefail
+          assets=build/macos/Build/Products/Release/flowcraft.app/Contents/Frameworks/App.framework/Resources/flutter_assets
+          find "$assets" \( -name 'MaterialSymbols*.ttf' -o -name 'MaterialIcons-Regular.otf' \) -print0 \
+            | while IFS= read -r -d '' f; do
+                size=$(stat -f %z "$f")
+                echo "$size  $f"
+                if [ "$size" -gt 102400 ]; then
+                  echo "::error::$f is $size bytes — icon font was not tree-shaken" >&2
+                  exit 1
+                fi
+              done
+
+      # Stage the app next to an /Applications symlink so the mounted image
+      # offers the standard drag-to-install affordance instead of a lone
+      # app users double-click from the read-only volume.
       - name: Package .dmg
         run: |
           set -euo pipefail
-          mkdir -p dist
+          mkdir -p dist/dmg
+          cp -R build/macos/Build/Products/Release/flowcraft.app dist/dmg/
+          ln -s /Applications dist/dmg/Applications
           hdiutil create -volname "FlowCraft" \
-            -srcfolder "build/macos/Build/Products/Release/flowcraft.app" \
+            -srcfolder dist/dmg \
             -ov -format UDZO \
             "dist/FlowCraft-macOS-${{ steps.version.outputs.version }}.dmg"
 
@@ -88,13 +142,15 @@ jobs:
   build-windows:
     name: Windows (installer)
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version-file: .fvmrc
+          cache: true
 
       - name: Read app version
         id: version
@@ -105,8 +161,12 @@ jobs:
 
       - run: flutter config --enable-windows-desktop
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: >-
+          flutter build windows --release
+          --dart-define=FLOWCRAFT_VERSION=${{ steps.version.outputs.version }}
 
+      # Produces windows\installer\Output\FlowCraft-Windows-Setup-<version>.exe
+      # (OutputBaseFilename in flowcraft.iss is derived from MyAppVersion).
       - name: Build installer (Inno Setup)
         shell: cmd
         run: >-
@@ -117,19 +177,21 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: flowcraft-windows-installer
-          path: windows/installer/Output/*.exe
+          path: windows/installer/Output/FlowCraft-Windows-Setup-${{ steps.version.outputs.version }}.exe
           if-no-files-found: error
 
   build-linux:
     name: Linux (.deb)
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version-file: .fvmrc
+          cache: true
 
       - name: Read app version
         id: version
@@ -144,7 +206,9 @@ jobs:
 
       - run: flutter config --enable-linux-desktop
       - run: flutter pub get
-      - run: flutter build linux --release
+      - run: >-
+          flutter build linux --release
+          --dart-define=FLOWCRAFT_VERSION=${{ steps.version.outputs.version }}
 
       - name: Package .deb
         env:
@@ -156,3 +220,77 @@ jobs:
           name: flowcraft-linux-installer
           path: dist/*.deb
           if-no-files-found: error
+
+  # Runs only for a `v*` tag. Creates a *draft* release so the maintainer can
+  # smoke-test the three installers and read the notes before anything goes
+  # public. Release notes are the tag's section of CHANGELOG.md, with
+  # GitHub's generated PR list appended underneath.
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # A tag that does not match pubspec.yaml would ship an installer whose
+      # embedded version (CFBundleShortVersionString, the Inno AppVersion,
+      # the .deb Version, FLOWCRAFT_VERSION) disagrees with the release it
+      # sits on. Bump pubspec.yaml first, then tag.
+      - name: Assert tag matches pubspec version
+        run: |
+          set -euo pipefail
+          PUBSPEC=$(grep '^version:' pubspec.yaml | head -1 | sed 's/version: *//' | cut -d'+' -f1)
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$PUBSPEC" != "$TAG" ]; then
+            echo "::error::tag v$TAG does not match pubspec.yaml version $PUBSPEC" >&2
+            exit 1
+          fi
+          echo "version=$PUBSPEC" >> "$GITHUB_ENV"
+
+      # Extracts the `## [<version>] - <date>` section from CHANGELOG.md
+      # (Keep-a-Changelog layout): everything after that heading up to the
+      # next `## [` heading or the link-reference block at the end of the
+      # file. Fails if the section is missing, so a tag cannot ship with
+      # empty notes.
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          awk -v ver="$version" '
+            /^## \[/ {
+              if (found) exit
+              if (index($0, "## [" ver "]") == 1) { found = 1; next }
+            }
+            found && /^\[[^]]+\]: / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          if [ ! -s "$RUNNER_TEMP/release-notes.md" ]; then
+            echo "::error::CHANGELOG.md has no '## [$version]' section" >&2
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/release-notes.md"
+
+      - uses: actions/download-artifact@v7
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -la release-assets
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: FlowCraft ${{ env.version }}
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          body_path: ${{ runner.temp }}/release-notes.md
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/FlowCraft-macOS-${{ env.version }}.dmg
+            release-assets/FlowCraft-Windows-Setup-${{ env.version }}.exe
+            release-assets/flowcraft_${{ env.version }}_amd64.deb

@@ -97,8 +97,10 @@ void main() {
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(a, isNot(c));
-      expect(const McpServerStatus.failed('x'),
-          isNot(const McpServerStatus.failed('y')));
+      expect(
+        const McpServerStatus.failed('x'),
+        isNot(const McpServerStatus.failed('y')),
+      );
     });
   });
 
@@ -112,8 +114,7 @@ void main() {
       expect(status.endpoint, isNull);
     });
 
-    test('a successful start publishes the port it actually bound',
-        () async {
+    test('a successful start publishes the port it actually bound', () async {
       final container = makeContainer();
       final notifier = container.read(mcpViewModelProvider.notifier);
 
@@ -156,6 +157,43 @@ void main() {
       expect(seen, [McpServerState.starting, McpServerState.off]);
     });
 
+    test('a superseded transition does not publish its state', () async {
+      // on→off while the initial start is still binding: the queue runs
+      // start then stop, and the start used to publish `running` — with
+      // an endpoint and token — on a switch the user had already turned
+      // off, for as long as the stop behind it took.
+      final container = makeContainer();
+      final seen = <McpServerState>[];
+      container.listen<McpServerStatus>(
+        mcpViewModelProvider,
+        (previous, next) => seen.add(next.state),
+        fireImmediately: true,
+      );
+      final notifier = container.read(mcpViewModelProvider.notifier);
+
+      notifier.toggle(); // off, while the start is in flight
+      notifier.toggle(); // on again
+      notifier.toggle(); // and off
+      await notifier.settled;
+
+      expect(seen, isNot(contains(McpServerState.running)));
+      expect(seen.last, McpServerState.off);
+      expect(container.read(mcpViewModelProvider).isOn, isFalse);
+    });
+
+    test('the newest request still publishes its outcome', () async {
+      final container = makeContainer();
+      final notifier = container.read(mcpViewModelProvider.notifier);
+
+      notifier.toggle(); // off
+      notifier.toggle(); // on — newest, must land as running
+      await notifier.settled;
+
+      final status = container.read(mcpViewModelProvider);
+      expect(status.isRunning, isTrue);
+      expect(status.port, isNotNull);
+    });
+
     test('turning the server off drops the connection details', () {
       final container = makeContainer();
 
@@ -167,46 +205,50 @@ void main() {
       expect(status.token, isNull);
     });
 
-    test('a port already in use fails loudly instead of faking success',
-        () async {
-      muteDebugPrint();
-      final taken = await occupyAPort();
+    test(
+      'a port already in use fails loudly instead of faking success',
+      () async {
+        muteDebugPrint();
+        final taken = await occupyAPort();
 
-      final container = makeContainer(port: taken);
-      await container.read(mcpViewModelProvider.notifier).ready;
+        final container = makeContainer(port: taken);
+        await container.read(mcpViewModelProvider.notifier).ready;
 
-      final status = container.read(mcpViewModelProvider);
-      expect(status.hasFailed, isTrue);
-      expect(status.error, contains('$taken'));
-      expect(status.error, contains('unavailable'));
-      expect(status.isOn, isFalse);
-      expect(status.endpoint, isNull);
-      expect(status.connectCommand, isNull);
-    });
+        final status = container.read(mcpViewModelProvider);
+        expect(status.hasFailed, isTrue);
+        expect(status.error, contains('$taken'));
+        expect(status.error, contains('unavailable'));
+        expect(status.isOn, isFalse);
+        expect(status.endpoint, isNull);
+        expect(status.connectCommand, isNull);
+      },
+    );
 
-    test('retry after a failure starts the server once the port frees up',
-        () async {
-      muteDebugPrint();
-      final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      final port = socket.port;
+    test(
+      'retry after a failure starts the server once the port frees up',
+      () async {
+        muteDebugPrint();
+        final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        final port = socket.port;
 
-      final container = makeContainer(port: port);
-      final notifier = container.read(mcpViewModelProvider.notifier);
-      await notifier.ready;
-      expect(container.read(mcpViewModelProvider).hasFailed, isTrue);
+        final container = makeContainer(port: port);
+        final notifier = container.read(mcpViewModelProvider.notifier);
+        await notifier.ready;
+        expect(container.read(mcpViewModelProvider).hasFailed, isTrue);
 
-      // The usual real-world fix: whatever was squatting goes away.
-      await socket.close();
-      notifier.retry();
-      // `ready` only covers the first attempt; `settled` is the retry's own
-      // queued transition.
-      await notifier.settled;
+        // The usual real-world fix: whatever was squatting goes away.
+        await socket.close();
+        notifier.retry();
+        // `ready` only covers the first attempt; `settled` is the retry's own
+        // queued transition.
+        await notifier.settled;
 
-      final status = container.read(mcpViewModelProvider);
-      expect(status.isRunning, isTrue);
-      expect(status.port, port);
-      expect(status.endpoint, 'http://127.0.0.1:$port/mcp');
-    });
+        final status = container.read(mcpViewModelProvider);
+        expect(status.isRunning, isTrue);
+        expect(status.port, port);
+        expect(status.endpoint, 'http://127.0.0.1:$port/mcp');
+      },
+    );
 
     test('ready resolves even when the server cannot start', () async {
       muteDebugPrint();

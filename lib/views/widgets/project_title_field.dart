@@ -17,17 +17,9 @@ import 'package:flowcraft/viewmodels/projects_view_model.dart';
 /// have to hunt for a confirm button.
 ///
 /// Renders nothing when no project is open, so it is safe to leave in the
-/// tree unconditionally.
-///
-/// Wiring — in `whiteboard_view.dart`'s `_TopBar`, append to the title row
-/// after the "FlowCraft Whiteboard" label. The [Flexible] matters: the row
-/// is `MainAxisSize.min`, so a fixed-width child would overflow a narrow
-/// window instead of ellipsising.
-///
-/// ```dart
-/// const SizedBox(width: 12),
-/// const Flexible(child: ProjectTitleField()),
-/// ```
+/// tree unconditionally. Hosts in a `MainAxisSize.min` row should wrap it in
+/// a [Flexible] so a long name ellipsises instead of overflowing a narrow
+/// window.
 class ProjectTitleField extends ConsumerStatefulWidget {
   const ProjectTitleField({super.key, this.width = 220});
 
@@ -72,8 +64,10 @@ class _ProjectTitleFieldState extends ConsumerState<ProjectTitleField> {
 
   void _beginEdit(FlowProject project) {
     _controller.text = project.name;
-    _controller.selection =
-        TextSelection(baseOffset: 0, extentOffset: project.name.length);
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: project.name.length,
+    );
     setState(() => _editingId = project.id);
     _focusNode.requestFocus();
   }
@@ -111,10 +105,7 @@ class _ProjectTitleFieldState extends ConsumerState<ProjectTitleField> {
               onSubmitted: _commit,
               onCancel: _cancel,
             )
-          : _NameButton(
-              name: active.name,
-              onTap: () => _beginEdit(active),
-            ),
+          : _NameButton(name: active.name, onTap: () => _beginEdit(active)),
     );
   }
 }
@@ -173,18 +164,14 @@ class _NameField extends StatelessWidget {
     // TextField's own focus instead of needing a second FocusNode this
     // stateless widget would have nowhere to dispose.
     return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.escape): onCancel,
-      },
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): onCancel},
       child: TextField(
         controller: controller,
         focusNode: focusNode,
         autofocus: true,
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => onSubmitted(),
-        style: AppTypography.bodySm.copyWith(
-          color: colorScheme.onSurface,
-        ),
+        style: AppTypography.bodySm.copyWith(color: colorScheme.onSurface),
         decoration: InputDecoration(
           isDense: true,
           filled: true,

@@ -8,6 +8,15 @@ import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/services/mcp_http_handler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// A controller whose draw path fails with a message that names a local
+/// path — what a bug on our side of the HTTP boundary can look like.
+class _ExplodingController extends SketchController {
+  @override
+  void addAll(Iterable<SketchElement> elements) {
+    throw StateError('boom at /Users/secret/flowcraft');
+  }
+}
+
 void main() {
   late Directory tempConfigDir;
   late SketchController controller;
@@ -88,13 +97,28 @@ void main() {
     return readJson(response);
   }
 
-  test('GET /health reports element count without auth', () async {
+  test('GET /health reports liveness and version without auth', () async {
     final request = await client.getUrl(base.replace(path: '/health'));
     final response = await request.close();
     expect(response.statusCode, 200);
     final json = await readJson(response);
     expect(json['status'], 'ok');
-    expect(json['elements'], 0);
+    expect(json['version'], appVersion);
+    // What is on the canvas is the user's; an unauthenticated probe learns
+    // only that the app is up.
+    expect(json.containsKey('elements'), isFalse);
+  });
+
+  test('GET /health includes the element count for a valid token', () async {
+    controller.add(
+      SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 10, 10)),
+    );
+    final request = await client.getUrl(base.replace(path: '/health'));
+    request.headers.set('X-Flowcraft-Token', server.token);
+    final response = await request.close();
+
+    expect(response.statusCode, 200);
+    expect((await readJson(response))['elements'], 1);
   });
 
   test('POST /draw without a token is rejected', () async {
@@ -108,29 +132,19 @@ void main() {
   });
 
   test('POST /draw adds shapes to the live controller', () async {
-    final response = await post(
-      '/draw',
-      {
-        'elements': [
-          {
-            'type': 'rectangle',
-            'x': 40,
-            'y': 40,
-            'width': 220,
-            'height': 90,
-            'text': 'UserService',
-          },
-          {
-            'type': 'arrow',
-            'fromX': 260,
-            'fromY': 85,
-            'toX': 420,
-            'toY': 85,
-          },
-        ],
-      },
-      token: server.token,
-    );
+    final response = await post('/draw', {
+      'elements': [
+        {
+          'type': 'rectangle',
+          'x': 40,
+          'y': 40,
+          'width': 220,
+          'height': 90,
+          'text': 'UserService',
+        },
+        {'type': 'arrow', 'fromX': 260, 'fromY': 85, 'toX': 420, 'toY': 85},
+      ],
+    }, token: server.token);
 
     expect(response.statusCode, 200);
     final json = await readJson(response);
@@ -146,16 +160,12 @@ void main() {
       SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 10, 10)),
     );
 
-    final response = await post(
-      '/draw',
-      {
-        'mode': 'replace',
-        'elements': [
-          {'type': 'ellipse', 'x': 0, 'y': 0, 'width': 50, 'height': 50},
-        ],
-      },
-      token: server.token,
-    );
+    final response = await post('/draw', {
+      'mode': 'replace',
+      'elements': [
+        {'type': 'ellipse', 'x': 0, 'y': 0, 'width': 50, 'height': 50},
+      ],
+    }, token: server.token);
 
     expect(response.statusCode, 200);
     expect(controller.elements, hasLength(1));
@@ -163,15 +173,11 @@ void main() {
   });
 
   test('POST /draw rejects an unknown element type', () async {
-    final response = await post(
-      '/draw',
-      {
-        'elements': [
-          {'type': 'not_a_real_shape'},
-        ],
-      },
-      token: server.token,
-    );
+    final response = await post('/draw', {
+      'elements': [
+        {'type': 'not_a_real_shape'},
+      ],
+    }, token: server.token);
 
     expect(response.statusCode, 400);
     expect(controller.elements, isEmpty);
@@ -189,96 +195,129 @@ void main() {
   });
 
   test('POST /draw refuses more elements than one call may draw', () async {
-    final response = await post(
-      '/draw',
-      {
-        'elements': [
-          for (var i = 0; i <= maxDiagramElements; i++) {'type': 'line'},
-        ],
-      },
-      token: server.token,
-    );
+    final response = await post('/draw', {
+      'elements': [
+        for (var i = 0; i <= maxDiagramElements; i++) {'type': 'line'},
+      ],
+    }, token: server.token);
 
     expect(response.statusCode, 400);
     expect((await readJson(response))['error'], contains('Too many elements'));
     expect(controller.elements, isEmpty);
   });
 
-  test('POST /draw refuses a body larger than the cap before reading it',
-      () async {
-    // Raw socket on purpose: the point is that an oversized request is
-    // turned away on its declared length, without a byte of the body being
-    // buffered — so the test never sends one.
-    final socket = await Socket.connect('127.0.0.1', server.boundPort!);
-    addTearDown(() => socket.destroy());
-    socket.write(
-      'POST /draw HTTP/1.1\r\n'
-      'Host: 127.0.0.1\r\n'
-      'X-Flowcraft-Token: ${server.token}\r\n'
-      'Content-Type: application/json\r\n'
-      'Content-Length: ${maxRequestBodyBytes + 1}\r\n'
-      '\r\n',
-    );
-    await socket.flush();
+  test(
+    'POST /draw refuses a body larger than the cap before reading it',
+    () async {
+      // Raw socket on purpose: the point is that an oversized request is
+      // turned away on its declared length, without a byte of the body being
+      // buffered — so the test never sends one.
+      final socket = await Socket.connect('127.0.0.1', server.boundPort!);
+      addTearDown(() => socket.destroy());
+      socket.write(
+        'POST /draw HTTP/1.1\r\n'
+        'Host: 127.0.0.1\r\n'
+        'X-Flowcraft-Token: ${server.token}\r\n'
+        'Content-Type: application/json\r\n'
+        'Content-Length: ${maxRequestBodyBytes + 1}\r\n'
+        '\r\n',
+      );
+      await socket.flush();
 
-    final status = await utf8.decoder
-        .bind(socket)
-        .transform(const LineSplitter())
-        .first
-        .timeout(const Duration(seconds: 10));
+      final status = await utf8.decoder
+          .bind(socket)
+          .transform(const LineSplitter())
+          .first
+          .timeout(const Duration(seconds: 10));
 
-    expect(status, startsWith('HTTP/1.1 413'));
-    expect(controller.elements, isEmpty);
-  });
+      expect(status, startsWith('HTTP/1.1 413'));
+      expect(controller.elements, isEmpty);
+    },
+  );
 
-  test('POST /draw refuses an oversized body that declares no length',
-      () async {
-    // The chunked case, where Content-Length can't be trusted to exist: the
-    // running total is the only thing standing between an authenticated
-    // client and the GUI process's memory.
-    final request = await client.postUrl(base.replace(path: '/draw'));
-    request.headers.contentType = ContentType.json;
-    request.headers.set('X-Flowcraft-Token', server.token);
-    // Valid JSON the old code would have accepted — the padding, not a
-    // parse failure, is what has to be refused.
-    request.write('{"elements":[],"pad":"');
-    final chunk = 'x' * (64 * 1024);
-    for (var sent = 0; sent <= maxRequestBodyBytes; sent += chunk.length) {
-      request.write(chunk);
+  test(
+    'POST /draw refuses an oversized body that declares no length',
+    () async {
+      // The chunked case, where Content-Length can't be trusted to exist: the
+      // running total is the only thing standing between an authenticated
+      // client and the GUI process's memory.
+      final request = await client.postUrl(base.replace(path: '/draw'));
+      request.headers.contentType = ContentType.json;
+      request.headers.set('X-Flowcraft-Token', server.token);
+      // Valid JSON the old code would have accepted — the padding, not a
+      // parse failure, is what has to be refused.
+      request.write('{"elements":[],"pad":"');
+      final chunk = 'x' * (64 * 1024);
+      for (var sent = 0; sent <= maxRequestBodyBytes; sent += chunk.length) {
+        request.write(chunk);
+      }
+      request.write('"}');
+
+      // The server hangs up as soon as it has seen enough, so the tail of
+      // this write may never land — either outcome is the refusal.
+      late final int? status;
+      try {
+        status = (await request.close()).statusCode;
+      } on SocketException {
+        status = null;
+      } on HttpException {
+        status = null;
+      }
+
+      expect(status, anyOf(isNull, HttpStatus.requestEntityTooLarge));
+      expect(controller.elements, isEmpty);
+    },
+  );
+
+  test('/draw answers 400 for a wrongly-typed field', () async {
+    // `{"text": 42}` used to reach a cast inside the parser rather than one
+    // of its own checks, and came back as 500 "internal server error" —
+    // untrue, and unfixable from the caller's side.
+    for (final bad in [
+      {'type': 'rectangle', 'text': 42},
+      {'type': 5},
+      {'type': 'rectangle', 'strokeColor': 7},
+    ]) {
+      final response = await post('/draw', {
+        'elements': [bad],
+      }, token: server.token);
+
+      expect(response.statusCode, 400, reason: '$bad');
+      expect((await readJson(response))['error'], contains('must be'));
     }
-    request.write('"}');
-
-    // The server hangs up as soon as it has seen enough, so the tail of
-    // this write may never land — either outcome is the refusal.
-    late final int? status;
-    try {
-      status = (await request.close()).statusCode;
-    } on SocketException {
-      status = null;
-    } on HttpException {
-      status = null;
-    }
-
-    expect(status, anyOf(isNull, HttpStatus.requestEntityTooLarge));
     expect(controller.elements, isEmpty);
   });
 
   test('an unexpected failure is not echoed back to the caller', () async {
-    // A wrong-typed `text` reaches a cast inside the parser rather than one
-    // of its own checks — the class of bug whose message can carry local
-    // filesystem paths.
-    final response = await post(
-      '/draw',
-      {
-        'elements': [
-          {'type': 'rectangle', 'text': 42},
-        ],
-      },
-      token: server.token,
+    // Nothing a caller can send reaches the generic handler any more, so
+    // the failure is planted on our side of the boundary — the class of
+    // bug whose message can carry local filesystem paths.
+    final exploding = _ExplodingController();
+    final other = FlowcraftControlServer(
+      controller: exploding,
+      port: 0,
+      configDir: tempConfigDir,
     );
+    await other.start();
+    addTearDown(other.stop);
+    final request = await client.postUrl(
+      base.replace(port: other.boundPort, path: '/draw'),
+    );
+    request.headers.contentType = ContentType.json;
+    request.headers.set('X-Flowcraft-Token', other.token);
+    request.write(
+      jsonEncode({
+        'elements': [
+          {'type': 'rectangle'},
+        ],
+      }),
+    );
+    final response = await request.close();
 
     expect(response.statusCode, 500);
-    expect((await readJson(response))['error'], 'internal server error');
+    final body = await response.transform(utf8.decoder).join();
+    expect(body, isNot(contains('/Users/secret')));
+    expect(jsonDecode(body), {'error': 'internal server error'});
   });
 
   test('a foreign Origin is refused on the REST endpoints too', () async {
@@ -289,64 +328,66 @@ void main() {
     expect(response.statusCode, 403);
   });
 
-  group('token file', () {
-    /// A server whose config directory it has to create itself.
-    /// `createTempSync` already makes a 0700 directory, so reusing the
-    /// outer one would pass the directory check without any fix at all.
-    Future<FlowcraftControlServer> startWith(Directory configDir) async {
-      final other = FlowcraftControlServer(
-        controller: controller,
-        port: 0,
-        configDir: configDir,
-      );
-      await other.start();
-      addTearDown(other.stop);
-      return other;
-    }
+  group(
+    'token file',
+    () {
+      /// A server whose config directory it has to create itself.
+      /// `createTempSync` already makes a 0700 directory, so reusing the
+      /// outer one would pass the directory check without any fix at all.
+      Future<FlowcraftControlServer> startWith(Directory configDir) async {
+        final other = FlowcraftControlServer(
+          controller: controller,
+          port: 0,
+          configDir: configDir,
+        );
+        await other.start();
+        addTearDown(other.stop);
+        return other;
+      }
 
-    File tokenFileIn(Directory dir) =>
-        File('${dir.path}${Platform.pathSeparator}control.token');
+      File tokenFileIn(Directory dir) =>
+          File('${dir.path}${Platform.pathSeparator}control.token');
 
-    test('is created readable only by its owner', () async {
-      final configDir = Directory(
-        '${tempConfigDir.path}${Platform.pathSeparator}fresh',
-      );
+      test('is created readable only by its owner', () async {
+        final configDir = Directory(
+          '${tempConfigDir.path}${Platform.pathSeparator}fresh',
+        );
 
-      final other = await startWith(configDir);
+        final other = await startWith(configDir);
 
-      final file = tokenFileIn(configDir);
-      expect(file.readAsStringSync(), other.token);
-      expect(file.statSync().modeString(), 'rw-------');
-      expect(configDir.statSync().modeString(), 'rwx------');
-    });
+        final file = tokenFileIn(configDir);
+        expect(file.readAsStringSync(), other.token);
+        expect(file.statSync().modeString(), 'rw-------');
+        expect(configDir.statSync().modeString(), 'rwx------');
+      });
 
-    test('an already world-readable token is tightened, not rotated',
+      test(
+        'an already world-readable token is tightened, not rotated',
         () async {
-      final configDir = Directory(
-        '${tempConfigDir.path}${Platform.pathSeparator}legacy',
-      )..createSync();
-      final file = tokenFileIn(configDir)..writeAsStringSync('legacy-token');
-      Process.runSync('chmod', ['644', file.path]);
-      Process.runSync('chmod', ['755', configDir.path]);
+          final configDir = Directory(
+            '${tempConfigDir.path}${Platform.pathSeparator}legacy',
+          )..createSync();
+          final file = tokenFileIn(configDir)
+            ..writeAsStringSync('legacy-token');
+          Process.runSync('chmod', ['644', file.path]);
+          Process.runSync('chmod', ['755', configDir.path]);
 
-      final other = await startWith(configDir);
+          final other = await startWith(configDir);
 
-      // Rotating instead would silently break every CLI already registered
-      // against this app, so the fix has to be the permissions alone.
-      expect(other.token, 'legacy-token');
-      expect(file.statSync().modeString(), 'rw-------');
-      expect(configDir.statSync().modeString(), 'rwx------');
-    });
-  },
-      skip: Platform.isWindows
-          ? 'POSIX mode bits; Windows carries this on the profile ACL'
-          : null);
+          // Rotating instead would silently break every CLI already registered
+          // against this app, so the fix has to be the permissions alone.
+          expect(other.token, 'legacy-token');
+          expect(file.statSync().modeString(), 'rw-------');
+          expect(configDir.statSync().modeString(), 'rwx------');
+        },
+      );
+    },
+    skip: Platform.isWindows
+        ? 'POSIX mode bits; Windows carries this on the profile ACL'
+        : null,
+  );
 
   group('MCP endpoint', () {
-    test('exposes its URL once a port is bound', () {
-      expect(server.mcpEndpoint, 'http://127.0.0.1:${server.boundPort}/mcp');
-    });
-
     test('initialize echoes a protocol version we support', () async {
       final body = await rpc(
         'initialize',
@@ -362,10 +403,8 @@ void main() {
       expect(body['id'], 1);
       expect(result['protocolVersion'], '2025-03-26');
       expect(result['capabilities'], containsPair('tools', isA<Map>()));
-      expect(
-        result['serverInfo'],
-        containsPair('name', isA<String>()),
-      );
+      expect(result['serverInfo'], containsPair('name', isA<String>()));
+      expect(result['serverInfo'], containsPair('version', appVersion));
       expect(result['instructions'], contains('flowcraft_draw'));
     });
 
@@ -395,17 +434,25 @@ void main() {
       expect(body['result'], isEmpty);
     });
 
-    test('tools/list advertises exactly the three canvas tools', () async {
+    test('tools/list advertises the full read/edit canvas tool set', () async {
       final body = await rpc('tools/list');
 
       final tools = (body['result'] as Map<String, dynamic>)['tools'] as List;
-      expect(
-        tools.map((t) => (t as Map<String, dynamic>)['name']),
-        ['flowcraft_status', 'flowcraft_draw', 'flowcraft_clear'],
-      );
+      expect(tools.map((t) => (t as Map<String, dynamic>)['name']), [
+        'flowcraft_status',
+        'flowcraft_read',
+        'flowcraft_draw',
+        'flowcraft_update',
+        'flowcraft_delete',
+        'flowcraft_clear',
+      ]);
       // A tool without a usable schema is unusable to a model, so make
       // sure the full JSON Schema survives serialization.
-      final draw = tools[1] as Map<String, dynamic>;
+      final draw =
+          tools.firstWhere(
+                (t) => (t as Map<String, dynamic>)['name'] == 'flowcraft_draw',
+              )
+              as Map<String, dynamic>;
       final schema = draw['inputSchema'] as Map<String, dynamic>;
       expect(schema['type'], 'object');
       expect(schema['required'], ['elements']);
@@ -414,6 +461,90 @@ void main() {
         containsAll(['mode', 'elements']),
       );
     });
+
+    test(
+      'flowcraft_read, _update and _delete round-trip over the wire',
+      () async {
+        // Draw two shapes, read them back to learn their ids, move one and
+        // delete the other — the whole point of the read/edit surface.
+        await rpc(
+          'tools/call',
+          params: {
+            'name': 'flowcraft_draw',
+            'arguments': {
+              'elements': [
+                {
+                  'type': 'rectangle',
+                  'x': 10,
+                  'y': 20,
+                  'width': 200,
+                  'height': 80,
+                  'text': 'A',
+                },
+                {
+                  'type': 'ellipse',
+                  'x': 300,
+                  'y': 0,
+                  'width': 50,
+                  'height': 50,
+                },
+              ],
+            },
+          },
+        );
+
+        final read = await rpc(
+          'tools/call',
+          params: {'name': 'flowcraft_read', 'arguments': <String, dynamic>{}},
+        );
+        final readResult = read['result'] as Map<String, dynamic>;
+        expect(readResult['isError'], isFalse);
+        final decoded =
+            jsonDecode((readResult['content'] as List).single['text'] as String)
+                as Map<String, dynamic>;
+        expect(decoded['count'], 2);
+        final described = (decoded['elements'] as List).cast<Map>();
+        final rectId = described.firstWhere(
+          (e) => e['type'] == 'rectangle',
+        )['id'];
+        final ellipseId = described.firstWhere(
+          (e) => e['type'] == 'ellipse',
+        )['id'];
+
+        await rpc(
+          'tools/call',
+          params: {
+            'name': 'flowcraft_update',
+            'arguments': {
+              'elements': [
+                {'id': rectId, 'x': 40, 'text': 'Renamed'},
+              ],
+            },
+          },
+        );
+
+        // Only the addressed rectangle moved and was relabelled; the ellipse
+        // is untouched, and the id is preserved (it was updated, not replaced).
+        final rect =
+            controller.elements.firstWhere((e) => e.id == rectId)
+                as SketchRectangle;
+        expect(rect.rect.left, 40);
+        expect(rect.rect.width, 200);
+        expect(rect.text, 'Renamed');
+
+        await rpc(
+          'tools/call',
+          params: {
+            'name': 'flowcraft_delete',
+            'arguments': {
+              'ids': [ellipseId],
+            },
+          },
+        );
+
+        expect(controller.elements.map((e) => e.id), [rectId]);
+      },
+    );
 
     test('tools/call flowcraft_draw mutates the live controller', () async {
       final body = await rpc(
@@ -442,8 +573,10 @@ void main() {
         containsPair('text', contains('Drew 1 element(s)')),
       );
       expect(controller.elements, hasLength(1));
-      expect((controller.elements.single as SketchRectangle).text,
-          'OrderService');
+      expect(
+        (controller.elements.single as SketchRectangle).text,
+        'OrderService',
+      );
     });
 
     test('tools/call flowcraft_draw honours mode=replace', () async {
@@ -494,9 +627,38 @@ void main() {
       expect(result['isError'], isFalse);
       expect(
         (result['content'] as List).single,
-        containsPair('text', contains('1 element(s)')),
+        containsPair(
+          'text',
+          allOf(contains('1 element(s)'), contains('version $appVersion')),
+        ),
       );
     });
+
+    test(
+      'a wrongly-typed field is a tool error the model can act on',
+      () async {
+        final body = await rpc(
+          'tools/call',
+          params: {
+            'name': 'flowcraft_draw',
+            'arguments': {
+              'elements': [
+                {'type': 'text', 'text': 5},
+              ],
+            },
+          },
+        );
+
+        expect(body['error'], isNull);
+        final result = body['result'] as Map<String, dynamic>;
+        expect(result['isError'], isTrue);
+        expect(
+          (result['content'] as List).single,
+          containsPair('text', contains('"text" must be a string')),
+        );
+        expect(controller.elements, isEmpty);
+      },
+    );
 
     test('an unknown tool is a JSON-RPC error', () async {
       final body = await rpc(
@@ -531,29 +693,35 @@ void main() {
       expect(controller.elements, isEmpty);
     });
 
-    test('a non-finite coordinate is a tool error the model can act on',
-        () async {
-      // Hand-written rather than encoded: `jsonEncode` refuses to emit a
-      // non-finite double, which is precisely why `1e999` is the way one
-      // reaches the parser.
-      final response = await mcp(
-        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":'
-        '{"name":"flowcraft_draw","arguments":{"elements":'
-        '[{"type":"rectangle","x":0,"y":0,"width":1e999,"height":80}]}}}',
-        token: server.token,
-      );
+    test(
+      'a non-finite coordinate is a tool error the model can act on',
+      () async {
+        // Hand-written rather than encoded: `jsonEncode` refuses to emit a
+        // non-finite double, which is precisely why `1e999` is the way one
+        // reaches the parser.
+        final response = await mcp(
+          '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":'
+          '{"name":"flowcraft_draw","arguments":{"elements":'
+          '[{"type":"rectangle","x":0,"y":0,"width":1e999,"height":80}]}}}',
+          token: server.token,
+        );
 
-      expect(response.statusCode, 200);
-      final body = await readJson(response);
-      expect(body['error'], isNull, reason: 'a tool failure, not a protocol one');
-      final result = body['result'] as Map<String, dynamic>;
-      expect(result['isError'], isTrue);
-      expect(
-        (result['content'] as List).single,
-        containsPair('text', contains('finite')),
-      );
-      expect(controller.elements, isEmpty);
-    });
+        expect(response.statusCode, 200);
+        final body = await readJson(response);
+        expect(
+          body['error'],
+          isNull,
+          reason: 'a tool failure, not a protocol one',
+        );
+        final result = body['result'] as Map<String, dynamic>;
+        expect(result['isError'], isTrue);
+        expect(
+          (result['content'] as List).single,
+          containsPair('text', contains('finite')),
+        );
+        expect(controller.elements, isEmpty);
+      },
+    );
 
     test('too many elements is a tool error, not a drawn canvas', () async {
       final body = await rpc(
@@ -631,8 +799,7 @@ void main() {
       expect(body['error'], containsPair('code', -32700));
     });
 
-    test('a batched array is rejected — 2025-06-18 removed batching',
-        () async {
+    test('a batched array is rejected — 2025-06-18 removed batching', () async {
       final response = await mcp(
         jsonEncode([
           {'jsonrpc': '2.0', 'id': 1, 'method': 'ping'},
@@ -673,16 +840,18 @@ void main() {
       expect(response.statusCode, 200);
     });
 
-    test('a foreign Origin is refused before auth is even considered',
-        () async {
-      final response = await mcp(
-        jsonEncode({'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}),
-        token: server.token,
-        origin: 'http://evil.example',
-      );
+    test(
+      'a foreign Origin is refused before auth is even considered',
+      () async {
+        final response = await mcp(
+          jsonEncode({'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}),
+          token: server.token,
+          origin: 'http://evil.example',
+        );
 
-      expect(response.statusCode, 403);
-    });
+        expect(response.statusCode, 403);
+      },
+    );
 
     test('a localhost Origin is allowed', () async {
       final response = await mcp(
@@ -694,15 +863,17 @@ void main() {
       expect(response.statusCode, 200);
     });
 
-    test('GET is method-not-allowed — there is no server→client stream',
-        () async {
-      final request = await client.getUrl(base.replace(path: '/mcp'));
-      final response = await request.close();
+    test(
+      'GET is method-not-allowed — there is no server→client stream',
+      () async {
+        final request = await client.getUrl(base.replace(path: '/mcp'));
+        final response = await request.close();
 
-      expect(response.statusCode, 405);
-      expect(response.headers.value(HttpHeaders.allowHeader), 'POST, DELETE');
-      await response.drain<void>();
-    });
+        expect(response.statusCode, 405);
+        expect(response.headers.value(HttpHeaders.allowHeader), 'POST, DELETE');
+        await response.drain<void>();
+      },
+    );
 
     test('DELETE acknowledges the (stateless) session teardown', () async {
       final request = await client.deleteUrl(base.replace(path: '/mcp'));

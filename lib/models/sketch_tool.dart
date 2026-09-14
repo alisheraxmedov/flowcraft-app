@@ -17,12 +17,6 @@ enum SketchTool {
   sticky,
   eraser;
 
-  /// Whether this tool creates new elements when the user drags.
-  bool get isCreator =>
-      this != SketchTool.select &&
-      this != SketchTool.hand &&
-      this != SketchTool.eraser;
-
   /// Whether this tool primarily uses pointer-down + drag to create a
   /// bounded shape (rect/ellipse/diamond/triangle/line/arrow/sticky).
   bool get isBounded =>

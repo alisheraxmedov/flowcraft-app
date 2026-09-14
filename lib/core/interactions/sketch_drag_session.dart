@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:flowcraft/core/domain/sketch_geometry.dart';
 import 'package:flowcraft/core/interactions/sketch_snapping.dart';
-import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
 
@@ -56,11 +55,12 @@ class SketchDragSession {
     this.linearGrabbedPoint,
     this.linearFixedPoint,
     this.additive = false,
-  })  : currentCanvas = startCanvas,
-        currentScreen = startScreen,
-        freedrawPoints = kind == SketchSessionKind.createFreedraw
-            ? <Offset>[startCanvas]
-            : null;
+    this.collapsedStickyId,
+  }) : currentCanvas = startCanvas,
+       currentScreen = startScreen,
+       freedrawPoints = kind == SketchSessionKind.createFreedraw
+           ? <Offset>[startCanvas]
+           : null;
 
   final SketchSessionKind kind;
   final Offset startCanvas;
@@ -106,8 +106,24 @@ class SketchDragSession {
   /// it".
   final bool additive;
 
+  /// The collapsed sticky note this press landed on, if it landed on one.
+  ///
+  /// Recorded at pointer-down but acted on at pointer-up, because the same
+  /// press is also how a note is dragged: expanding on the way down would
+  /// mean every attempt to move a badge opened it first.
+  final String? collapsedStickyId;
+
   Offset currentCanvas;
   Offset currentScreen;
+
+  /// Whether this session has actually moved anything yet.
+  ///
+  /// The click-versus-drag test, and deliberately not a pointer-distance
+  /// threshold: what separates a click from a drag here is whether the drag
+  /// did something, which is the same distinction the controller's armed
+  /// drag snapshot already uses to decide whether a press earned an undo
+  /// entry.
+  bool moved = false;
 
   /// Recorded points for freedraw, in canvas-space.
   final List<Offset>? freedrawPoints;
@@ -115,10 +131,6 @@ class SketchDragSession {
   /// Guides explaining the snap applied on the last pointer-move, in
   /// canvas-space. Empty whenever the drag is placing freely.
   List<AlignmentGuide> guides = const <AlignmentGuide>[];
-
-  /// In-progress preview element constructed from the current pointer
-  /// position. May be `null` for non-creating sessions.
-  SketchElement? previewElement;
 
   /// Returns the rect spanning [startCanvas]→[currentCanvas], normalised
   /// so width / height are positive.

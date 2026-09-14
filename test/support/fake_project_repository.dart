@@ -75,10 +75,7 @@ class FakeProjectRepository implements ProjectRepository {
       name: ProjectRepository.normalizeName(name),
       updatedAt: _tick(),
     );
-    _scenes[id] = FlowProjectScene(
-      project: renamed,
-      elements: scene.elements,
-    );
+    _scenes[id] = FlowProjectScene(project: renamed, elements: scene.elements);
     return renamed;
   }
 

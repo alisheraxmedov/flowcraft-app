@@ -141,8 +141,7 @@ class FlowProject {
       Object.hash(id, name, createdAt, updatedAt, elementCount, isBroken);
 
   @override
-  String toString() =>
-      'FlowProject($id, "$name", $elementCount elements)';
+  String toString() => 'FlowProject($id, "$name", $elementCount elements)';
 }
 
 /// A project's metadata together with its fully-loaded scene — what the

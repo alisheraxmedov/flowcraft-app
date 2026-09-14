@@ -5,8 +5,9 @@ import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/app.dart';
 
 void main() {
-  testWidgets('whiteboard app builds and renders the sketch toolbar',
-      (tester) async {
+  testWidgets('whiteboard app builds and renders the sketch toolbar', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       // Port 0 — building the app really does start the MCP control
       // server, and `flutter test` runs files in parallel, so anything

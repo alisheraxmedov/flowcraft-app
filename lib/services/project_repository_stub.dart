@@ -21,8 +21,7 @@ class ProjectRepository {
   Future<FlowProject> save({
     required String id,
     required List<SketchElement> elements,
-  }) async =>
-      throw _unsupported;
+  }) async => throw _unsupported;
 
   Future<FlowProject> create(String name) async => throw _unsupported;
 
@@ -40,7 +39,6 @@ class ProjectRepository {
     return cleaned.length <= 80 ? cleaned : cleaned.substring(0, 80);
   }
 
-  static UnsupportedError get _unsupported => UnsupportedError(
-        'Saved projects are not available on the web build.',
-      );
+  static UnsupportedError get _unsupported =>
+      UnsupportedError('Saved projects are not available on the web build.');
 }

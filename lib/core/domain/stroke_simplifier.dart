@@ -14,11 +14,14 @@ class StrokeSimplifier {
   /// Ramer–Douglas–Peucker simplification. Returns a new list containing
   /// a subset of [points] approximating the original within [tolerance].
   ///
-  /// O(n log n) average case.
-  static List<Offset> simplify(
-    List<Offset> points, {
-    double tolerance = 0.5,
-  }) {
+  /// O(n log n) on a typical stroke, O(n²) in the worst case — but never
+  /// deep: the split ranges are worked off an explicit stack rather than
+  /// by recursion. The recursive form's depth was the number of points on
+  /// a stroke whose farthest point is always next to an endpoint (a tight
+  /// spiral, a staircase), and this runs on the UI thread at pointer-up for
+  /// every freedraw and again on every save, where a multi-thousand-point
+  /// scribble from a 120 Hz input is the normal case, not the edge.
+  static List<Offset> simplify(List<Offset> points, {double tolerance = 0.5}) {
     if (points.length < 3 || tolerance <= 0) {
       return List<Offset>.unmodifiable(points);
     }
@@ -27,7 +30,7 @@ class StrokeSimplifier {
     keep[0] = true;
     keep[points.length - 1] = true;
 
-    _rdp(points, 0, points.length - 1, tolerance, keep);
+    _rdp(points, tolerance, keep);
 
     final result = <Offset>[];
     for (var i = 0; i < points.length; i++) {
@@ -36,83 +39,36 @@ class StrokeSimplifier {
     return List<Offset>.unmodifiable(result);
   }
 
-  static void _rdp(
-    List<Offset> points,
-    int start,
-    int end,
-    double tolerance,
-    List<bool> keep,
-  ) {
-    if (end <= start + 1) return;
+  /// Marks in [keep] every point RDP retains, over the whole of [points].
+  ///
+  /// Ranges still to be examined live on [stack] as `(start, end)` pairs;
+  /// a range is split at its farthest point when that point is further than
+  /// [tolerance] from the chord, and both halves are pushed back.
+  static void _rdp(List<Offset> points, double tolerance, List<bool> keep) {
+    final stack = <(int, int)>[(0, points.length - 1)];
 
-    double maxDist = 0;
-    int idx = start;
-    final a = points[start];
-    final b = points[end];
+    while (stack.isNotEmpty) {
+      final (start, end) = stack.removeLast();
+      if (end <= start + 1) continue;
 
-    for (var i = start + 1; i < end; i++) {
-      final d = SketchGeometry.distanceToSegment(points[i], a, b);
-      if (d > maxDist) {
-        maxDist = d;
-        idx = i;
+      double maxDist = 0;
+      var idx = start;
+      final a = points[start];
+      final b = points[end];
+
+      for (var i = start + 1; i < end; i++) {
+        final d = SketchGeometry.distanceToSegment(points[i], a, b);
+        if (d > maxDist) {
+          maxDist = d;
+          idx = i;
+        }
+      }
+
+      if (maxDist > tolerance) {
+        keep[idx] = true;
+        stack.add((start, idx));
+        stack.add((idx, end));
       }
     }
-
-    if (maxDist > tolerance) {
-      keep[idx] = true;
-      _rdp(points, start, idx, tolerance, keep);
-      _rdp(points, idx, end, tolerance, keep);
-    }
-  }
-
-  /// Catmull–Rom spline interpolation. Inserts [subdivisions] points
-  /// between each pair of input control points, producing a smoother
-  /// curve suitable for rendering.
-  static List<Offset> smooth(
-    List<Offset> points, {
-    int subdivisions = 4,
-    double tension = 0.5,
-  }) {
-    if (points.length < 2 || subdivisions <= 0) {
-      return List<Offset>.unmodifiable(points);
-    }
-    if (points.length == 2) {
-      return List<Offset>.unmodifiable(points);
-    }
-
-    final result = <Offset>[points.first];
-    for (var i = 0; i < points.length - 1; i++) {
-      final p0 = i == 0 ? points[i] : points[i - 1];
-      final p1 = points[i];
-      final p2 = points[i + 1];
-      final p3 = i + 2 < points.length ? points[i + 2] : points[i + 1];
-
-      for (var j = 1; j <= subdivisions; j++) {
-        final t = j / (subdivisions + 1);
-        result.add(_catmull(p0, p1, p2, p3, t, tension));
-      }
-      result.add(p2);
-    }
-    return List<Offset>.unmodifiable(result);
-  }
-
-  static Offset _catmull(
-    Offset p0,
-    Offset p1,
-    Offset p2,
-    Offset p3,
-    double t,
-    double tension,
-  ) {
-    final t2 = t * t;
-    final t3 = t2 * t;
-    final a = (-tension * t3 + 2 * tension * t2 - tension * t);
-    final b = ((2 - tension) * t3 + (tension - 3) * t2 + 1);
-    final c = ((tension - 2) * t3 + (3 - 2 * tension) * t2 + tension * t);
-    final d = (tension * t3 - tension * t2);
-    return Offset(
-      a * p0.dx + b * p1.dx + c * p2.dx + d * p3.dx,
-      a * p0.dy + b * p1.dy + c * p2.dy + d * p3.dy,
-    );
   }
 }

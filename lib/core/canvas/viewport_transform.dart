@@ -45,9 +45,6 @@ class ViewportTransform {
       focalPoint.dy - canvasPoint.dy * clampedZoom,
     );
 
-    return viewport.copyWith(
-      zoom: clampedZoom,
-      offset: newOffset,
-    );
+    return viewport.copyWith(zoom: clampedZoom, offset: newOffset);
   }
 }

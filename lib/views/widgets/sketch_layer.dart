@@ -1,7 +1,7 @@
+import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/core/interactions/sketch_gesture_handler.dart';
-import 'package:flowcraft/core/theme/app_colors.dart';
 import 'package:flowcraft/core/interactions/sketch_interaction_state.dart';
 import 'package:flowcraft/core/rendering/sketch_painter.dart';
 import 'package:flowcraft/core/rendering/sketch_preview_painter.dart';
@@ -18,30 +18,38 @@ import 'package:flowcraft/views/widgets/sketch_text_editor.dart';
 ///  * subscribes to its internal [SketchInteractionState] for live preview
 ///    updates while the user draws,
 ///  * owns a persistent [SketchRenderCache] across rebuilds so generated
-///    rough/sketchy paths are reused instead of recomputed every frame,
+///    rough/sketchy paths and laid-out labels are reused instead of
+///    recomputed every frame,
 ///  * routes pointer events through [SketchGestureHandler] so the active
 ///    tool drives creation / selection / erase behaviour.
+///
+/// The in-progress preview takes its colour, width and pattern from the
+/// drag session's own `SketchStyle` — the style the element will be
+/// committed with — so the rubber-band shape is the shape the user is
+/// about to get, in the colour they picked, in light and dark chrome alike.
 class SketchLayer extends StatefulWidget {
   const SketchLayer({
     super.key,
     required this.controller,
     required this.viewportProvider,
-    this.selectionColor = AppColors.primary,
-    this.marqueeColor = AppColors.primary,
-    // Downstream of the user's own sketch style, not chrome — mirrors
-    // `SketchStyle`'s / the toolbar palette's default stroke color, and is
-    // overridden with the live `currentStyle.strokeColor` wherever this
-    // widget is actually wired up (see the text-editor build below).
-    this.previewColor = const Color(0xFF1E1E1E),
+    this.selectionColor,
+    this.marqueeColor,
     this.scaleStrokeWithZoom = true,
     this.onConsumedChange,
   });
 
   final SketchController controller;
   final ViewportProvider viewportProvider;
-  final Color selectionColor;
-  final Color marqueeColor;
-  final Color previewColor;
+
+  /// Colour of selection boxes and handles. Resolves to the ambient
+  /// `colorScheme.primary` when not given, so the chrome follows the theme
+  /// rather than a fixed brand token.
+  final Color? selectionColor;
+
+  /// Colour of the marquee band and snap guides. Resolves like
+  /// [selectionColor].
+  final Color? marqueeColor;
+
   final bool scaleStrokeWithZoom;
 
   /// Notifies whenever the sketch layer starts/stops consuming pointer
@@ -60,12 +68,16 @@ class _SketchLayerState extends State<SketchLayer> {
   @override
   void dispose() {
     _interaction.dispose();
-    _cache.clear();
+    // The cache owns native text layouts, not just paths.
+    _cache.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final selectionColor = widget.selectionColor ?? primary;
+    final marqueeColor = widget.marqueeColor ?? primary;
     return SketchGestureHandler(
       controller: widget.controller,
       interaction: _interaction,
@@ -85,7 +97,7 @@ class _SketchLayerState extends State<SketchLayer> {
                     viewport: widget.viewportProvider(),
                     paintGen: widget.controller.paintGen,
                     cache: _cache,
-                    selectionColor: widget.selectionColor,
+                    selectionColor: selectionColor,
                     editingElementId: widget.controller.editingElementId,
                     scaleStrokeWithZoom: widget.scaleStrokeWithZoom,
                   ),
@@ -102,8 +114,7 @@ class _SketchLayerState extends State<SketchLayer> {
                     session: _interaction.session,
                     revision: _interaction.revision,
                     viewport: widget.viewportProvider(),
-                    marqueeColor: widget.marqueeColor,
-                    previewColor: widget.previewColor,
+                    marqueeColor: marqueeColor,
                   ),
                 );
               },
@@ -122,7 +133,7 @@ class _SketchLayerState extends State<SketchLayer> {
                 controller: widget.controller,
                 viewport: widget.viewportProvider(),
                 textColor: widget.controller.currentStyle.strokeColor,
-                cursorColor: widget.selectionColor,
+                cursorColor: selectionColor,
               );
             },
           ),

@@ -27,8 +27,14 @@ class ToolShortcuts {
     SketchTool.eraser: LogicalKeyboardKey.keyE,
   };
 
+  /// The tool rail's tooltip for [tool]: its label and its key, e.g.
+  /// "Rectangle · R". One place, so the rail and the reference sheet can't
+  /// name a tool two different ways.
+  static String tooltip(SketchTool tool) =>
+      '${labels[tool]!} · ${keys[tool]!.keyLabel}';
+
   /// Names as the reference sheet prints them — the tool rail's own tooltip
-  /// wording, not the enum's.
+  /// wording (via [tooltip]), not the enum's.
   static const Map<SketchTool, String> labels = {
     SketchTool.select: 'Select',
     SketchTool.hand: 'Hand (pan)',
