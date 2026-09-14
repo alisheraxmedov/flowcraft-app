@@ -191,15 +191,20 @@ coordinates itself, and models are famously bad at spatial packing. Two things t
 
 ## MCP tool reference
 
-FlowCraft exposes three tools:
+FlowCraft exposes six tools:
 
 | Tool | Arguments | What it does |
 | --- | --- | --- |
 | `flowcraft_status` | none | Confirms the app is running and reachable, and reports how many elements are on the canvas. |
+| `flowcraft_read` | none | Returns every element on the canvas with its `id`, `type`, geometry, text and colours — the same field names `flowcraft_draw` accepts. Call it before editing so `flowcraft_update`/`flowcraft_delete` can target elements by `id`. |
 | `flowcraft_draw` | `{ mode?: "add" \| "replace", elements: [...] }` | Draws elements. `add` (the default) appends; `replace` clears the canvas first. Any unrecognised mode is treated as `add`, so a typo can never wipe your work. |
+| `flowcraft_update` | `{ elements: [{ id, ...fields }] }` | Edits existing elements in place, each addressed by its `id`. Only the fields you include change; everything else, and every other element, is left untouched. An element's `type` cannot be changed this way. |
+| `flowcraft_delete` | `{ ids: [string] }` | Removes specific elements by `id`, leaving the rest in place. |
 | `flowcraft_clear` | none | Removes every element from the canvas. |
 
-Each entry in `elements` is an object with a required `type` and the fields that type uses:
+Each entry in a `flowcraft_draw` `elements` array is an object with a required `type` and the
+fields that type uses; a `flowcraft_update` entry uses the same fields but is keyed by `id` instead
+of `type`:
 
 | `type` | Fields |
 | --- | --- |
@@ -536,8 +541,10 @@ Honest about what is not there yet. No dates — this is an ordering, not a sche
   edge.
 - **Text-format import** so an agent can send a diagram as text: Mermaid (including `erDiagram`) and
   DBML are the formats language models produce most reliably.
-- **Richer MCP surface** — reading the canvas back and updating existing elements, not only creating
-  new ones.
+- **Richer MCP surface** — reading the canvas back (`flowcraft_read`) and editing existing elements
+  by id (`flowcraft_update`/`flowcraft_delete`) landed in this release; still to come is binding
+  arrows to shapes so a moved box drags its connectors, and reshaping freehand strokes, neither of
+  which the current draw vocabulary can express.
 - **SVG export.**
 - **Richer text styling** on canvas elements.
 

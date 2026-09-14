@@ -177,7 +177,10 @@ class McpHttpHandler {
       'Draws diagrams live on the FlowCraft desktop whiteboard app. Call '
       'flowcraft_status to check connectivity, then flowcraft_draw with '
       'shapes (rectangles for classes/modules, arrows for relations) to '
-      'render the diagram you have analyzed.';
+      'render the diagram you have analyzed. To correct a diagram, call '
+      'flowcraft_read to get each element and its id, then flowcraft_update '
+      'or flowcraft_delete to change or remove specific elements by id — no '
+      'need to clear the board and redraw everything.';
 
   static const String tokenHeader = 'X-Flowcraft-Token';
 

@@ -54,6 +54,94 @@ void main() {
     });
   });
 
+  group('SketchController.updateAll', () {
+    test('replaces matching elements as one undo entry, returns count', () {
+      // Seeded through the constructor, not `add`, so the only history entry
+      // in play is the one `updateAll` itself pushes.
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a', rect: const Rect.fromLTWH(0, 0, 10, 10)),
+          _rect(id: 'b', rect: const Rect.fromLTWH(50, 0, 10, 10)),
+        ],
+      );
+      expect(c.canUndo, isFalse);
+
+      final replaced = c.updateAll([
+        _rect(id: 'a', rect: const Rect.fromLTWH(5, 5, 10, 10)),
+        _rect(id: 'b', rect: const Rect.fromLTWH(60, 5, 10, 10)),
+      ]);
+
+      expect(replaced, 2);
+      expect(c.elements[0].bounds.left, 5);
+      expect(c.elements[1].bounds.left, 60);
+
+      // The whole batch is a single undo, and one `undo()` restores both.
+      expect(c.canUndo, isTrue);
+      c.undo();
+      expect(c.elements[0].bounds.left, 0);
+      expect(c.elements[1].bounds.left, 50);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('replaces only the matching subset', () {
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a', rect: const Rect.fromLTWH(0, 0, 10, 10)),
+        ],
+      );
+      final replaced = c.updateAll([
+        _rect(id: 'a', rect: const Rect.fromLTWH(9, 9, 10, 10)),
+        _rect(id: 'ghost'),
+      ]);
+
+      expect(replaced, 1);
+      expect(c.elements.single.bounds.left, 9);
+    });
+
+    test('an all-stale batch changes nothing and leaves no undo entry', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      final replaced = c.updateAll([_rect(id: 'ghost')]);
+
+      expect(replaced, 0);
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.canUndo, isFalse);
+    });
+  });
+
+  group('SketchController.removeIds', () {
+    test('removes matching ids as one undo entry, returns count', () {
+      final c = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b'),
+          _rect(id: 'c'),
+        ],
+      );
+      c.select('a');
+
+      final removed = c.removeIds(['a', 'c', 'ghost']);
+
+      expect(removed, 2);
+      expect(c.elements.map((e) => e.id), ['b']);
+      // A deleted id must not outlive its element in the selection.
+      expect(c.isSelected('a'), isFalse);
+
+      expect(c.canUndo, isTrue);
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['a', 'b', 'c']);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('an all-stale delete changes nothing and leaves no undo entry', () {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      final removed = c.removeIds(['ghost']);
+
+      expect(removed, 0);
+      expect(c.elements.map((e) => e.id), ['a']);
+      expect(c.canUndo, isFalse);
+    });
+  });
+
   group('SketchController.translateSelected', () {
     test('moves only selected elements', () {
       final c = SketchController()

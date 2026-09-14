@@ -9,6 +9,19 @@ workflow extracts it verbatim and appends GitHub's generated pull-request list
 underneath. Day-by-day engineering notes, with the reasoning behind each
 decision, live in [`CHANGESLOGS/`](CHANGESLOGS/).
 
+## [Unreleased]
+
+### Added
+
+- **Read/edit MCP surface.** Three new tools join `flowcraft_draw`, so an AI
+  agent can correct a diagram instead of clearing it and starting over:
+  `flowcraft_read` returns every element on the canvas with its `id`, `type`,
+  geometry, text and colours; `flowcraft_update` edits existing elements in
+  place by `id`, changing only the fields you pass and leaving everything else
+  untouched; and `flowcraft_delete` removes specific elements by `id`. Reading
+  and editing use the same field names as drawing, and an element's type
+  cannot be changed through an update — delete it and draw a new one instead.
+
 ## [1.0.0] - 2026-08-22
 
 First public release.
@@ -131,4 +144,5 @@ Three tools are exposed:
 - The bundled legacy stdio bridge in `mcp_server/` exists only for MCP clients
   that cannot speak HTTP; most people should ignore it.
 
+[Unreleased]: https://github.com/alisheraxmedov/flowcraft-app/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/alisheraxmedov/flowcraft-app/releases/tag/v1.0.0

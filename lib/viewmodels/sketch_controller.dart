@@ -139,6 +139,32 @@ class SketchController extends ChangeNotifier {
     _bumpPaint();
   }
 
+  /// Replaces every element whose id matches one in [elements], as a single
+  /// history entry, and returns how many were actually replaced.
+  ///
+  /// The batch sibling of [update], the way [addAll] is [add]'s: [update]
+  /// pushes one history entry per call, so an MCP `flowcraft_update`
+  /// correcting five shapes at once would otherwise cost five `undo()`s to
+  /// take back — and would let a mid-batch failure leave a half-applied
+  /// scene behind a run of undo entries. Ids not on the canvas are skipped
+  /// rather than added, so a patch that addresses only stale ids changes
+  /// nothing. Like [addAll], it snapshots and bumps paint only when at least
+  /// one element matched, so an all-stale batch leaves no empty undo entry.
+  int updateAll(Iterable<SketchElement> elements) {
+    final replacements = <int, SketchElement>{};
+    for (final element in elements) {
+      final idx = _indexOf(element.id);
+      if (idx < 0) continue;
+      replacements[idx] = element;
+    }
+    if (replacements.isEmpty) return 0;
+    _pushHistory();
+    replacements.forEach((i, el) => _elements[i] = el);
+    _invalidateCache();
+    _bumpPaint();
+    return replacements.length;
+  }
+
   /// Removes the element with [id]. No-op if absent.
   void remove(String id) {
     final idx = _indexOf(id);
@@ -162,6 +188,36 @@ class SketchController extends ChangeNotifier {
     _cachedSelectedIds = null;
     _bumpPaint();
     return toRemove.length;
+  }
+
+  /// Removes every element whose id is in [ids], as a single history entry,
+  /// and returns how many were removed.
+  ///
+  /// The batch sibling of [remove], modelled on [removeSelected]: an MCP
+  /// `flowcraft_delete` naming several ids should be one undo, not one per
+  /// id. Deleted ids are also dropped from the selection, the way [remove]
+  /// drops the one it takes, so a selection can't outlive the element it
+  /// pointed at. Ids not on the canvas are ignored, and when none match it
+  /// makes no history entry and no paint bump — an all-stale delete is a
+  /// genuine no-op rather than an empty undo step.
+  int removeIds(Iterable<String> ids) {
+    final target = ids.toSet();
+    if (target.isEmpty) return 0;
+    final survivors = <SketchElement>[
+      for (final el in _elements)
+        if (!target.contains(el.id)) el,
+    ];
+    final removed = _elements.length - survivors.length;
+    if (removed == 0) return 0;
+    _pushHistory();
+    _elements
+      ..clear()
+      ..addAll(survivors);
+    _selectedIds.removeAll(target);
+    _invalidateCache();
+    _cachedSelectedIds = null;
+    _bumpPaint();
+    return removed;
   }
 
   /// Translates all selected elements by [delta]. Suitable for drag.

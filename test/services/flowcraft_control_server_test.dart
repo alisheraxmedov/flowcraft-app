@@ -434,18 +434,25 @@ void main() {
       expect(body['result'], isEmpty);
     });
 
-    test('tools/list advertises exactly the three canvas tools', () async {
+    test('tools/list advertises the full read/edit canvas tool set', () async {
       final body = await rpc('tools/list');
 
       final tools = (body['result'] as Map<String, dynamic>)['tools'] as List;
       expect(tools.map((t) => (t as Map<String, dynamic>)['name']), [
         'flowcraft_status',
+        'flowcraft_read',
         'flowcraft_draw',
+        'flowcraft_update',
+        'flowcraft_delete',
         'flowcraft_clear',
       ]);
       // A tool without a usable schema is unusable to a model, so make
       // sure the full JSON Schema survives serialization.
-      final draw = tools[1] as Map<String, dynamic>;
+      final draw =
+          tools.firstWhere(
+                (t) => (t as Map<String, dynamic>)['name'] == 'flowcraft_draw',
+              )
+              as Map<String, dynamic>;
       final schema = draw['inputSchema'] as Map<String, dynamic>;
       expect(schema['type'], 'object');
       expect(schema['required'], ['elements']);
@@ -454,6 +461,90 @@ void main() {
         containsAll(['mode', 'elements']),
       );
     });
+
+    test(
+      'flowcraft_read, _update and _delete round-trip over the wire',
+      () async {
+        // Draw two shapes, read them back to learn their ids, move one and
+        // delete the other — the whole point of the read/edit surface.
+        await rpc(
+          'tools/call',
+          params: {
+            'name': 'flowcraft_draw',
+            'arguments': {
+              'elements': [
+                {
+                  'type': 'rectangle',
+                  'x': 10,
+                  'y': 20,
+                  'width': 200,
+                  'height': 80,
+                  'text': 'A',
+                },
+                {
+                  'type': 'ellipse',
+                  'x': 300,
+                  'y': 0,
+                  'width': 50,
+                  'height': 50,
+                },
+              ],
+            },
+          },
+        );
+
+        final read = await rpc(
+          'tools/call',
+          params: {'name': 'flowcraft_read', 'arguments': <String, dynamic>{}},
+        );
+        final readResult = read['result'] as Map<String, dynamic>;
+        expect(readResult['isError'], isFalse);
+        final decoded =
+            jsonDecode((readResult['content'] as List).single['text'] as String)
+                as Map<String, dynamic>;
+        expect(decoded['count'], 2);
+        final described = (decoded['elements'] as List).cast<Map>();
+        final rectId = described.firstWhere(
+          (e) => e['type'] == 'rectangle',
+        )['id'];
+        final ellipseId = described.firstWhere(
+          (e) => e['type'] == 'ellipse',
+        )['id'];
+
+        await rpc(
+          'tools/call',
+          params: {
+            'name': 'flowcraft_update',
+            'arguments': {
+              'elements': [
+                {'id': rectId, 'x': 40, 'text': 'Renamed'},
+              ],
+            },
+          },
+        );
+
+        // Only the addressed rectangle moved and was relabelled; the ellipse
+        // is untouched, and the id is preserved (it was updated, not replaced).
+        final rect =
+            controller.elements.firstWhere((e) => e.id == rectId)
+                as SketchRectangle;
+        expect(rect.rect.left, 40);
+        expect(rect.rect.width, 200);
+        expect(rect.text, 'Renamed');
+
+        await rpc(
+          'tools/call',
+          params: {
+            'name': 'flowcraft_delete',
+            'arguments': {
+              'ids': [ellipseId],
+            },
+          },
+        );
+
+        expect(controller.elements.map((e) => e.id), [rectId]);
+      },
+    );
 
     test('tools/call flowcraft_draw mutates the live controller', () async {
       final body = await rpc(
