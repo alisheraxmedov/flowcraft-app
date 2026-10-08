@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import 'package:flowcraft/core/theme/app_radius.dart';
-import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
 import 'package:flowcraft/views/widgets/export_feedback.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
+import 'package:flowcraft/views/widgets/glass/fc_segmented.dart';
+import 'package:flowcraft/views/widgets/glass/glass_island.dart';
 
 /// Shows the copy-pasteable config for every supported AI CLI.
 Future<void> showMcpSetupDialog(BuildContext context, McpServerStatus status) {
@@ -15,105 +18,144 @@ Future<void> showMcpSetupDialog(BuildContext context, McpServerStatus status) {
   );
 }
 
+TextStyle _text(double size, FontWeight weight, Color color, {double? lineH}) =>
+    AppTypography.bodyBase.copyWith(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      height: lineH == null ? 1.2 : lineH / size,
+    );
+
+enum _Cli { claudeCode, claudeJson, codex, gemini }
+
 /// "Connect an AI CLI" dialog: the app's live endpoint and token, already
-/// formatted for each CLI's own config format.
+/// formatted for each CLI's own config format, one CLI per tab.
 ///
-/// The three CLIs deliberately get three *different* shapes rather than
-/// one generic snippet — Claude Code and Gemini CLI read JSON but disagree
-/// on the URL field name, and Codex reads TOML. A user copying the wrong
-/// dialect gets a silent no-op, which is exactly the friction this dialog
-/// exists to remove.
-class McpSetupDialog extends StatelessWidget {
+/// The CLIs deliberately get different shapes rather than one generic
+/// snippet — Claude Code and Gemini CLI read JSON but disagree on the URL
+/// field name, and Codex reads TOML. A user copying the wrong dialect gets
+/// a silent no-op, which is exactly the friction this dialog exists to
+/// remove.
+class McpSetupDialog extends StatefulWidget {
   const McpSetupDialog({super.key, required this.status});
 
   final McpServerStatus status;
 
   @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final endpoint = status.endpoint;
-    final token = status.token;
+  State<McpSetupDialog> createState() => _McpSetupDialogState();
+}
 
-    return AlertDialog(
-      backgroundColor: colorScheme.surfaceContainerLow,
-      shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
-      title: Row(
-        children: [
-          Icon(Icons.link_rounded, size: 20, color: colorScheme.primary),
-          const SizedBox(width: 8),
-          Text(
-            'Connect an AI CLI',
-            style: AppTypography.headlineMd.copyWith(
-              fontSize: 18,
-              color: colorScheme.onSurface,
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: 560,
-        child: endpoint == null || token == null
-            ? Text(
-                'The MCP server is off. Turn it on to see the connection '
-                'details for your AI CLI.',
-                style: AppTypography.bodyBase.copyWith(
-                  fontSize: 13,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              )
-            : SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+class _McpSetupDialogState extends State<McpSetupDialog> {
+  _Cli _cli = _Cli.claudeCode;
+
+  /// Hint line and snippet for the active tab.
+  (String, String) _content(String endpoint, String token) => switch (_cli) {
+    _Cli.claudeCode => (
+      'Run once in any terminal:',
+      widget.status.connectCommand!,
+    ),
+    _Cli.claudeJson => (
+      'Or add it to .mcp.json / claude_desktop_config.json:',
+      _claudeJson(endpoint, token),
+    ),
+    _Cli.codex => ('In ~/.codex/config.toml:', _codexToml(endpoint, token)),
+    _Cli.gemini => (
+      'In ~/.gemini/settings.json:',
+      _geminiJson(endpoint, token),
+    ),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fc;
+    final endpoint = widget.status.endpoint;
+    final token = widget.status.token;
+    final content = endpoint == null || token == null
+        ? null
+        : _content(endpoint, token);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: GlassIsland(
+          strong: true,
+          padding: const EdgeInsets.all(20),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: [
-                    _Section(
-                      title: 'Claude Code',
-                      hint: 'Run once in any terminal:',
-                      snippet: status.connectCommand!,
-                    ),
-                    _Section(
-                      title: 'Claude Code / Claude Desktop (JSON)',
-                      hint:
-                          'Or add it to .mcp.json / '
-                          'claude_desktop_config.json:',
-                      snippet: _claudeJson(endpoint, token),
-                    ),
-                    _Section(
-                      title: 'Codex CLI',
-                      hint: 'In ~/.codex/config.toml:',
-                      snippet: _codexToml(endpoint, token),
-                    ),
-                    _Section(
-                      title: 'Gemini CLI',
-                      hint: 'In ~/.gemini/settings.json:',
-                      snippet: _geminiJson(endpoint, token),
-                    ),
+                    FcIconGlyph(FcIcons.link, size: 20, color: t.accentText),
+                    const SizedBox(width: 10),
                     Text(
-                      'Field names occasionally change between CLI '
-                      "versions — check the CLI's own MCP docs if a "
-                      'snippet is rejected. The token is local to this '
-                      'machine; keep it out of shared repos.',
-                      style: AppTypography.caption.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      'Connect an AI CLI',
+                      style: _text(17, FontWeight.w600, t.text, lineH: 24),
                     ),
                   ],
                 ),
-              ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(
-            'Done',
-            style: AppTypography.bodyBase.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.primary,
+                if (content == null) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'The MCP server is off. Turn it on to see the connection '
+                    'details for your AI CLI.',
+                    style: _text(13, FontWeight.w400, t.muted, lineH: 19),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 16),
+                  FcSegmented<_Cli>(
+                    value: _cli,
+                    options: const {
+                      _Cli.claudeCode: 'Claude Code',
+                      _Cli.claudeJson: 'Claude JSON',
+                      _Cli.codex: 'Codex CLI',
+                      _Cli.gemini: 'Gemini CLI',
+                    },
+                    onChanged: (v) => setState(() => _cli = v),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(content.$1, style: _text(13, FontWeight.w400, t.muted)),
+                  const SizedBox(height: 8),
+                  _CodeBlock(snippet: content.$2),
+                  const SizedBox(height: 14),
+                  Text(
+                    "Field names can change between CLI versions — check the "
+                    "CLI's MCP docs if a snippet is rejected. The token is "
+                    'local to this machine; keep it out of shared repos.',
+                    style: _text(12, FontWeight.w400, t.muted, lineH: 18),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Material(
+                    color: t.accent,
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppRadius.button),
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Done',
+                          style: _text(13, FontWeight.w600, t.onAccent),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -151,49 +193,8 @@ String _geminiJson(String endpoint, String token) =>
   }
 }''';
 
-/// One CLI's block: label, one line of context, and a copyable snippet.
-class _Section extends StatelessWidget {
-  const _Section({
-    required this.title,
-    required this.hint,
-    required this.snippet,
-  });
-
-  final String title;
-  final String hint;
-  final String snippet;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.panelPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            title,
-            style: AppTypography.labelMono.copyWith(
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            hint,
-            style: AppTypography.caption.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.toolbarGap),
-          _CodeBlock(snippet: snippet),
-        ],
-      ),
-    );
-  }
-}
-
+/// The snippet in a surface2 well with a raised 32x32 Copy button at its
+/// top-right corner.
 class _CodeBlock extends StatelessWidget {
   const _CodeBlock({required this.snippet});
 
@@ -214,42 +215,65 @@ class _CodeBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.fc;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: AppRadius.smRadius,
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            // Horizontal scroll rather than wrapping: a wrapped shell
-            // command is easy to mis-copy by hand, and these are long.
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SelectableText(
-                snippet,
-                style: AppTypography.labelMono.copyWith(
-                  height: 1.5,
-                  color: colorScheme.onSurface,
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 14, 52, 14),
+          decoration: BoxDecoration(
+            color: t.surface2,
+            borderRadius: BorderRadius.circular(AppRadius.row),
+            border: Border.all(color: t.glassBorder),
+          ),
+          child: SelectableText(
+            snippet,
+            style: _text(
+              12.5,
+              FontWeight.w400,
+              t.text,
+              lineH: 19,
+            ).copyWith(fontFamily: AppTypography.geistMonoFamily),
+          ),
+        ),
+        Positioned(
+          right: 8,
+          top: 8,
+          child: Tooltip(
+            message: 'Copy',
+            child: Semantics(
+              button: true,
+              label: 'Copy',
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _copy(context),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: t.raised,
+                      borderRadius: BorderRadius.circular(AppRadius.button),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x24000000),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                        BoxShadow(color: Color(0x0D000000), spreadRadius: 0.5),
+                      ],
+                    ),
+                    child: FcIconGlyph(FcIcons.copy, size: 16, color: t.text),
+                  ),
                 ),
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.copy_rounded, size: 16),
-            color: colorScheme.onSurfaceVariant,
-            tooltip: 'Copy',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _copy(context),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

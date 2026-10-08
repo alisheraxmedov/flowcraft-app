@@ -3,12 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
+import 'package:flowcraft/core/theme/app_theme.dart';
+import 'package:flowcraft/services/app_version.dart';
+import 'package:flowcraft/viewmodels/mcp_view_model.dart';
+import 'package:flowcraft/views/widgets/mcp_setup_dialog.dart';
+import 'package:flowcraft/views/widgets/agents_popover.dart';
 import 'package:flowcraft/viewmodels/canvas_preferences.dart';
 
 /// Stands in for the real view model so these tests never bind a socket at
 /// all: [McpViewModel.build] starts a real control server, which would make
-/// what the card renders depend on a live port. Overriding [build] (and the
+/// what the popover renders depend on a live port. Overriding [build] (and the
 /// two transitions, which would otherwise reach for the server that build
 /// never created) keeps every state below pure data.
 class _FakeMcpViewModel extends McpViewModel {
@@ -45,18 +50,22 @@ void main() {
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
-  Future<void> pumpCard(WidgetTester tester, McpServerStatus status) {
-    return tester.pumpWidget(
+  Future<void> pumpChip(WidgetTester tester, McpServerStatus status) async {
+    // Unmount first so a repeat call in one test starts with a closed popover.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
       ProviderScope(
         overrides: [
           mcpViewModelProvider.overrideWith(() => _FakeMcpViewModel(status)),
         ],
         child: MaterialApp(
           theme: AppTheme.dark(),
-          home: const Scaffold(body: Center(child: McpCard())),
+          home: const Scaffold(body: Center(child: AgentsChip())),
         ),
       ),
     );
+    await tester.tap(find.text('Agents'));
+    await tester.pumpAndSettle();
   }
 
   const running = McpServerStatus.running(port: 5199, token: 'test-token');
@@ -67,23 +76,43 @@ void main() {
   testWidgets('shows the live endpoint while the server is running', (
     tester,
   ) async {
-    await pumpCard(tester, running);
+    await pumpChip(tester, running);
 
-    expect(find.text('ON'), findsOneWidget);
-    expect(find.text('Status: Online'), findsOneWidget);
+    expect(find.text('Online'), findsOneWidget);
     expect(find.text('http://127.0.0.1:5199/mcp'), findsOneWidget);
     expect(find.text('Copy connect'), findsOneWidget);
     expect(find.text('Setup'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
   });
 
+  testWidgets('the popover stays closed until the chip is tapped', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          mcpViewModelProvider.overrideWith(() => _FakeMcpViewModel(running)),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark(),
+          home: const Scaffold(body: Center(child: AgentsChip())),
+        ),
+      ),
+    );
+    expect(find.text('MCP Server'), findsNothing);
+    await tester.tap(find.text('Agents'));
+    await tester.pumpAndSettle();
+    expect(find.text('MCP Server'), findsOneWidget);
+    await tester.tapAt(const Offset(5, 590));
+    await tester.pumpAndSettle();
+    expect(find.text('MCP Server'), findsNothing);
+  });
+
   testWidgets('names the build in its footer, whatever the server state', (
     tester,
   ) async {
-    // The same string the MCP handshake and `/health` report; a bug report
-    // filed from a screenshot names the build it came from.
     for (final status in [running, failed, const McpServerStatus.off()]) {
-      await pumpCard(tester, status);
+      await pumpChip(tester, status);
       expect(find.text('FlowCraft v$appVersion'), findsOneWidget);
     }
   });
@@ -91,10 +120,9 @@ void main() {
   testWidgets('hides the connection details while the server is off', (
     tester,
   ) async {
-    await pumpCard(tester, const McpServerStatus.off());
+    await pumpChip(tester, const McpServerStatus.off());
 
-    expect(find.text('OFF'), findsOneWidget);
-    expect(find.text('Status: Offline'), findsOneWidget);
+    expect(find.text('Offline'), findsOneWidget);
     expect(find.textContaining('/mcp'), findsNothing);
     expect(find.text('Copy connect'), findsNothing);
   });
@@ -102,11 +130,10 @@ void main() {
   testWidgets('promises nothing while the server is still starting', (
     tester,
   ) async {
-    await pumpCard(tester, const McpServerStatus.starting());
+    await pumpChip(tester, const McpServerStatus.starting());
 
-    expect(find.text('STARTING'), findsOneWidget);
-    expect(find.text('Status: Starting…'), findsOneWidget);
-    expect(find.text('Status: Online'), findsNothing);
+    expect(find.text('Starting…'), findsOneWidget);
+    expect(find.text('Online'), findsNothing);
     expect(find.textContaining('/mcp'), findsNothing);
     expect(find.text('Copy connect'), findsNothing);
   });
@@ -114,10 +141,9 @@ void main() {
   testWidgets('a failed start shows the reason, not a dead endpoint', (
     tester,
   ) async {
-    await pumpCard(tester, failed);
+    await pumpChip(tester, failed);
 
-    expect(find.text('ERROR'), findsOneWidget);
-    expect(find.text('Status: Failed to start'), findsOneWidget);
+    expect(find.text('Failed to start'), findsOneWidget);
     expect(
       find.text('Port 5199 is unavailable: Address already in use'),
       findsOneWidget,
@@ -129,14 +155,16 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('the failed state is coloured with the error token', (
+  testWidgets('the failed state is coloured with the danger token', (
     tester,
   ) async {
-    await pumpCard(tester, failed);
+    await pumpChip(tester, failed);
 
-    final scheme = AppTheme.dark().colorScheme;
-    final badge = tester.widget<Text>(find.text('ERROR'));
-    expect(badge.style?.color, scheme.error);
+    final t = FcTokens.dark;
+    expect(
+      tester.widget<Text>(find.text('Failed to start')).style?.color,
+      t.danger,
+    );
     expect(
       tester
           .widget<Text>(
@@ -144,22 +172,22 @@ void main() {
           )
           .style
           ?.color,
-      scheme.onErrorContainer,
+      t.danger,
     );
   });
 
   testWidgets('Retry asks the view model to start again', (tester) async {
-    await pumpCard(tester, failed);
+    await pumpChip(tester, failed);
 
     await tester.tap(find.text('Retry'));
     await tester.pump();
 
-    expect(find.text('Status: Starting…'), findsOneWidget);
+    expect(find.text('Starting…'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
   });
 
   testWidgets('copies the connect command and confirms it', (tester) async {
-    await pumpCard(tester, running);
+    await pumpChip(tester, running);
 
     await tester.tap(find.text('Copy connect'));
     await tester.pump();
@@ -176,8 +204,6 @@ void main() {
   });
 
   testWidgets('a refused clipboard is reported, not swallowed', (tester) async {
-    // A platform-channel refusal used to be an unhandled async error with
-    // no snackbar: Copy did nothing and said nothing.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (call) async {
           if (call.method == 'Clipboard.setData') {
@@ -185,7 +211,7 @@ void main() {
           }
           return null;
         });
-    await pumpCard(tester, running);
+    await pumpChip(tester, running);
 
     await tester.tap(find.text('Copy connect'));
     await tester.pump();
@@ -195,36 +221,34 @@ void main() {
     expect(find.text('Copied the connect command'), findsNothing);
   });
 
-  testWidgets('Setup opens per-CLI config for all three CLIs', (tester) async {
-    await pumpCard(tester, running);
+  testWidgets('Setup closes the popover and opens the Connect dialog', (
+    tester,
+  ) async {
+    await pumpChip(tester, running);
 
     await tester.tap(find.text('Setup'));
     await tester.pumpAndSettle();
 
     expect(find.text('Connect an AI CLI'), findsOneWidget);
-    expect(find.text('Claude Code'), findsOneWidget);
-    expect(find.text('Codex CLI'), findsOneWidget);
-    expect(find.text('Gemini CLI'), findsOneWidget);
-    // The snippets must carry this machine's real token, not a placeholder.
-    expect(find.textContaining('test-token'), findsWidgets);
+    expect(find.text('MCP Server'), findsNothing);
   });
 
-  testWidgets('the switch drives the view model', (tester) async {
-    await pumpCard(tester, running);
+  testWidgets('the MCP switch drives the view model', (tester) async {
+    await pumpChip(tester, running);
 
-    expect(tester.widget<Switch>(find.byType(Switch).first).value, isTrue);
+    expect(tester.widget<FcSwitch>(find.byType(FcSwitch).first).value, isTrue);
 
-    await tester.tap(find.byType(Switch).first);
+    await tester.tap(find.byType(FcSwitch).first);
     await tester.pump();
 
-    expect(find.text('Status: Offline'), findsOneWidget);
-    expect(tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
+    expect(find.text('Offline'), findsOneWidget);
+    expect(tester.widget<FcSwitch>(find.byType(FcSwitch).first).value, isFalse);
   });
 
   testWidgets('the switch sits off while a start has failed', (tester) async {
-    await pumpCard(tester, failed);
+    await pumpChip(tester, failed);
 
-    expect(tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
+    expect(tester.widget<FcSwitch>(find.byType(FcSwitch).first).value, isFalse);
   });
 
   testWidgets('Animate agent drawing switch toggles the provider', (
@@ -243,16 +267,78 @@ void main() {
         container: container,
         child: MaterialApp(
           theme: AppTheme.dark(),
-          home: const Scaffold(body: Center(child: McpCard())),
+          home: const Scaffold(body: Center(child: AgentsChip())),
         ),
       ),
     );
+    await tester.tap(find.text('Agents'));
+    await tester.pumpAndSettle();
     expect(find.text('Animate agent drawing'), findsOneWidget);
     expect(container.read(animateAgentDrawingProvider), isTrue);
 
-    await tester.tap(find.byType(Switch).last);
+    await tester.tap(find.byType(FcSwitch).last);
     await tester.pump();
 
     expect(container.read(animateAgentDrawingProvider), isFalse);
+  });
+
+  group('Connect dialog', () {
+    Future<void> pumpDialog(WidgetTester tester) => tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: const Scaffold(body: McpSetupDialog(status: running)),
+      ),
+    );
+
+    testWidgets('shows four tabs and the active snippet carries the token', (
+      tester,
+    ) async {
+      await pumpDialog(tester);
+
+      expect(find.text('Connect an AI CLI'), findsOneWidget);
+      for (final tab in [
+        'Claude Code',
+        'Claude JSON',
+        'Codex CLI',
+        'Gemini CLI',
+      ]) {
+        expect(find.text(tab), findsOneWidget);
+      }
+      expect(find.textContaining('claude mcp add'), findsOneWidget);
+      expect(find.textContaining('test-token'), findsOneWidget);
+      expect(find.text('Done'), findsOneWidget);
+    });
+
+    testWidgets('tapping a tab swaps the snippet', (tester) async {
+      await pumpDialog(tester);
+
+      await tester.tap(find.text('Codex CLI'));
+      await tester.pump();
+
+      expect(find.textContaining('claude mcp add'), findsNothing);
+      expect(find.textContaining('[mcp_servers.flowcraft]'), findsOneWidget);
+      expect(find.textContaining('test-token'), findsOneWidget);
+
+      await tester.tap(find.text('Gemini CLI'));
+      await tester.pump();
+      expect(find.textContaining('httpUrl'), findsOneWidget);
+    });
+
+    testWidgets('Copy copies the active snippet', (tester) async {
+      await pumpDialog(tester);
+
+      await tester.tap(find.text('Codex CLI'));
+      await tester.pump();
+      await tester.tap(find.bySemanticsLabel('Copy'));
+      await tester.pump();
+
+      final copy = platformCalls.singleWhere(
+        (c) => c.method == 'Clipboard.setData',
+      );
+      expect(
+        (copy.arguments as Map)['text'],
+        contains('[mcp_servers.flowcraft]'),
+      );
+    });
   });
 }
