@@ -4,25 +4,60 @@ import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
+import 'package:flowcraft/views/widgets/glass/glass_island.dart';
 
 /// Panel look of the Edit and Export menus, per the mockup: 260 wide, radius
-/// 14, 1px glass border, the island shadow. The fill and 6px padding come
-/// from `menuTheme` (opaque blended glass — a `MenuAnchor` can't host a
-/// backdrop blur).
+/// 14, glass-strong with a real backdrop blur, 1px border, the island shadow.
+///
+/// The Material panel itself is transparent and unpadded: the glass (fill,
+/// blur, border, radius, padding) lives in [FcMenuPanel], which every menu
+/// passes as its single child. A [BackdropFilter] cannot sit behind a
+/// `MenuStyle` background, but it can sit inside the panel.
+///
+/// ponytail: the panel scroll view clips the island's own shadow, so the
+/// shadow is Material elevation (drawn outside the clip) -- close to, not
+/// identical with, the mockup's `0 10px 30px / 0 1px 3px`. Exact parity would
+/// need the menu hosted in an OverlayPortal instead of `MenuAnchor`.
 MenuStyle fcMenuStyle(BuildContext context) {
-  final t = context.fc;
   return MenuStyle(
     minimumSize: const WidgetStatePropertyAll(Size(260, 0)),
     maximumSize: const WidgetStatePropertyAll(Size(260, double.infinity)),
-    elevation: const WidgetStatePropertyAll(0),
-    shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+    backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+    surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+    elevation: const WidgetStatePropertyAll(6),
+    shadowColor: WidgetStatePropertyAll(
+      context.fc.shadow.first.color.withValues(alpha: 0.5),
+    ),
     shape: WidgetStatePropertyAll(
       RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadius.menu),
-        side: BorderSide(color: t.glassBorder),
       ),
     ),
   );
+}
+
+/// The glass card inside a menu's transparent Material panel: [children]
+/// stacked in a blurred [GlassIsland] with the mockup's 6px inner padding.
+/// Pass it as the only entry of `menuChildren`.
+class FcMenuPanel extends StatelessWidget {
+  const FcMenuPanel({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassIsland(
+      strong: true,
+      radius: AppRadius.menu,
+      padding: const EdgeInsets.all(6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
 }
 
 /// One menu row: [label] (and optional leading [icon] / trailing [hint]).
@@ -57,9 +92,9 @@ class FcMenuItem extends StatelessWidget {
     return MenuItemButton(
       onPressed: onPressed,
       style: _rowStyle(t, danger: danger, height: height),
-      // 260 panel - 2x6 padding - 2x12 button padding.
+      // 260 panel - 2x1 border - 2x6 padding - 2x12 button padding.
       child: SizedBox(
-        width: 224,
+        width: 222,
         child: Row(
           children: [
             if (icon != null) ...[
@@ -162,7 +197,7 @@ class FcSubmenu extends StatelessWidget {
     return SubmenuButton(
       style: _rowStyle(context.fc, danger: false, height: 30),
       menuStyle: fcMenuStyle(context),
-      menuChildren: children,
+      menuChildren: [FcMenuPanel(children: children)],
       // The default arrow_right is a Material glyph; chevronDown turned a
       // quarter-turn is the mockup's chevron, pointing right.
       // A null submenuIcon falls back to the default, so the chevron goes in

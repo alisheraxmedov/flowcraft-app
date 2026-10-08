@@ -14,6 +14,7 @@ import 'package:flowcraft/views/widgets/export_feedback.dart';
 import 'package:flowcraft/views/widgets/fc_menu.dart';
 import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 import 'package:flowcraft/views/widgets/import_scene_dialog.dart';
+import 'package:flowcraft/views/widgets/insert_image_dialog.dart';
 import 'package:flowcraft/views/widgets/paste_scene_dialog.dart';
 
 /// Top-right "Export" control: a menu offering PNG, SVG, JSON, clipboard — and,
@@ -140,50 +141,63 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
           style: fcMenuStyle(context),
           alignmentOffset: const Offset(0, 6),
           menuChildren: [
-            FcMenuItem(
-              icon: FcIcons.image,
-              height: 34,
-              onPressed: hasContent ? () => _run(_writePng) : null,
-              label: 'Export as PNG',
+            FcMenuPanel(
+              children: [
+                FcMenuItem(
+                  icon: FcIcons.image,
+                  height: 34,
+                  onPressed: hasContent ? () => _run(_writePng) : null,
+                  label: 'Export as PNG',
+                ),
+                FcMenuItem(
+                  icon: FcIcons.fileCode,
+                  height: 34,
+                  onPressed: hasContent ? () => _run(_writeSvg) : null,
+                  label: 'Export as SVG',
+                ),
+                FcMenuItem(
+                  icon: FcIcons.fileJson,
+                  height: 34,
+                  onPressed: hasContent ? () => _run(_writeJson) : null,
+                  label: 'Export as JSON',
+                ),
+                FcMenuItem(
+                  icon: FcIcons.copy,
+                  height: 34,
+                  onPressed: _copyJson,
+                  label: 'Copy JSON to clipboard',
+                ),
+                // The way back in. It lives under the export routes rather than
+                // in a menu of its own because it is the same JSON travelling
+                // the other direction -- and because "Export as JSON" promising a
+                // re-importable file with no import in the app was the gap.
+                const FcMenuDivider(),
+                FcMenuItem(
+                  icon: FcIcons.download,
+                  height: 34,
+                  onPressed: () =>
+                      ImportSceneDialog.show(context, widget.controller),
+                  label: 'Import from file…',
+                ),
+                FcMenuItem(
+                  icon: FcIcons.clipboard,
+                  height: 34,
+                  onPressed: () =>
+                      PasteSceneDialog.show(context, widget.controller),
+                  label: 'Paste JSON, Mermaid, DBML…',
+                ),
+                // Not in the mockup: the Edit menu's Insert image row moved here
+                // so that menu could keep its HELP group inside 720px.
+                FcMenuItem(
+                  icon: FcIcons.image,
+                  height: 34,
+                  onPressed: () =>
+                      InsertImageDialog.show(context, widget.controller),
+                  label: 'Insert image from file…',
+                ),
+                const _SavesToNote(),
+              ],
             ),
-            FcMenuItem(
-              icon: FcIcons.fileCode,
-              height: 34,
-              onPressed: hasContent ? () => _run(_writeSvg) : null,
-              label: 'Export as SVG',
-            ),
-            FcMenuItem(
-              icon: FcIcons.fileJson,
-              height: 34,
-              onPressed: hasContent ? () => _run(_writeJson) : null,
-              label: 'Export as JSON',
-            ),
-            FcMenuItem(
-              icon: FcIcons.copy,
-              height: 34,
-              onPressed: _copyJson,
-              label: 'Copy JSON to clipboard',
-            ),
-            // The way back in. It lives under the export routes rather than
-            // in a menu of its own because it is the same JSON travelling
-            // the other direction -- and because "Export as JSON" promising a
-            // re-importable file with no import in the app was the gap.
-            const FcMenuDivider(),
-            FcMenuItem(
-              icon: FcIcons.download,
-              height: 34,
-              onPressed: () =>
-                  ImportSceneDialog.show(context, widget.controller),
-              label: 'Import from file…',
-            ),
-            FcMenuItem(
-              icon: FcIcons.clipboard,
-              height: 34,
-              onPressed: () =>
-                  PasteSceneDialog.show(context, widget.controller),
-              label: 'Paste JSON, Mermaid, DBML…',
-            ),
-            const _SavesToNote(),
           ],
           builder: (context, menu, _) => _ExportPill(
             busy: _busy,

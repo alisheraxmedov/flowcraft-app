@@ -138,7 +138,7 @@ class _AgentsChipState extends ConsumerState<AgentsChip> {
                     child: Material(
                       type: MaterialType.transparency,
                       child: SizedBox(
-                        width: 238,
+                        width: 236,
                         child: AgentsPopover(
                           // The chip outlives the popover, so the setup
                           // dialog is launched from its context.
@@ -215,7 +215,7 @@ class _AgentsChipState extends ConsumerState<AgentsChip> {
 /// usual cause) shows the reason and a Retry instead, because a connect
 /// command pointing at a dead port fails later, elsewhere, and silently.
 ///
-/// Sized by its host (the chip gives it a 238 content width = 270 - 2x16).
+/// Sized by its host (the chip gives it a 236 content width = 270 - 2x1 border - 2x16).
 class AgentsPopover extends ConsumerWidget {
   const AgentsPopover({super.key, required this.onSetup});
 

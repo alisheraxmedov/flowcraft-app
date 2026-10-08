@@ -1,13 +1,50 @@
 import 'package:flutter/material.dart';
 
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/views/widgets/glass/glass_island.dart';
 
-/// An [AlertDialog] laid out like the mockup's Connect / Delete dialogs:
-/// 20px padding all round, a 17/600 title, 16px to the body, 18px to the
-/// actions.
+/// The glass card every dialog sits in, per the mockup: radius 18,
+/// glass-strong fill with a real backdrop blur, 1px border, the island
+/// shadow, 20px padding.
 ///
-/// Shape and fill are deliberately not set here -- `dialogTheme` supplies the
-/// radius-18 glass surface, so every dialog follows the theme.
+/// A transparent [Dialog] hosting a [GlassIsland]: `dialogTheme` can only
+/// paint an opaque colour, so the blur has to come from the island. The
+/// [minWidth]/[maxWidth] are OUTER widths (border included), as in CSS
+/// `border-box`.
+class FcDialogSurface extends StatelessWidget {
+  const FcDialogSurface({
+    super.key,
+    required this.child,
+    this.minWidth = 0,
+    this.maxWidth = double.infinity,
+  });
+
+  final Widget child;
+  final double minWidth;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: minWidth, maxWidth: maxWidth),
+        child: GlassIsland(
+          strong: true,
+          padding: const EdgeInsets.all(20),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// A dialog laid out like the mockup's Connect / Delete dialogs: a
+/// [FcDialogSurface], a 17/600 title, 16px to the body, 18px to the actions.
 class FcDialog extends StatelessWidget {
   const FcDialog({
     super.key,
@@ -24,23 +61,38 @@ class FcDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      scrollable: scrollable,
-      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-      contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      actionsPadding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-      buttonPadding: EdgeInsets.zero,
-      actionsOverflowButtonSpacing: 8,
-      title: Text(
-        title,
-        style: AppTypography.uiTitle.copyWith(
-          fontSize: 17,
-          height: 24 / 17,
-          color: Theme.of(context).colorScheme.onSurface,
+    return FcDialogSurface(
+      minWidth: 280,
+      child: IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: AppTypography.uiTitle.copyWith(
+                fontSize: 17,
+                height: 24 / 17,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: scrollable
+                  ? SingleChildScrollView(child: content)
+                  : content,
+            ),
+            const SizedBox(height: 18),
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 8,
+              overflowSpacing: 8,
+              overflowAlignment: OverflowBarAlignment.end,
+              children: actions,
+            ),
+          ],
         ),
       ),
-      content: content,
-      actions: actions,
     );
   }
 }

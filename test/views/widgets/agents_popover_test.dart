@@ -12,6 +12,7 @@ import 'package:flowcraft/views/widgets/agents_popover.dart';
 import 'package:flowcraft/views/widgets/glass/fc_switch.dart';
 import 'package:flowcraft/views/widgets/glass/glass_island.dart';
 import 'package:flowcraft/viewmodels/canvas_preferences.dart';
+import 'glass_surface_expect.dart';
 
 /// Stands in for the real view model so these tests never bind a socket at
 /// all: [McpViewModel.build] starts a real control server, which would make
@@ -85,6 +86,39 @@ void main() {
     expect(find.text('Copy connect'), findsOneWidget);
     expect(find.text('Setup'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('popover is a dark glass-strong radius-18 card, 270 wide', (
+    tester,
+  ) async {
+    await pumpChip(tester, running);
+
+    expectGlassSurface(
+      tester,
+      find.byType(AgentsPopover),
+      radius: 18,
+      tokens: FcTokens.dark,
+    );
+    final card = find.ancestor(
+      of: find.byType(AgentsPopover),
+      matching: find.byType(GlassIsland),
+    );
+    expect(tester.getSize(card.first).width, 270);
+  });
+
+  testWidgets('failed state shows the reason and Retry, no connection row', (
+    tester,
+  ) async {
+    await pumpChip(tester, failed);
+
+    expect(find.text('Failed to start'), findsOneWidget);
+    expect(
+      find.text('Port 5199 is unavailable: Address already in use'),
+      findsOneWidget,
+    );
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Copy connect'), findsNothing);
+    expect(find.text('Setup'), findsNothing);
   });
 
   testWidgets('the popover stays closed until the chip is tapped', (
@@ -309,6 +343,26 @@ void main() {
       expect(find.textContaining('claude mcp add'), findsOneWidget);
       expect(find.textContaining('test-token'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
+    });
+
+    testWidgets('dialog is a dark glass-strong radius-18 card, 560 wide', (
+      tester,
+    ) async {
+      await pumpDialog(tester);
+
+      expectGlassSurface(
+        tester,
+        find.text('Connect an AI CLI'),
+        radius: 18,
+        tokens: FcTokens.dark,
+      );
+      expect(tester.getSize(find.byType(GlassIsland)).width, 560);
+    });
+
+    testWidgets('has one Copy button, inside the code block', (tester) async {
+      await pumpDialog(tester);
+
+      expect(find.byTooltip('Copy'), findsOneWidget);
     });
 
     testWidgets('Done is right-aligned and compact', (tester) async {

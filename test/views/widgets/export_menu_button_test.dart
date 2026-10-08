@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/views/widgets/insert_image_dialog.dart';
 import 'package:flutter/material.dart';
+import 'glass_surface_expect.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -60,6 +62,30 @@ void main() {
       matching: find.byType(MenuItemButton),
     );
     expect(tester.getSize(png).height, 34, reason: 'mockup rows are h34');
+  });
+
+  testWidgets('menu surface is glass-strong, radius 14, bordered, shadowed', (
+    tester,
+  ) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(controller));
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+
+    expectGlassSurface(tester, find.text('Export as PNG'), radius: 14);
+  });
+
+  testWidgets('Insert image from file… opens the dialog', (tester) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(controller));
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insert image from file…'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InsertImageDialog), findsOneWidget);
   });
 
   testWidgets('opens a menu with the three export routes', (tester) async {

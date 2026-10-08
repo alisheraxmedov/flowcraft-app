@@ -39,6 +39,11 @@ class EditMenuButton extends StatelessWidget {
       for (final g in all)
         if (!g.submenu) g,
     ];
+    final zoomToFit = [
+      for (final g in all)
+        for (final s in g.shortcuts)
+          if (s.intent is FitToContentIntent) s,
+    ].first;
     final submenus = [
       for (final g in all)
         if (g.submenu) g,
@@ -58,32 +63,42 @@ class EditMenuButton extends StatelessWidget {
         style: fcMenuStyle(context),
         alignmentOffset: const Offset(0, 6),
         menuChildren: [
-          for (final (index, group) in menuGroups.indexed) ...[
-            // Help's rows ride inside Canvas: at the mockup's row sizes the
-            // four-group layout plus the v1.1.0 rows is 679px tall and cannot
-            // clear a 720px window below the pill; a header and a rule fewer
-            // is 645px.
-            if (group.title != 'Help') ...[
-              if (index > 0) const FcMenuDivider(),
-              FcMenuHeader(group.title),
+          FcMenuPanel(
+            children: [
+              for (final (index, group) in menuGroups.indexed) ...[
+                if (index > 0) const FcMenuDivider(),
+                FcMenuHeader(group.title),
+                for (final shortcut in group.shortcuts)
+                  // The mockup's CANVAS group is just "Clear canvas". Insert
+                  // image lives in the Export menu (beside the other ways to
+                  // bring something in) and Zoom to fit in the "Align & view"
+                  // submenu: two extra rows are what kept the HELP header
+                  // from fitting a 720px window.
+                  if (shortcut.intent is! InsertImageIntent &&
+                      shortcut.intent is! FitToContentIntent)
+                    row(shortcut),
+                // Align & distribute folds into one row of Arrange (the table
+                // flags it `submenu`).
+                if (group.title == 'Arrange')
+                  FcSubmenu(
+                    label: 'Align & view',
+                    children: [
+                      for (final s in submenus.first.shortcuts) row(s),
+                      const FcMenuDivider(),
+                      row(zoomToFit),
+                    ],
+                  ),
+                if (group.title == 'Canvas')
+                  FcMenuItem(
+                    label: 'Clear canvas',
+                    danger: true,
+                    onPressed: controller.elements.isEmpty
+                        ? null
+                        : () => _clearWithUndo(host),
+                  ),
+              ],
             ],
-            for (final shortcut in group.shortcuts) row(shortcut),
-            // Align & distribute folds into one row of Arrange (the table
-            // flags it `submenu`).
-            if (group.title == 'Arrange')
-              FcSubmenu(
-                label: 'Align & distribute',
-                children: [for (final s in submenus.first.shortcuts) row(s)],
-              ),
-            if (group.title == 'Help')
-              FcMenuItem(
-                label: 'Clear canvas',
-                danger: true,
-                onPressed: controller.elements.isEmpty
-                    ? null
-                    : () => _clearWithUndo(host),
-              ),
-          ],
+          ),
         ],
         builder: (context, menu, _) =>
             _EditPill(onTap: () => menu.isOpen ? menu.close() : menu.open()),

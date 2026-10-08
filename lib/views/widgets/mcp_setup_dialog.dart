@@ -6,9 +6,9 @@ import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
 import 'package:flowcraft/views/widgets/export_feedback.dart';
+import 'package:flowcraft/views/widgets/fc_dialog.dart';
 import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 import 'package:flowcraft/views/widgets/glass/fc_segmented.dart';
-import 'package:flowcraft/views/widgets/glass/glass_island.dart';
 
 /// Shows the copy-pasteable config for every supported AI CLI.
 Future<void> showMcpSetupDialog(BuildContext context, McpServerStatus status) {
@@ -74,97 +74,87 @@ class _McpSetupDialogState extends State<McpSetupDialog> {
         ? null
         : _content(endpoint, token);
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: GlassIsland(
-          strong: true,
-          padding: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+    return FcDialogSurface(
+      maxWidth: 560,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    FcIconGlyph(FcIcons.link, size: 20, color: t.accentText),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Connect an AI CLI',
-                      style: _text(17, FontWeight.w600, t.text, lineH: 24),
-                    ),
-                  ],
-                ),
-                if (content == null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    'The MCP server is off. Turn it on to see the connection '
-                    'details for your AI CLI.',
-                    style: _text(13, FontWeight.w400, t.muted, lineH: 19),
-                  ),
-                ] else ...[
-                  const SizedBox(height: 16),
-                  FcSegmented<_Cli>(
-                    value: _cli,
-                    height: 34,
-                    gap: 2,
-                    segmentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    inactiveColor: t.text,
-                    fontSize: 13,
-                    activeWeight: FontWeight.w600,
-                    options: const {
-                      _Cli.claudeCode: 'Claude Code',
-                      _Cli.claudeJson: 'Claude JSON',
-                      _Cli.codex: 'Codex CLI',
-                      _Cli.gemini: 'Gemini CLI',
-                    },
-                    onChanged: (v) => setState(() => _cli = v),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(content.$1, style: _text(13, FontWeight.w400, t.muted)),
-                  const SizedBox(height: 8),
-                  _CodeBlock(snippet: content.$2),
-                  const SizedBox(height: 14),
-                  Text(
-                    "Field names can change between CLI versions — check the "
-                    "CLI's MCP docs if a snippet is rejected. The token is "
-                    'local to this machine; keep it out of shared repos.',
-                    style: _text(12, FontWeight.w400, t.muted, lineH: 18),
-                  ),
-                ],
-                const SizedBox(height: 18),
-                // Row, not Align: Align hands its child loose constraints and
-                // the button's centred Container would stretch to full width.
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Material(
-                      color: t.accent,
-                      borderRadius: BorderRadius.circular(AppRadius.button),
-                      child: InkWell(
-                        key: const ValueKey('mcp_done'),
-                        borderRadius: BorderRadius.circular(AppRadius.button),
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Container(
-                          height: 36,
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          alignment: Alignment.center,
-                          child: Text(
-                            'Done',
-                            style: _text(13, FontWeight.w600, t.onAccent),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                FcIconGlyph(FcIcons.link, size: 20, color: t.accentText),
+                const SizedBox(width: 10),
+                Text(
+                  'Connect an AI CLI',
+                  style: _text(17, FontWeight.w600, t.text, lineH: 24),
                 ),
               ],
             ),
-          ),
+            if (content == null) ...[
+              const SizedBox(height: 16),
+              Text(
+                'The MCP server is off. Turn it on to see the connection '
+                'details for your AI CLI.',
+                style: _text(13, FontWeight.w400, t.muted, lineH: 19),
+              ),
+            ] else ...[
+              const SizedBox(height: 16),
+              FcSegmented<_Cli>(
+                value: _cli,
+                height: 34,
+                gap: 2,
+                segmentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                inactiveColor: t.text,
+                fontSize: 13,
+                activeWeight: FontWeight.w600,
+                options: const {
+                  _Cli.claudeCode: 'Claude Code',
+                  _Cli.claudeJson: 'Claude JSON',
+                  _Cli.codex: 'Codex CLI',
+                  _Cli.gemini: 'Gemini CLI',
+                },
+                onChanged: (v) => setState(() => _cli = v),
+              ),
+              const SizedBox(height: 16),
+              Text(content.$1, style: _text(13, FontWeight.w400, t.muted)),
+              const SizedBox(height: 8),
+              _CodeBlock(snippet: content.$2),
+              const SizedBox(height: 14),
+              Text(
+                "Field names can change between CLI versions — check the "
+                "CLI's MCP docs if a snippet is rejected. The token is "
+                'local to this machine; keep it out of shared repos.',
+                style: _text(12, FontWeight.w400, t.muted, lineH: 18),
+              ),
+            ],
+            const SizedBox(height: 18),
+            // Row, not Align: Align hands its child loose constraints and
+            // the button's centred Container would stretch to full width.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Material(
+                  color: t.accent,
+                  borderRadius: BorderRadius.circular(AppRadius.button),
+                  child: InkWell(
+                    key: const ValueKey('mcp_done'),
+                    borderRadius: BorderRadius.circular(AppRadius.button),
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      height: 36,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Done',
+                        style: _text(13, FontWeight.w600, t.onAccent),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

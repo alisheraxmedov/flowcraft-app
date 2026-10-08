@@ -1,10 +1,10 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/flowcraft.dart';
-import 'package:flowcraft/views/widgets/insert_image_dialog.dart';
+import 'glass_surface_expect.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -52,7 +52,7 @@ Future<void> _openMenu(WidgetTester tester) async {
 }
 
 Future<void> _openAlign(WidgetTester tester) async {
-  await tester.tap(find.text('Align & distribute'));
+  await tester.tap(find.text('Align & view'));
   await tester.pumpAndSettle();
 }
 
@@ -118,12 +118,10 @@ void main() {
     await tester.pumpWidget(_host(controller));
     await _openMenu(tester);
 
-    // Help's row lives under CANVAS (see EditMenuButton) so the menu fits 720px.
-    for (final header in ['EDIT', 'ARRANGE', 'CANVAS']) {
+    for (final header in ['EDIT', 'ARRANGE', 'CANVAS', 'HELP']) {
       expect(find.text(header), findsOneWidget, reason: header);
     }
     expect(find.text('HISTORY'), findsNothing);
-    expect(find.text('HELP'), findsNothing);
     final copy = find.ancestor(
       of: find.text('Copy'),
       matching: find.byType(MenuItemButton),
@@ -275,7 +273,7 @@ void main() {
     expect(_item(tester, 'Distribute horizontally').onPressed, isNotNull);
   });
 
-  testWidgets('Align & distribute submenu lists the 8 actions', (tester) async {
+  testWidgets('Align & view submenu lists the 8 actions', (tester) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
@@ -298,7 +296,7 @@ void main() {
     }
   });
 
-  testWidgets('Align & distribute row shows a single trailing chevron', (
+  testWidgets('Align & view row shows a single trailing chevron', (
     tester,
   ) async {
     final controller = SketchController();
@@ -320,8 +318,7 @@ void main() {
     );
   });
 
-  testWidgets('edit menu fits in 1280x720 without scrolling, Clear canvas '
-      'visible', (tester) async {
+  testWidgets('Edit menu fits 1280×720 with the HELP group', (tester) async {
     final controller = SketchController(initialElements: [_rect('a')]);
     addTearDown(controller.dispose);
     tester.view.physicalSize = const Size(1280, 720);
@@ -333,11 +330,8 @@ void main() {
     await tester.tap(find.text('Edit'));
     await tester.pumpAndSettle();
 
-    for (final label in [
-      'Clear canvas',
-      'Keyboard shortcuts',
-      'Insert image from file…',
-    ]) {
+    expect(find.text('HELP'), findsOneWidget);
+    for (final label in ['HELP', 'Clear canvas', 'Keyboard shortcuts']) {
       final rect = tester.getRect(find.text(label));
       expect(rect.bottom, lessThanOrEqualTo(712), reason: label);
       expect(rect.top, greaterThanOrEqualTo(0), reason: label);
@@ -360,12 +354,120 @@ void main() {
     );
     expect(scroll.position.maxScrollExtent, 0, reason: 'panel $panel');
     // ...and it did not have to slide up over the Edit pill to fit.
-    expect(panel.top, greaterThanOrEqualTo(56), reason: 'panel $panel');
+    expect(panel.top, greaterThanOrEqualTo(62), reason: 'panel $panel');
+    expect(panel.bottom, lessThanOrEqualTo(712), reason: 'panel $panel');
     // Label never truncates next to its hint.
     expect(
-      tester.getSize(find.text('Insert image from file…')).width,
-      greaterThan(120),
+      tester.getSize(find.text('Keyboard shortcuts')).width,
+      greaterThan(100),
     );
+    // The whole glass card: 260 wide, and short enough for the window.
+    final card = tester.getSize(
+      find
+          .ancestor(
+            of: find.text('Clear canvas'),
+            matching: find.byType(GlassIsland),
+          )
+          .first,
+    );
+    expect(card.width, 260);
+    expect(card.height, lessThanOrEqualTo(650), reason: 'card $card');
+  });
+
+  testWidgets('menu surface is glass-strong, radius 14, bordered, shadowed', (
+    tester,
+  ) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+
+    expectGlassSurface(tester, find.text('Copy'), radius: 14);
+    // The island's own shadow is clipped by the menu panel, so the visible
+    // one is the Material's elevation.
+    final panel = tester.widget<Material>(
+      find
+          .ancestor(
+            of: find.byType(GlassIsland),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(panel.elevation, greaterThan(0));
+    expect(panel.color, Colors.transparent);
+  });
+
+  testWidgets('dark menu uses the dark glass tokens', (tester) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark(),
+        home: Scaffold(
+          body: CanvasShortcuts(
+            controller: controller,
+            child: EditMenuButton(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await _openMenu(tester);
+    expectGlassSurface(
+      tester,
+      find.text('Copy'),
+      radius: 14,
+      tokens: FcTokens.dark,
+    );
+  });
+
+  testWidgets('shortcut glyphs: ⌘⇧ on macOS, Ctrl+Shift+ elsewhere', (
+    tester,
+  ) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+    Finder hint(String label) => find.descendant(
+      of: find.ancestor(
+        of: find.text(label),
+        matching: find.byType(MenuItemButton),
+      ),
+      matching: find.byType(Text),
+    );
+
+    // Plain MaterialApp: the platform comes from defaultTargetPlatform.
+    Widget host() => MaterialApp(
+      home: Scaffold(
+        body: CanvasShortcuts(
+          controller: controller,
+          child: EditMenuButton(controller: controller),
+        ),
+      ),
+    );
+    try {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      await tester.pumpWidget(host());
+      await _openMenu(tester);
+      expect(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Bring to front'),
+            matching: find.byType(MenuItemButton),
+          ),
+          matching: find.text('⇧⌘]'),
+        ),
+        findsOneWidget,
+      );
+      expect(hint('Duplicate'), findsNWidgets(2));
+      expect(find.text('⌘D'), findsOneWidget);
+
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      await tester.pumpWidget(Container());
+      await tester.pumpWidget(host());
+      await _openMenu(tester);
+      expect(find.text('Ctrl+D'), findsOneWidget);
+      expect(find.text('Ctrl+Shift+]'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('zoom to fit is disabled on an empty canvas', (tester) async {
@@ -374,22 +476,11 @@ void main() {
 
     await tester.pumpWidget(_host(controller));
     await _openMenu(tester);
+    await _openAlign(tester);
     expect(_item(tester, 'Zoom to fit').onPressed, isNull);
 
     controller.add(_rect('a'));
     await tester.pump();
     expect(_item(tester, 'Zoom to fit').onPressed, isNotNull);
-  });
-
-  testWidgets('Insert image from file… opens the dialog', (tester) async {
-    final controller = SketchController();
-    addTearDown(controller.dispose);
-
-    await tester.pumpWidget(_host(controller));
-    await _openMenu(tester);
-    await tester.tap(find.text('Insert image from file…'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(InsertImageDialog), findsOneWidget);
   });
 }

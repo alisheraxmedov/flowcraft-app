@@ -1,3 +1,4 @@
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/views/widgets/link_file_dialog.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../support/fake_project_repository.dart';
+import 'glass_surface_expect.dart';
 
 void main() {
   late FakeProjectRepository repository;
@@ -61,6 +63,51 @@ void main() {
     );
     expect(popover.left, button.left);
     expect(popover.top, button.bottom + 6);
+  });
+
+  testWidgets('popover surface is glass-strong, radius 18, 340 wide', (
+    tester,
+  ) async {
+    await pumpPopover(tester);
+
+    expectGlassSurface(tester, find.byType(ProjectsPopover), radius: 18);
+    final card = find.ancestor(
+      of: find.byType(ProjectsPopover),
+      matching: find.byType(GlassIsland),
+    );
+    expect(tester.getSize(card.first).width, 340);
+  });
+
+  testWidgets('row menu is a radius-12 glass card', (tester) async {
+    await repository.create('Row');
+    await pumpPopover(tester);
+    await openRowMenu(tester);
+
+    expectGlassSurface(tester, find.text('Rename'), radius: 12);
+  });
+
+  testWidgets('Delete confirm button is danger-filled', (tester) async {
+    await repository.create('Doomed');
+    await pumpPopover(tester);
+    await openRowMenu(tester);
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('Delete').last,
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(button.style!.backgroundColor!.resolve({}), FcTokens.light.danger);
+    expect(button.style!.foregroundColor!.resolve({}), FcTokens.light.onDanger);
+    // The dialog itself is the same blurred radius-18 card, 360 wide.
+    expectGlassSurface(tester, find.text('Delete "Doomed"?'), radius: 18);
+    final card = find.ancestor(
+      of: find.text('Delete "Doomed"?'),
+      matching: find.byType(GlassIsland),
+    );
+    expect(tester.getSize(card.first).width, 360);
   });
 
   testWidgets('opens from the button, lists projects, marks the active one', (

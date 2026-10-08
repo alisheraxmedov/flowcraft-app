@@ -148,7 +148,11 @@ class _ProjectTileState extends State<ProjectTile> {
                 onUnlink: widget.onUnlink,
                 onRename: widget.onRename,
                 onDelete: widget.onDelete,
-                onOpenChanged: (open) => setState(() => _menuOpen = open),
+                // The host reports its disposal a frame late; by then the tile
+                // itself may be gone (project deleted, popover torn down).
+                onOpenChanged: (open) {
+                  if (mounted) setState(() => _menuOpen = open);
+                },
               ),
             ),
           ],
@@ -200,14 +204,25 @@ class _RowMenu extends StatelessWidget {
       activeColor: t.accent,
       anchor: PopoverAnchor.belowEnd,
       radius: AppRadius.row,
+      // Raised 32px chip with the soft double shadow, per the mockup.
       builder: (context, _) => Opacity(
         opacity: visible ? 1 : 0,
-        child: FcIconGlyph(FcIcons.ellipsis, size: 16, color: t.text),
+        child: Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: t.raised,
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            boxShadow: t.raisedShadow,
+          ),
+          child: FcIconGlyph(FcIcons.ellipsis, size: 16, color: t.text),
+        ),
       ),
       popoverBuilder: (context, close) => _MenuHost(
         onOpenChanged: onOpenChanged,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 132),
+          constraints: const BoxConstraints(minWidth: 130),
           child: Padding(
             padding: const EdgeInsets.all(4),
             child: IntrinsicWidth(
