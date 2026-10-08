@@ -159,32 +159,28 @@ class _BrandIslandState extends State<_BrandIsland> {
     return CompositedTransformTarget(
       link: _link,
       child: GlassIsland(
-        // Mockup padding 14/8 plus its 1px border; `GlassIsland` paints the
-        // border inside its box, so the border width is added here. Right 7 +
-        // the button's own 2px margin = 9.
-        padding: const EdgeInsets.fromLTRB(15, 0, 7, 0),
-        child: SizedBox(
-          height: 48, // mockup outer height; the border paints inside it
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const _LogoGlyph(),
-              const SizedBox(width: 8),
-              Text(
-                'FlowCraft',
-                style: muted.copyWith(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(width: 8),
-              Text('/', style: muted),
-              const SizedBox(width: 8),
-              // Renders nothing until a project is open, so no placeholder
-              // gap appears during the first load.
-              const Flexible(child: ProjectTitleField()),
-              // 6 + the popover button's own 2px margin = the mockup's 8 gap.
-              const SizedBox(width: 6),
-              ProjectsButton(anchorLink: _link),
-            ],
-          ),
+        height: 48,
+        // Mockup padding 14/8; the button's own 2px margin makes the right 6.
+        padding: const EdgeInsets.fromLTRB(14, 0, 6, 0),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const _LogoGlyph(),
+            const SizedBox(width: 8),
+            Text(
+              'FlowCraft',
+              style: muted.copyWith(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(width: 8),
+            Text('/', style: muted),
+            const SizedBox(width: 8),
+            // Renders nothing until a project is open, so no placeholder
+            // gap appears during the first load.
+            const Flexible(child: ProjectTitleField()),
+            // 6 + the popover button's own 2px margin = the mockup's 8 gap.
+            const SizedBox(width: 6),
+            ProjectsButton(anchorLink: _link),
+          ],
         ),
       ),
     );
@@ -236,27 +232,25 @@ class _ActionsIsland extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassIsland(
+      height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: SizedBox(
-        height: 46,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const AgentsChip(),
-            const SizedBox(width: 6),
-            // The mouse route to the shortcut layer — every command it
-            // binds, with its key printed beside it.
-            EditMenuButton(controller: controller),
-            const SizedBox(width: 6),
-            // The open project's name seeds the export filename.
-            Consumer(
-              builder: (context, ref, _) => ExportMenuButton(
-                controller: controller,
-                documentName: ref.watch(projectsViewModelProvider).active?.name,
-              ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const AgentsChip(),
+          const SizedBox(width: 6),
+          // The mouse route to the shortcut layer — every command it
+          // binds, with its key printed beside it.
+          EditMenuButton(controller: controller),
+          const SizedBox(width: 6),
+          // The open project's name seeds the export filename.
+          Consumer(
+            builder: (context, ref, _) => ExportMenuButton(
+              controller: controller,
+              documentName: ref.watch(projectsViewModelProvider).active?.name,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -283,45 +277,43 @@ class _ViewIsland extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.fc;
     return GlassIsland(
+      height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: SizedBox(
-        height: 42, // 44 outer minus the 1px border either side
-        child: ListenableBuilder(
-          listenable: controller,
-          builder: (context, _) => Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FcIconButton(
-                icon: FcIcons.undo2,
-                tooltip: 'Undo',
-                onPressed: controller.canUndo ? controller.undo : null,
-              ),
-              const SizedBox(width: 2),
-              FcIconButton(
-                icon: FcIcons.redo2,
-                tooltip: 'Redo',
-                onPressed: controller.canRedo ? controller.redo : null,
-              ),
-              Container(
-                width: 1,
-                height: 20,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: t.glassBorder,
-              ),
-              FcIconButton(
-                icon: FcIcons.grid3x3,
-                tooltip: showGrid ? 'Hide grid' : 'Show grid',
-                pressed: showGrid,
-                onPressed: onToggleGrid,
-              ),
-              const SizedBox(width: 2),
-              FcIconButton(
-                icon: isDark ? FcIcons.sun : FcIcons.moon,
-                tooltip: isDark ? 'Light mode' : 'Dark mode',
-                onPressed: onToggleTheme,
-              ),
-            ],
-          ),
+      child: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FcIconButton(
+              icon: FcIcons.undo2,
+              tooltip: 'Undo',
+              onPressed: controller.canUndo ? controller.undo : null,
+            ),
+            const SizedBox(width: 2),
+            FcIconButton(
+              icon: FcIcons.redo2,
+              tooltip: 'Redo',
+              onPressed: controller.canRedo ? controller.redo : null,
+            ),
+            Container(
+              width: 1,
+              height: 20,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              color: t.glassBorder,
+            ),
+            FcIconButton(
+              icon: FcIcons.grid3x3,
+              tooltip: showGrid ? 'Hide grid' : 'Show grid',
+              pressed: showGrid,
+              onPressed: onToggleGrid,
+            ),
+            const SizedBox(width: 2),
+            FcIconButton(
+              icon: isDark ? FcIcons.sun : FcIcons.moon,
+              tooltip: isDark ? 'Light mode' : 'Dark mode',
+              onPressed: onToggleTheme,
+            ),
+          ],
         ),
       ),
     );

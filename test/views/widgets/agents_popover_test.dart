@@ -317,8 +317,8 @@ void main() {
       final card = tester.getRect(find.byType(GlassIsland));
       expect(done.height, 36);
       expect(done.width, lessThan(100));
-      // GlassIsland pads 20 on each side.
-      expect(done.right, closeTo(card.right - 20, 0.5));
+      // 20 padding + the 1px border, on each side.
+      expect(done.right, closeTo(card.right - 21, 0.5));
     });
 
     testWidgets('tapping a tab swaps the snippet', (tester) async {

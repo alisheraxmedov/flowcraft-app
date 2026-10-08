@@ -105,6 +105,24 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('islands have the mockup outer heights (48/52/48/44)', (
+    tester,
+  ) async {
+    await pumpScreen(tester);
+    await tester.pumpAndSettle();
+
+    double heightAround(Finder of) => tester
+        .getSize(
+          find.ancestor(of: of, matching: find.byType(GlassIsland)).first,
+        )
+        .height;
+
+    expect(heightAround(find.byTooltip('Projects')), 48);
+    expect(heightAround(find.byTooltip(RegExp('^Rectangle'))), 52);
+    expect(heightAround(find.byType(AgentsChip)), 48);
+    expect(heightAround(find.byTooltip('Undo')), 44);
+  });
+
   testWidgets('top-left island hugs the project name', (tester) async {
     await pumpScreen(tester);
     await tester.pumpAndSettle();

@@ -170,18 +170,16 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       lastGroup = group;
     }
 
-    return SizedBox(
+    return GlassIsland(
       height: 52,
-      child: GlassIsland(
-        radius: AppRadius.pill,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Scrollbar(
+      radius: AppRadius.pill,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Scrollbar(
+        controller: _scroll,
+        child: SingleChildScrollView(
           controller: _scroll,
-          child: SingleChildScrollView(
-            controller: _scroll,
-            scrollDirection: Axis.horizontal,
-            child: Row(mainAxisSize: MainAxisSize.min, children: children),
-          ),
+          scrollDirection: Axis.horizontal,
+          child: Row(mainAxisSize: MainAxisSize.min, children: children),
         ),
       ),
     );

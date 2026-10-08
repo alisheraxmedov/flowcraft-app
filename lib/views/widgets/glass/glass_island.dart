@@ -10,6 +10,10 @@ import 'package:flowcraft/core/theme/fc_tokens.dart';
 /// bounds (the [ClipRRect] confines the [BackdropFilter]).
 ///
 /// The shadow sits OUTSIDE the clip, otherwise it would be cut off.
+///
+/// Sized like a CSS `box-sizing: border-box` box: [height] is the OUTER height
+/// and [padding] sits inside the 1px border, so callers use the mockup's
+/// numbers as written.
 class GlassIsland extends StatelessWidget {
   const GlassIsland({
     super.key,
@@ -17,6 +21,7 @@ class GlassIsland extends StatelessWidget {
     this.radius = AppRadius.island,
     this.strong = false,
     this.padding = EdgeInsets.zero,
+    this.height,
   });
 
   final Widget child;
@@ -25,6 +30,9 @@ class GlassIsland extends StatelessWidget {
   /// Use the denser fill (popovers/menus that sit over busy canvas content).
   final bool strong;
   final EdgeInsetsGeometry padding;
+
+  /// Outer height including the border; null sizes to the content.
+  final double? height;
 
   /// Saturate x1.8, the mockup's `saturate(180%)`.
   static const _saturate = ColorFilter.matrix(<double>[
@@ -56,7 +64,10 @@ class GlassIsland extends StatelessWidget {
           borderRadius: r,
           border: Border(top: BorderSide(color: t.hi, width: 0.5)),
         ),
-        child: Padding(padding: padding, child: child),
+        child: Padding(
+          padding: padding.add(const EdgeInsets.all(1)), // the border
+          child: child,
+        ),
       ),
     );
     if (blurred) {
@@ -72,9 +83,12 @@ class GlassIsland extends StatelessWidget {
         child: body,
       );
     }
-    return DecoratedBox(
-      decoration: BoxDecoration(borderRadius: r, boxShadow: t.shadow),
-      child: ClipRRect(borderRadius: r, child: body),
+    return SizedBox(
+      height: height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(borderRadius: r, boxShadow: t.shadow),
+        child: ClipRRect(borderRadius: r, child: body),
+      ),
     );
   }
 }

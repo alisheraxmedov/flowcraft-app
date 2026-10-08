@@ -55,7 +55,7 @@ class ProjectsPopover extends ConsumerWidget {
     final t = context.fc;
 
     return SizedBox(
-      width: 340,
+      width: 338, // 340 outer: GlassIsland counts its 1px border
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
