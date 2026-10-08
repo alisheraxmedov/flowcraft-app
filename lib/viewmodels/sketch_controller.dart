@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart' show Rect;
+import 'package:flutter/painting.dart' show Axis, Rect;
 import 'dart:ui' show Offset;
 
+import 'package:flowcraft/core/domain/arrow_binding.dart';
 import 'package:flowcraft/core/domain/sketch_hit_test.dart';
 import 'package:flowcraft/core/serialization/sketch_serializer.dart';
 import 'package:flowcraft/core/utils/id_generator.dart';
@@ -10,6 +11,9 @@ import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
 import 'package:flowcraft/viewmodels/sketch_history.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+/// Which edge or centre line [SketchController.alignSelected] lines up on.
+enum AlignEdge { left, centerX, right, top, centerY, bottom }
 
 /// Central state for the sketch (drawing) layer.
 ///
@@ -36,6 +40,9 @@ class SketchController extends ChangeNotifier {
 
   int _paintGen = 0;
 
+  ({Rect rect, bool onlyIfHidden})? _frameRequest;
+  int _frameRequestGen = 0;
+
   String? _editingElementId;
   Offset? _editingCanvasPosition;
 
@@ -59,6 +66,14 @@ class SketchController extends ChangeNotifier {
   /// Monotonically increasing version bumped on every visual change.
   /// Use in `CustomPainter.shouldRepaint` for O(1) diffing.
   int get paintGen => _paintGen;
+
+  /// Latest canvas-space rect the view was asked to bring on screen, or
+  /// `null` before any request. See [requestFrame].
+  ({Rect rect, bool onlyIfHidden})? get frameRequest => _frameRequest;
+
+  /// Bumped by every accepted [requestFrame]. A counter rather than a value
+  /// so "fit, pan away, fit again" is two distinct events for the view.
+  int get frameRequestGen => _frameRequestGen;
 
   bool get canUndo => _history.canUndo;
   bool get canRedo => _history.canRedo;
@@ -230,7 +245,23 @@ class SketchController extends ChangeNotifier {
     for (var i = 0; i < _elements.length; i++) {
       final el = _elements[i];
       if (_selectedIds.contains(el.id)) {
-        _elements[i] = el.translate(delta);
+        var moved = el.translate(delta);
+        // An arrow dragged without the shape it is bound to has been pulled
+        // off it: that end unbinds, or reconcile would snap it straight back.
+        if (moved is SketchArrow &&
+            (moved.startBinding != null || moved.endBinding != null)) {
+          final s = moved.startBinding;
+          final e = moved.endBinding;
+          moved = moved.copyWith(
+            startBinding: s != null && _selectedIds.contains(s.elementId)
+                ? s
+                : null,
+            endBinding: e != null && _selectedIds.contains(e.elementId)
+                ? e
+                : null,
+          );
+        }
+        _elements[i] = moved;
       }
     }
     _invalidateCache();
@@ -329,9 +360,160 @@ class SketchController extends ChangeNotifier {
     // none of them should be what commits the drag's history entry.
     if (_endpointsOf(updated) == _endpointsOf(el)) return;
     _commitDragHistory();
-    _elements[idx] = updated;
+    // Dragging an end pulls it off its shape; release re-binds through
+    // [setArrowBindings].
+    _elements[idx] = updated is SketchArrow
+        ? updated.copyWith(
+            startBinding: start != null ? null : updated.startBinding,
+            endBinding: end != null ? null : updated.endBinding,
+          )
+        : updated;
     _invalidateCache();
     _bumpPaint();
+  }
+
+  /// Sets which shapes [id]'s arrow ends are attached to (`null` detaches).
+  ///
+  /// One undo entry restoring endpoints and bindings together, or none when
+  /// nothing changes. Inside a drag session it joins the session's entry, so
+  /// an endpoint drag that ends on a shape is still a single undo. The
+  /// endpoints themselves are re-anchored by the reconcile in [_bumpPaint].
+  void setArrowBindings(
+    String id, {
+    required SketchBinding? start,
+    required SketchBinding? end,
+  }) {
+    final idx = _indexOf(id);
+    if (idx < 0) return;
+    final el = _elements[idx];
+    if (el is! SketchArrow ||
+        (el.startBinding == start && el.endBinding == end)) {
+      return;
+    }
+    if (_dragInProgress) {
+      _commitDragHistory();
+    } else {
+      _pushHistory();
+    }
+    _elements[idx] = el.copyWith(startBinding: start, endBinding: end);
+    _invalidateCache();
+    _bumpPaint();
+  }
+
+  // ── Align / distribute ─────────────────────────────────────────────────
+
+  /// Selection as movable units: a group moves as one, anything else alone.
+  /// Arrows with a binding are left out — they follow their shapes through
+  /// the reconcile, and moving them here would unbind them.
+  List<({List<int> indices, Rect rect})> _selectionUnits() {
+    final ids = expandToGroups(_selectedIds);
+    final byKey = <String, List<int>>{};
+    for (var i = 0; i < _elements.length; i++) {
+      final el = _elements[i];
+      if (!ids.contains(el.id)) continue;
+      if (el is SketchArrow &&
+          (el.startBinding != null || el.endBinding != null)) {
+        continue;
+      }
+      (byKey[el.groupId != null ? 'g:${el.groupId}' : 'e:${el.id}'] ??= []).add(
+        i,
+      );
+    }
+    return [
+      for (final indices in byKey.values)
+        (
+          indices: indices,
+          rect: indices
+              .map((i) => _elements[i].bounds)
+              .reduce((a, b) => a.expandToInclude(b)),
+        ),
+    ];
+  }
+
+  /// Translates units by their deltas as one history entry. Returns how many
+  /// actually moved; none → no history entry and no paint bump.
+  int _moveUnits(
+    List<({List<int> indices, Rect rect})> units,
+    List<Offset> deltas,
+  ) {
+    var moved = 0;
+    for (final d in deltas) {
+      if (d.distanceSquared > 1e-12) moved++;
+    }
+    if (moved == 0) return 0;
+    _pushHistory();
+    for (var u = 0; u < units.length; u++) {
+      if (deltas[u].distanceSquared <= 1e-12) continue;
+      for (final i in units[u].indices) {
+        _elements[i] = _elements[i].translate(deltas[u]);
+      }
+    }
+    _invalidateCache();
+    _bumpPaint();
+    return moved;
+  }
+
+  /// Lines every selected unit up on [edge] of the units' combined bounds, as
+  /// one history entry. Returns how many units moved; needs at least two.
+  int alignSelected(AlignEdge edge) {
+    final units = _selectionUnits();
+    if (units.length < 2) return 0;
+    final ref = units.map((u) => u.rect).reduce((a, b) => a.expandToInclude(b));
+    final deltas = [
+      for (final u in units)
+        switch (edge) {
+          AlignEdge.left => Offset(ref.left - u.rect.left, 0),
+          AlignEdge.right => Offset(ref.right - u.rect.right, 0),
+          AlignEdge.centerX => Offset(ref.center.dx - u.rect.center.dx, 0),
+          AlignEdge.top => Offset(0, ref.top - u.rect.top),
+          AlignEdge.bottom => Offset(0, ref.bottom - u.rect.bottom),
+          AlignEdge.centerY => Offset(0, ref.center.dy - u.rect.center.dy),
+        },
+    ];
+    return _moveUnits(units, deltas);
+  }
+
+  /// Spaces the selected units evenly along [axis] with the first and last
+  /// fixed, as one history entry. Returns how many moved; needs at least
+  /// three units.
+  int distributeSelected(Axis axis) {
+    final units = _selectionUnits();
+    if (units.length < 3) return 0;
+    final horizontal = axis == Axis.horizontal;
+    double lead(Rect r) => horizontal ? r.left : r.top;
+    double size(Rect r) => horizontal ? r.width : r.height;
+    units.sort((a, b) => lead(a.rect).compareTo(lead(b.rect)));
+    final start = lead(units.first.rect);
+    final end = lead(units.last.rect) + size(units.last.rect);
+    final gap =
+        (end - start - units.fold(0.0, (sum, u) => sum + size(u.rect))) /
+        (units.length - 1);
+    var cursor = start;
+    final deltas = <Offset>[];
+    for (final u in units) {
+      final d = cursor - lead(u.rect);
+      deltas.add(horizontal ? Offset(d, 0) : Offset(0, d));
+      cursor += size(u.rect) + gap;
+    }
+    return _moveUnits(units, deltas);
+  }
+
+  // ── Frame requests ─────────────────────────────────────────────────────
+
+  /// Asks the view to bring canvas-space [rect] on screen.
+  ///
+  /// A request, not viewport state — the controller deliberately knows
+  /// nothing of the viewport. It only notifies: this is view state, so it
+  /// must never reach [_bumpPaint] and trigger an autosave. Non-finite rects
+  /// are ignored. [onlyIfHidden] marks an automatic reframe (an agent drew
+  /// something); those are dropped mid-drag so the canvas doesn't move under
+  /// the user's pointer.
+  void requestFrame(Rect rect, {bool onlyIfHidden = false}) {
+    if (!rect.isFinite) return;
+    if (onlyIfHidden && _dragInProgress) return;
+    _frameRequest = (rect: rect, onlyIfHidden: onlyIfHidden);
+    _frameRequestGen++;
+    notifyListeners();
   }
 
   /// Restyles every selected element by running [transform] over its current
@@ -1030,7 +1212,31 @@ class SketchController extends ChangeNotifier {
     _cachedGroups = null;
   }
 
+  /// Re-anchors every bound arrow to its shape and clears bindings whose
+  /// target is gone. Runs at the head of [_bumpPaint] — which every element
+  /// mutation ends in — so no caller can forget it; it edits in place and
+  /// never touches history, so the surrounding user action stays one entry.
+  void _reconcileBindings() {
+    Map<String, SketchElement>? byId;
+    var changed = false;
+    for (var i = 0; i < _elements.length; i++) {
+      final el = _elements[i];
+      if (el is! SketchArrow ||
+          (el.startBinding == null && el.endBinding == null)) {
+        continue;
+      }
+      byId ??= {for (final e in _elements) e.id: e};
+      final resolved = ArrowBinding.resolve(el, byId);
+      if (!identical(resolved, el)) {
+        _elements[i] = resolved;
+        changed = true;
+      }
+    }
+    if (changed) _invalidateCache();
+  }
+
   void _bumpPaint() {
+    _reconcileBindings();
     _paintGen++;
     notifyListeners();
   }

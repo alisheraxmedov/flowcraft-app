@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:ui';
 
+import 'package:flutter/painting.dart' show Axis;
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flowcraft/core/serialization/sketch_serializer.dart';
@@ -1250,6 +1252,317 @@ void main() {
       c.collapseExpandedStickies();
       c.setStickyCollapsed('a', false);
       expect((c.elements.first as SketchSticky).rect, rect);
+    });
+  });
+
+  group('arrow binding', () {
+    SketchRectangle shape(String id, double x) =>
+        _rect(id: id, rect: Rect.fromLTWH(x, 0, 100, 100));
+
+    // a at x 0..100, b at x 300..400, arrow bound a -> b.
+    SketchController bound() {
+      final arrow =
+          SketchArrow.create(
+            id: 'arr',
+            start: const Offset(100, 50),
+            end: const Offset(300, 50),
+          ).copyWith(
+            startBinding: const SketchBinding(elementId: 'a'),
+            endBinding: const SketchBinding(elementId: 'b'),
+          );
+      return SketchController()
+        ..addAll([shape('a', 0), shape('b', 300), arrow]);
+    }
+
+    SketchArrow arr(SketchController c) =>
+        c.elements.firstWhere((e) => e.id == 'arr') as SketchArrow;
+
+    test('translateSelected on the shape re-routes the arrow', () {
+      final c = bound()..select('b');
+      c.translateSelected(const Offset(0, 200));
+      expect(arr(c).end.dy, greaterThan(100));
+      expect(arr(c).endBinding, isNotNull);
+    });
+
+    test('resizeElement on the shape re-routes the arrow', () {
+      final c = bound();
+      c.resizeElement('b', const Rect.fromLTWH(500, 0, 100, 100));
+      expect(arr(c).end.dx, closeTo(500, 0.01));
+    });
+
+    test('updateAll on the shape re-routes the arrow', () {
+      final c = bound();
+      c.updateAll([shape('b', 700)]);
+      expect(arr(c).end.dx, closeTo(700, 0.01));
+    });
+
+    test('removing the shape clears the binding and the arrow stays', () {
+      final c = bound();
+      final before = arr(c).end;
+      c.remove('b');
+      expect(arr(c).endBinding, isNull);
+      expect(arr(c).startBinding, isNotNull);
+      expect(arr(c).end, before);
+    });
+
+    test('translating the arrow alone unbinds, with its shape keeps', () {
+      final alone = bound()..select('arr');
+      alone.translateSelected(const Offset(0, 500));
+      expect(arr(alone).startBinding, isNull);
+      expect(arr(alone).endBinding, isNull);
+      expect(arr(alone).start.dy, 550);
+
+      final together = bound()..selectMany(['arr', 'a', 'b']);
+      together.translateSelected(const Offset(0, 500));
+      expect(arr(together).startBinding, isNotNull);
+      expect(arr(together).endBinding, isNotNull);
+      expect(arr(together).start.dy, closeTo(550, 0.01));
+    });
+
+    test('updateLinear clears only the moved end', () {
+      final c = bound();
+      c.updateLinear('arr', end: const Offset(900, 900));
+      expect(arr(c).endBinding, isNull);
+      expect(arr(c).startBinding, isNotNull);
+      expect(arr(c).end, const Offset(900, 900));
+    });
+
+    test('setArrowBindings is one undo entry restoring endpoints too', () {
+      final c = SketchController()
+        ..addAll([
+          shape('a', 0),
+          SketchArrow.create(
+            id: 'arr',
+            start: const Offset(50, 50),
+            end: const Offset(400, 50),
+          ),
+        ]);
+      final gen = c.paintGen;
+      c.setArrowBindings(
+        'arr',
+        start: const SketchBinding(elementId: 'a'),
+        end: null,
+      );
+      expect(c.paintGen, gen + 1);
+      expect(arr(c).start.dx, closeTo(100, 0.01));
+      c.undo();
+      expect(arr(c).start, const Offset(50, 50));
+      expect(arr(c).startBinding, isNull);
+      c.redo();
+      expect(arr(c).start.dx, closeTo(100, 0.01));
+      expect(arr(c).startBinding, isNotNull);
+    });
+
+    test('setArrowBindings is a no-op when unchanged', () {
+      final c = bound();
+      final gen = c.paintGen;
+      c.setArrowBindings(
+        'arr',
+        start: const SketchBinding(elementId: 'a'),
+        end: const SketchBinding(elementId: 'b'),
+      );
+      expect(c.paintGen, gen);
+    });
+
+    test('setArrowBindings joins an open drag session', () {
+      final c = SketchController()
+        ..addAll([
+          shape('a', 0),
+          SketchArrow.create(
+            id: 'arr',
+            start: const Offset(50, 50),
+            end: const Offset(400, 50),
+          ),
+        ]);
+      c.beginDragSession();
+      c.updateLinear('arr', start: const Offset(60, 60));
+      c.setArrowBindings(
+        'arr',
+        start: const SketchBinding(elementId: 'a'),
+        end: null,
+      );
+      c.endDragSession();
+      c.undo(); // one entry for drag + bind: back to the pre-drag arrow
+      expect(arr(c).start, const Offset(50, 50));
+      expect(arr(c).startBinding, isNull);
+    });
+
+    test('undo and redo keep endpoints consistent with the shape', () {
+      final c = bound()..select('b');
+      c.beginDragSession();
+      c.translateSelected(const Offset(0, 200));
+      c.endDragSession();
+      final moved = arr(c).end;
+      c.undo();
+      expect(arr(c).end.dx, closeTo(300, 0.01));
+      expect(arr(c).end.dy, closeTo(50, 0.01));
+      c.redo();
+      expect(arr(c).end, moved);
+    });
+
+    test('loadScene clears a dangling binding without history', () {
+      final c = SketchController();
+      c.loadScene([
+        SketchArrow.create(
+          id: 'arr',
+          start: Offset.zero,
+          end: const Offset(10, 10),
+        ).copyWith(endBinding: const SketchBinding(elementId: 'nope')),
+      ]);
+      expect(arr(c).endBinding, isNull);
+      expect(c.canUndo, isFalse);
+    });
+
+    test('each mutation bumps paintGen once', () {
+      final c = bound()..select('b');
+      final gen = c.paintGen;
+      c.translateSelected(const Offset(0, 50));
+      expect(c.paintGen, gen + 1);
+    });
+  });
+
+  group('align / distribute', () {
+    SketchController scene() => SketchController()
+      ..addAll([
+        _rect(id: 'a', rect: const Rect.fromLTWH(0, 0, 10, 10)),
+        _rect(id: 'b', rect: const Rect.fromLTWH(50, 30, 20, 20)),
+        _rect(id: 'c', rect: const Rect.fromLTWH(200, 100, 40, 10)),
+      ])
+      ..selectMany(['a', 'b', 'c']);
+
+    Rect at(SketchController c, String id) =>
+        (c.elements.firstWhere((e) => e.id == id) as SketchRectangle).rect;
+
+    test('each edge moves units to the union edge as one undo entry', () {
+      final expected = <AlignEdge, bool Function(Rect)>{
+        AlignEdge.left: (r) => r.left == 0,
+        AlignEdge.right: (r) => r.right == 240,
+        AlignEdge.top: (r) => r.top == 0,
+        AlignEdge.bottom: (r) => r.bottom == 110,
+        AlignEdge.centerX: (r) => r.center.dx == 120,
+        AlignEdge.centerY: (r) => r.center.dy == 55,
+      };
+      for (final entry in expected.entries) {
+        final c = scene();
+        final gen = c.paintGen;
+        expect(
+          c.alignSelected(entry.key),
+          greaterThan(0),
+          reason: '${entry.key}',
+        );
+        expect(c.paintGen, gen + 1);
+        for (final id in ['a', 'b', 'c']) {
+          expect(entry.value(at(c, id)), isTrue, reason: '${entry.key} $id');
+        }
+        c.undo();
+        expect(at(c, 'a'), const Rect.fromLTWH(0, 0, 10, 10));
+        expect(at(c, 'c'), const Rect.fromLTWH(200, 100, 40, 10));
+      }
+    });
+
+    test('a group moves as a unit', () {
+      final c = scene();
+      c.selectMany(['a', 'b']);
+      c.groupSelected();
+      c.selectMany(['a', 'c']); // expands to the group + c
+      c.alignSelected(AlignEdge.left);
+      // group (a,b) bounds left 0 already; c moves to 0, b keeps its offset.
+      expect(at(c, 'c').left, 0);
+      expect(at(c, 'b').left, 50);
+    });
+
+    test('fewer than two units or already aligned is a no-op', () {
+      final one = scene()..select('a');
+      var gen = one.paintGen;
+      expect(one.alignSelected(AlignEdge.left), 0);
+      expect(one.paintGen, gen);
+
+      final c = scene();
+      c.alignSelected(AlignEdge.left);
+      gen = c.paintGen;
+      final canUndo = c.canUndo;
+      expect(c.alignSelected(AlignEdge.left), 0);
+      expect(c.paintGen, gen);
+      expect(c.canUndo, canUndo);
+    });
+
+    test('distribute gives equal gaps with first and last fixed', () {
+      final c = scene();
+      expect(c.distributeSelected(Axis.horizontal), 1);
+      expect(at(c, 'a').left, 0);
+      expect(at(c, 'c').right, 240);
+      final gap1 = at(c, 'b').left - at(c, 'a').right;
+      final gap2 = at(c, 'c').left - at(c, 'b').right;
+      expect(gap1, closeTo(gap2, 1e-9));
+      c.undo();
+      expect(at(c, 'b').left, 50);
+    });
+
+    test('distribute with fewer than three units is a no-op', () {
+      final c = scene()..selectMany(['a', 'b']);
+      final gen = c.paintGen;
+      expect(c.distributeSelected(Axis.vertical), 0);
+      expect(c.paintGen, gen);
+    });
+
+    test('bound arrows are not units but follow their shapes', () {
+      final arrow =
+          SketchArrow.create(
+            id: 'arr',
+            start: const Offset(10, 5),
+            end: const Offset(200, 105),
+          ).copyWith(
+            startBinding: const SketchBinding(elementId: 'a'),
+            endBinding: const SketchBinding(elementId: 'c'),
+          );
+      final c = scene()..add(arrow);
+      c.selectMany(['a', 'c', 'arr']);
+      expect(c.alignSelected(AlignEdge.top), 1); // only c moves
+      final a = at(c, 'a');
+      final cc = at(c, 'c');
+      final arr = c.elements.last as SketchArrow;
+      expect(arr.startBinding, isNotNull);
+      expect(a.inflate(0.5).contains(arr.start), isTrue);
+      expect(cc.inflate(0.5).contains(arr.end), isTrue);
+    });
+  });
+
+  group('requestFrame', () {
+    const r = Rect.fromLTWH(0, 0, 10, 10);
+
+    test('bumps frameRequestGen and notifies but not paintGen', () {
+      final c = SketchController();
+      var notified = 0;
+      c.addListener(() => notified++);
+      final gen = c.paintGen;
+      c.requestFrame(r);
+      expect(c.frameRequestGen, 1);
+      expect(c.frameRequest, (rect: r, onlyIfHidden: false));
+      expect(notified, 1);
+      expect(c.paintGen, gen);
+    });
+
+    test('the same rect twice bumps twice', () {
+      final c = SketchController()
+        ..requestFrame(r)
+        ..requestFrame(r);
+      expect(c.frameRequestGen, 2);
+    });
+
+    test('a non-finite rect is ignored', () {
+      final c = SketchController()
+        ..requestFrame(const Rect.fromLTWH(double.nan, 0, 1, 1))
+        ..requestFrame(const Rect.fromLTWH(0, 0, double.infinity, 1));
+      expect(c.frameRequestGen, 0);
+      expect(c.frameRequest, isNull);
+    });
+
+    test('onlyIfHidden is dropped during a drag session', () {
+      final c = SketchController()..beginDragSession();
+      c.requestFrame(r, onlyIfHidden: true);
+      expect(c.frameRequestGen, 0);
+      c.requestFrame(r);
+      expect(c.frameRequestGen, 1);
     });
   });
 }
