@@ -47,4 +47,38 @@ void main() {
       ),
     );
   });
+
+  testWidgets('custom height/gap/inactiveColor are applied', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: FcSegmented<String>(
+            value: 'a',
+            options: const {'a': 'Alpha', 'b': 'Beta'},
+            onChanged: (_) {},
+            height: 34,
+            gap: 2,
+            inactiveColor: const Color(0xFF123456),
+          ),
+        ),
+      ),
+    );
+    final a = tester.getRect(
+      find
+          .ancestor(of: find.text('Alpha'), matching: find.byType(Container))
+          .first,
+    );
+    final b = tester.getRect(
+      find
+          .ancestor(of: find.text('Beta'), matching: find.byType(Container))
+          .first,
+    );
+    expect(a.height, 34);
+    expect(b.left - a.right, 2);
+    expect(
+      tester.widget<Text>(find.text('Beta')).style!.color,
+      const Color(0xFF123456),
+    );
+  });
 }

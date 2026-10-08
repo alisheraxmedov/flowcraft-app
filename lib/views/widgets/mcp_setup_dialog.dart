@@ -110,6 +110,12 @@ class _McpSetupDialogState extends State<McpSetupDialog> {
                   const SizedBox(height: 16),
                   FcSegmented<_Cli>(
                     value: _cli,
+                    height: 34,
+                    gap: 2,
+                    segmentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    inactiveColor: t.text,
+                    fontSize: 13,
+                    activeWeight: FontWeight.w600,
                     options: const {
                       _Cli.claudeCode: 'Claude Code',
                       _Cli.claudeJson: 'Claude JSON',
