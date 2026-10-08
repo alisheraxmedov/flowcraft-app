@@ -150,38 +150,33 @@ class _BrandIsland extends StatefulWidget {
 class _BrandIslandState extends State<_BrandIsland> {
   /// The island itself is the Projects popover's anchor (mockup: left-aligned
   /// with the island, 8px below it), not the small button inside it.
-  final LayerLink _link = LayerLink();
+  final GlobalKey _islandKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
     final t = context.fc;
     final muted = AppTypography.bodySm.copyWith(color: t.muted, height: 1.2);
-    return CompositedTransformTarget(
-      link: _link,
-      child: GlassIsland(
-        height: 48,
-        // Mockup padding 14/8; the button's own 2px margin makes the right 6.
-        padding: const EdgeInsets.fromLTRB(14, 0, 6, 0),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _LogoGlyph(),
-            const SizedBox(width: 8),
-            Text(
-              'FlowCraft',
-              style: muted.copyWith(fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(width: 8),
-            Text('/', style: muted),
-            const SizedBox(width: 8),
-            // Renders nothing until a project is open, so no placeholder
-            // gap appears during the first load.
-            const Flexible(child: ProjectTitleField()),
-            // 6 + the popover button's own 2px margin = the mockup's 8 gap.
-            const SizedBox(width: 6),
-            ProjectsButton(anchorLink: _link),
-          ],
-        ),
+    return GlassIsland(
+      key: _islandKey,
+      height: 48,
+      // Mockup padding 14/8; the button's own 2px margin makes the right 6.
+      padding: const EdgeInsets.fromLTRB(14, 0, 6, 0),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const _LogoGlyph(),
+          const SizedBox(width: 8),
+          Text('FlowCraft', style: muted.copyWith(fontWeight: FontWeight.w500)),
+          const SizedBox(width: 8),
+          Text('/', style: muted),
+          const SizedBox(width: 8),
+          // Renders nothing until a project is open, so no placeholder
+          // gap appears during the first load.
+          const Flexible(child: ProjectTitleField()),
+          // 6 + the popover button's own 2px margin = the mockup's 8 gap.
+          const SizedBox(width: 6),
+          ProjectsButton(anchorKey: _islandKey),
+        ],
       ),
     );
   }

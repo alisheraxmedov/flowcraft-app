@@ -1,6 +1,7 @@
 import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/views/widgets/link_file_dialog.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +47,22 @@ void main() {
     await tester.tap(find.byTooltip('Project actions').first);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('hovering a tooltip inside the popover does not assert', (
+    tester,
+  ) async {
+    await pumpPopover(tester);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(find.byTooltip('Project actions').first),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('projects popover opens below the Projects button', (
     tester,

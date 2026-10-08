@@ -15,10 +15,10 @@ import 'package:flowcraft/views/widgets/toolbar/popover_button.dart';
 
 /// The panel-left button in the top-left island; opens [ProjectsPopover].
 class ProjectsButton extends StatelessWidget {
-  const ProjectsButton({super.key, this.anchorLink});
+  const ProjectsButton({super.key, this.anchorKey});
 
-  /// Target the popover aligns to (the top-left island); null = the button.
-  final LayerLink? anchorLink;
+  /// Widget the popover aligns to (the top-left island); null = the button.
+  final GlobalKey? anchorKey;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +27,7 @@ class ProjectsButton extends StatelessWidget {
       tooltip: 'Projects',
       activeColor: t.accent,
       anchor: PopoverAnchor.below,
-      anchorLink: anchorLink,
+      anchorKey: anchorKey,
       radius: AppRadius.island,
       builder: (context, _) =>
           FcIconGlyph(FcIcons.panelLeft, size: 18, color: t.muted),

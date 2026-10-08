@@ -71,7 +71,6 @@ class AgentsChip extends ConsumerStatefulWidget {
 
 class _AgentsChipState extends ConsumerState<AgentsChip> {
   final _portal = OverlayPortalController();
-  final _link = LayerLink();
   final _focus = FocusNode(debugLabel: 'agents-popover');
 
   void _toggle() {
@@ -100,11 +99,16 @@ class _AgentsChipState extends ConsumerState<AgentsChip> {
     final look = agentsPresentation(ref.watch(mcpViewModelProvider), t);
     final open = _portal.isShowing;
 
-    return CompositedTransformTarget(
-      link: _link,
-      child: OverlayPortal(
-        controller: _portal,
-        overlayChildBuilder: (_) => Stack(
+    // overlayChildLayoutBuilder, not a CompositedTransformFollower: a follower
+    // above the popover's Tooltips trips their layout-time paint transform.
+    return OverlayPortal.overlayChildLayoutBuilder(
+      controller: _portal,
+      overlayChildBuilder: (_, info) {
+        final target = MatrixUtils.transformRect(
+          info.childPaintTransform,
+          Offset.zero & info.childSize,
+        );
+        return Stack(
           children: [
             Positioned.fill(
               child: GestureDetector(
@@ -114,39 +118,32 @@ class _AgentsChipState extends ConsumerState<AgentsChip> {
               ),
             ),
             Positioned(
-              left: 0,
-              top: 0,
-              child: CompositedTransformFollower(
-                link: _link,
-                showWhenUnlinked: false,
-                targetAnchor: Alignment.bottomRight,
-                followerAnchor: Alignment.topRight,
-                offset: const Offset(0, 6),
-                child: Focus(
-                  focusNode: _focus,
-                  onKeyEvent: (_, e) {
-                    if (e is KeyDownEvent &&
-                        e.logicalKey == LogicalKeyboardKey.escape) {
-                      _toggle();
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: GlassIsland(
-                    strong: true,
-                    padding: const EdgeInsets.all(16),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: SizedBox(
-                        width: 236,
-                        child: AgentsPopover(
-                          // The chip outlives the popover, so the setup
-                          // dialog is launched from its context.
-                          onSetup: (status) {
-                            _toggle();
-                            showMcpSetupDialog(context, status);
-                          },
-                        ),
+              right: info.overlaySize.width - target.right,
+              top: target.bottom + 6,
+              child: Focus(
+                focusNode: _focus,
+                onKeyEvent: (_, e) {
+                  if (e is KeyDownEvent &&
+                      e.logicalKey == LogicalKeyboardKey.escape) {
+                    _toggle();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: GlassIsland(
+                  strong: true,
+                  padding: const EdgeInsets.all(16),
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: SizedBox(
+                      width: 236,
+                      child: AgentsPopover(
+                        // The chip outlives the popover, so the setup
+                        // dialog is launched from its context.
+                        onSetup: (status) {
+                          _toggle();
+                          showMcpSetupDialog(context, status);
+                        },
                       ),
                     ),
                   ),
@@ -154,48 +151,48 @@ class _AgentsChipState extends ConsumerState<AgentsChip> {
               ),
             ),
           ],
-        ),
-        child: Tooltip(
-          message: 'Agents',
-          child: Semantics(
-            button: true,
-            selected: open,
-            label: 'Agents — MCP server ${look.label.toLowerCase()}',
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggle,
-                child: Container(
-                  height: 32,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: open ? t.raised : t.surface2,
-                    borderRadius: BorderRadius.circular(AppRadius.button),
-                    boxShadow: open ? t.raisedShadow : null,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: look.dot,
-                        ),
+        );
+      },
+      child: Tooltip(
+        message: 'Agents',
+        child: Semantics(
+          button: true,
+          selected: open,
+          label: 'Agents — MCP server ${look.label.toLowerCase()}',
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggle,
+              child: Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: open ? t.raised : t.surface2,
+                  borderRadius: BorderRadius.circular(AppRadius.button),
+                  boxShadow: open ? t.raisedShadow : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: look.dot,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Agents',
-                        style: _text(
-                          13,
-                          FontWeight.w500,
-                          open ? t.accentText : t.text,
-                        ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Agents',
+                      style: _text(
+                        13,
+                        FontWeight.w500,
+                        open ? t.accentText : t.text,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),

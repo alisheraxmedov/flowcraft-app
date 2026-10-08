@@ -33,7 +33,7 @@ class PopoverButton extends StatefulWidget {
     this.anchor,
     this.size = 32,
     this.radius = AppRadius.menu,
-    this.anchorLink,
+    this.anchorKey,
   });
 
   final Widget Function(BuildContext, PopoverController) builder;
@@ -54,10 +54,12 @@ class PopoverButton extends StatefulWidget {
   /// Projects popover, 12 for a row's "…" menu, per the mockup.
   final double radius;
 
-  /// Positions the popover against this link's target (e.g. the whole island
-  /// the button sits in) instead of the button itself. The Projects popover
-  /// uses it: the mockup left-aligns it with the island, 8px below it.
-  final LayerLink? anchorLink;
+  /// Positions the popover against this widget (e.g. the whole island the
+  /// button sits in) instead of the button itself. The Projects popover
+  /// uses it: the mockup left-aligns it with the island, 8px below it. With
+  /// [PopoverAnchor.side] the popover opens 8px right of that widget, top
+  /// aligned with the button (the inspector's colour picker).
+  final GlobalKey? anchorKey;
 
   @override
   State<PopoverButton> createState() => _PopoverButtonState();
@@ -76,7 +78,6 @@ class PopoverController {
 
 class _PopoverButtonState extends State<PopoverButton> {
   final OverlayPortalController _portal = OverlayPortalController();
-  final LayerLink _link = LayerLink();
 
   /// Holds focus while the popover is open so Escape reaches it — an open
   /// popover used to leave focus on the canvas, where Escape meant
@@ -119,44 +120,71 @@ class _PopoverButtonState extends State<PopoverButton> {
 
   @override
   Widget build(BuildContext context) {
-    return CompositedTransformTarget(
-      link: _link,
-      child: OverlayPortal(
-        controller: _portal,
-        overlayChildBuilder: (context) {
-          final anchor =
-              widget.anchor ??
-              (widget.vertical ? PopoverAnchor.side : PopoverAnchor.below);
-          return Stack(
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  // Opaque: the click that dismisses a popover is spent on
-                  // dismissing it. Translucent let it fall through to the
-                  // canvas and start a stroke with whichever tool was live.
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _hide,
-                ),
+    // overlayChildLayoutBuilder, not a CompositedTransformFollower: a follower
+    // above a popover's own Tooltips trips their layout-time paint transform.
+    return OverlayPortal.overlayChildLayoutBuilder(
+      controller: _portal,
+      overlayChildBuilder: (context, info) {
+        final anchor =
+            widget.anchor ??
+            (widget.vertical ? PopoverAnchor.side : PopoverAnchor.below);
+        final anchorBox = widget.anchorKey?.currentContext?.findRenderObject();
+        final Rect? target;
+        if (anchorBox == null) {
+          target = widget.anchorKey != null
+              ? null
+              : MatrixUtils.transformRect(
+                  info.childPaintTransform,
+                  Offset.zero & info.childSize,
+                );
+        } else {
+          final overlay = Overlay.of(context).context.findRenderObject();
+          target =
+              (anchorBox as RenderBox).localToGlobal(
+                Offset.zero,
+                ancestor: overlay,
+              ) &
+              anchorBox.size;
+        }
+        final gap = widget.anchorKey == null ? 6.0 : 8.0;
+        // Side + anchorKey: beside the anchor widget (the inspector island),
+        // top-aligned with this button's row rather than centred on it.
+        final beside = anchor == PopoverAnchor.side && widget.anchorKey != null;
+        final button = MatrixUtils.transformRect(
+          info.childPaintTransform,
+          Offset.zero & info.childSize,
+        );
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                // Opaque: the click that dismisses a popover is spent on
+                // dismissing it. Translucent let it fall through to the
+                // canvas and start a stroke with whichever tool was live.
+                behavior: HitTestBehavior.opaque,
+                onTap: _hide,
               ),
+            ),
+            // No anchor, no popover: never paint at 0,0.
+            if (target != null)
               Positioned(
-                left: 0,
-                top: 0,
-                child: CompositedTransformFollower(
-                  link: widget.anchorLink ?? _link,
-                  showWhenUnlinked: false,
-                  targetAnchor: switch (anchor) {
-                    PopoverAnchor.side => Alignment.centerRight,
-                    PopoverAnchor.belowEnd => Alignment.bottomRight,
-                    PopoverAnchor.below => Alignment.bottomLeft,
-                  },
-                  followerAnchor: switch (anchor) {
-                    PopoverAnchor.side => Alignment.centerLeft,
-                    PopoverAnchor.belowEnd => Alignment.topRight,
-                    PopoverAnchor.below => Alignment.topLeft,
-                  },
-                  offset: anchor == PopoverAnchor.side
-                      ? const Offset(6, 0)
-                      : Offset(0, widget.anchorLink == null ? 6 : 8),
+                left: anchor == PopoverAnchor.belowEnd
+                    ? null
+                    : anchor == PopoverAnchor.side
+                    ? target.right + (beside ? 8 : 6)
+                    : target.left,
+                right: anchor == PopoverAnchor.belowEnd
+                    ? info.overlaySize.width - target.right
+                    : null,
+                top: beside
+                    ? button.top - 4
+                    : anchor == PopoverAnchor.side
+                    ? target.center.dy
+                    : target.bottom + gap,
+                child: FractionalTranslation(
+                  translation: anchor == PopoverAnchor.side && !beside
+                      ? const Offset(0, -0.5)
+                      : Offset.zero,
                   child: Focus(
                     focusNode: _focus,
                     onKeyEvent: _onKey,
@@ -173,21 +201,20 @@ class _PopoverButtonState extends State<PopoverButton> {
                   ),
                 ),
               ),
-            ],
-          );
-        },
-        child: Tooltip(
-          message: widget.tooltip,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(AppRadius.button),
-            onTap: _toggle,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              width: widget.size,
-              height: widget.size,
-              alignment: Alignment.center,
-              child: widget.builder(context, _ctrl),
-            ),
+          ],
+        );
+      },
+      child: Tooltip(
+        message: widget.tooltip,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.button),
+          onTap: _toggle,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            width: widget.size,
+            height: widget.size,
+            alignment: Alignment.center,
+            child: widget.builder(context, _ctrl),
           ),
         ),
       ),

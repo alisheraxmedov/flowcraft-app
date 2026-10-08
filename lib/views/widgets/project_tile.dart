@@ -169,10 +169,8 @@ class _ProjectTileState extends State<ProjectTile> {
   }
 }
 
-/// The "…" button and its menu. A [PopoverButton] rather than a
-/// [MenuAnchor]: the row already lives inside the projects popover's
-/// `CompositedTransformFollower`, and a `MenuAnchor` cannot compute its
-/// position through a follower layer (layout assertion).
+/// The "…" button and its menu, a [PopoverButton] like the other glass
+/// popovers.
 class _RowMenu extends StatelessWidget {
   const _RowMenu({
     required this.canRename,
