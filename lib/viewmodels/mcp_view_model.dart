@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flowcraft/services/app_control.dart';
+import 'package:flowcraft/services/mcp_host.dart';
+import 'package:flowcraft/viewmodels/projects_view_model.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 /// The conditions the MCP server can actually be in.
@@ -139,6 +141,20 @@ class McpViewModel extends Notifier<McpServerStatus> {
     _server = AppControlServer(
       controller: controller,
       port: ref.read(mcpServerPortProvider),
+      // Resolved per call, never here: reading the projects provider in
+      // `build` would start its restore (and touch ~/.flowcraft) for every
+      // container that merely reads the MCP state.
+      projects: McpProjectsHost(
+        list: () => ref.read(projectsViewModelProvider).projects,
+        activeId: () => ref.read(projectsViewModelProvider).activeId,
+        open: (id) =>
+            ref.read(projectsViewModelProvider.notifier).openProject(id),
+        create: (name) =>
+            ref.read(projectsViewModelProvider.notifier).createProject(name),
+        rename: (id, name) => ref
+            .read(projectsViewModelProvider.notifier)
+            .renameProject(id, name),
+      ),
     );
     ready = _apply(start: true);
     // Queued, not called directly: disposing while the initial start is

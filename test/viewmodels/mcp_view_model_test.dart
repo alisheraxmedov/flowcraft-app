@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -5,7 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcraft/flowcraft.dart';
 
+import '../support/fake_project_repository.dart';
+
 void main() {
+  // ProjectsViewModel registers an AppLifecycleListener, which needs a
+  // binding. The binding's test HttpOverrides would answer the real loopback
+  // request below with a 400, so they are lifted again.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  HttpOverrides.global = null;
+
   /// Every container here starts a *real* control server, so nothing may
   /// touch the app's fixed 5199: `flutter test` runs files in parallel, and
   /// a developer running this suite almost certainly has FlowCraft itself
@@ -129,6 +138,52 @@ void main() {
       expect(status.token, isNotNull);
       expect(status.endpoint, 'http://127.0.0.1:${status.port}/mcp');
       expect(status.connectCommand, contains('${status.port}'));
+    });
+
+    test('wires the project library into flowcraft_project', () async {
+      // A fake repository so the call can never touch ~/.flowcraft.
+      final container = ProviderContainer(
+        overrides: [
+          mcpServerPortProvider.overrideWithValue(0),
+          projectRepositoryProvider.overrideWithValue(FakeProjectRepository()),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(mcpViewModelProvider.notifier);
+      await notifier.ready;
+      final status = container.read(mcpViewModelProvider);
+      // Nothing but the tool call has asked for the library yet, so build it
+      // (and wait for its restore) the way the splash screen would.
+      container.read(projectsViewModelProvider);
+      await container.read(projectsViewModelProvider.notifier).ready;
+
+      final client = HttpClient();
+      addTearDown(() => client.close(force: true));
+      final request = await client.postUrl(Uri.parse(status.endpoint!));
+      request.headers.contentType = ContentType.json;
+      request.headers.set('X-Flowcraft-Token', status.token!);
+      request.write(
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'tools/call',
+          'params': {
+            'name': 'flowcraft_project',
+            'arguments': {'action': 'current'},
+          },
+        }),
+      );
+      final response = await request.close();
+      final body =
+          jsonDecode(await response.transform(utf8.decoder).join())
+              as Map<String, dynamic>;
+
+      final result = body['result'] as Map<String, dynamic>;
+      expect(result['isError'], isFalse);
+      expect(
+        jsonDecode((result['content'] as List).single['text'] as String),
+        containsPair('id', container.read(projectsViewModelProvider).activeId),
+      );
     });
 
     test('toggle switches between on and off', () {

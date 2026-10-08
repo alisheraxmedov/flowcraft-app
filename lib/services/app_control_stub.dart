@@ -1,5 +1,7 @@
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
+import 'mcp_host.dart';
+
 export 'app_control_exception.dart';
 
 /// Web fallback for [AppControlServer] — the MCP control server needs
@@ -7,7 +9,11 @@ export 'app_control_exception.dart';
 /// `app_control_io.dart` by the `dart.library.io` conditional import in
 /// `app_control.dart` whenever compiling for a target without `dart:io`.
 class AppControlServer {
-  AppControlServer({required SketchController controller, required int port});
+  AppControlServer({
+    required SketchController controller,
+    required int port,
+    McpProjectsHost? projects,
+  });
 
   /// Always null here: with no server there is no port and no token, so
   /// the MCP card simply has no connection details to show.

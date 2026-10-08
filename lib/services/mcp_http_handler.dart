@@ -5,6 +5,8 @@ import 'dart:typed_data' show BytesBuilder;
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 import 'app_version.dart';
+import 'mcp_checkpoints.dart';
+import 'mcp_host.dart';
 import 'mcp_tools.dart';
 
 /// Path the MCP endpoint is served from, relative to the control server's
@@ -161,9 +163,11 @@ class McpHttpHandler {
     required SketchController controller,
     required String token,
     List<McpTool> tools = flowcraftMcpTools,
+    McpProjectsHost? projects,
   }) : _controller = controller,
        _token = token,
-       _tools = tools;
+       _tools = tools,
+       _projects = projects;
 
   /// Identifies this server in the `initialize` handshake. The version is
   /// the app's own — see [appVersion] for where a release build gets it.
@@ -179,7 +183,9 @@ class McpHttpHandler {
       'shapes (rectangles for classes/modules, arrows for relations) to '
       'render the diagram you have analyzed; for graphs of nodes and edges use '
       'flowcraft_diagram, which lays them out and binds the arrows (arrows '
-      'can also attach to existing shapes via fromId/toId). To correct a diagram, call '
+      'can also attach to existing shapes via fromId/toId). Call '
+      'flowcraft_guide once for conventions and flowcraft_screenshot to check '
+      'your drawing. To correct a diagram, call '
       'flowcraft_read to get each element and its id, then flowcraft_update '
       'or flowcraft_delete to change or remove specific elements by id — no '
       'need to clear the board and redraw everything.';
@@ -198,6 +204,10 @@ class McpHttpHandler {
   final SketchController _controller;
   final String _token;
   final List<McpTool> _tools;
+  final McpProjectsHost? _projects;
+
+  /// Lives as long as the handler, i.e. as long as the server is on.
+  final McpCheckpoints _checkpoints = McpCheckpoints();
 
   late final Map<String, McpTool> _toolsByName = {
     for (final tool in _tools) tool.name: tool,
@@ -303,13 +313,13 @@ class McpHttpHandler {
     _replyJson(request, HttpStatus.ok, {
       'jsonrpc': '2.0',
       'id': id,
-      ..._dispatch(method, message['params']),
+      ...await _dispatch(method, message['params']),
     });
   }
 
   /// Runs one JSON-RPC request and returns the half of the response body
   /// that varies: either `result` or `error`.
-  Map<String, Object?> _dispatch(String method, Object? params) {
+  Future<Map<String, Object?>> _dispatch(String method, Object? params) async {
     switch (method) {
       case 'initialize':
         return {'result': _initializeResult(params)};
@@ -322,7 +332,7 @@ class McpHttpHandler {
           },
         };
       case 'tools/call':
-        return _callTool(params);
+        return await _callTool(params);
       default:
         return _error(_methodNotFound, 'unknown method: $method');
     }
@@ -343,7 +353,7 @@ class McpHttpHandler {
     };
   }
 
-  Map<String, Object?> _callTool(Object? params) {
+  Future<Map<String, Object?>> _callTool(Object? params) async {
     if (params is! Map) {
       return _error(_invalidParams, 'tools/call requires a params object');
     }
@@ -359,7 +369,15 @@ class McpHttpHandler {
         : const <String, Object?>{};
 
     try {
-      return {'result': tool.run(_controller, arguments).toJson()};
+      final ctx = McpToolContext(
+        controller: _controller,
+        checkpoints: _checkpoints,
+        projects: _projects,
+      );
+      if (tool.mutates) {
+        _checkpoints.capture(_controller, tool.name, _projects?.activeId());
+      }
+      return {'result': (await tool.run(ctx, arguments)).toJson()};
     } catch (e) {
       // A tool that blew up is a *tool* failure, not a protocol failure:
       // the model needs to read the reason and correct its next call, so

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flowcraft/flowcraft.dart';
@@ -330,6 +331,107 @@ void main() {
       expect(result['isError'], isFalse);
       expect(textOf(result), allOf(contains('Deleted 1'), contains('ghost')));
       expect(controller.elements.map((e) => e.id), ['r2']);
+    });
+  });
+
+  // Custom tools exercise the handler's plumbing (awaiting, content blocks,
+  // checkpoint-before-mutation) without depending on any real tool.
+  group('tool plumbing', () {
+    late SketchController controller;
+    late HttpServer httpServer;
+    late HttpClient client;
+    const token = 'test-token';
+
+    Future<Map<String, dynamic>> callWith(List<McpTool> tools) async {
+      controller = SketchController(currentTool: SketchTool.select);
+      final handler = McpHttpHandler(
+        controller: controller,
+        token: token,
+        tools: tools,
+      );
+      httpServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      httpServer.listen(handler.handle);
+      client = HttpClient();
+      final request = await client.postUrl(
+        Uri.parse('http://127.0.0.1:${httpServer.port}/mcp'),
+      );
+      request.headers.contentType = ContentType.json;
+      request.headers.set(McpHttpHandler.tokenHeader, token);
+      request.write(
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'tools/call',
+          'params': {'name': 't', 'arguments': <String, dynamic>{}},
+        }),
+      );
+      final response = await request.close();
+      final body =
+          jsonDecode(await response.transform(utf8.decoder).join())
+              as Map<String, dynamic>;
+      return body['result'] as Map<String, dynamic>;
+    }
+
+    tearDown(() async {
+      client.close(force: true);
+      await httpServer.close(force: true);
+      controller.dispose();
+    });
+
+    test('async tool is awaited', () async {
+      final result = await callWith([
+        McpTool(
+          name: 't',
+          description: '',
+          inputSchema: const {'type': 'object'},
+          run: (ctx, args) async {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            return const McpToolResult('late answer');
+          },
+        ),
+      ]);
+
+      expect((result['content'] as List).single['text'], 'late answer');
+      expect(result['isError'], isFalse);
+    });
+
+    test('image result serialises as an image content block', () async {
+      final result = await callWith([
+        McpTool(
+          name: 't',
+          description: '',
+          inputSchema: const {'type': 'object'},
+          run: (ctx, args) =>
+              McpToolResult.image(Uint8List.fromList([1, 2, 3]), text: 'cap'),
+        ),
+      ]);
+
+      final content = result['content'] as List;
+      expect(content.first, {
+        'type': 'image',
+        'data': base64Encode([1, 2, 3]),
+        'mimeType': 'image/png',
+      });
+      expect(content.last, {'type': 'text', 'text': 'cap'});
+    });
+
+    test('a mutating tool is checkpointed before it runs', () async {
+      late int sceneSizeSeenByTool;
+      final result = await callWith([
+        McpTool(
+          name: 't',
+          description: '',
+          inputSchema: const {'type': 'object'},
+          mutates: true,
+          run: (ctx, args) {
+            sceneSizeSeenByTool = ctx.checkpoints.list().length;
+            return const McpToolResult('ok');
+          },
+        ),
+      ]);
+
+      expect(result['isError'], isFalse);
+      expect(sceneSizeSeenByTool, 1);
     });
   });
 }

@@ -8,6 +8,7 @@ import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 import 'app_version.dart';
 import 'diagram_spec.dart';
+import 'mcp_host.dart';
 import 'mcp_http_handler.dart';
 
 /// Local control server embedded in the FlowCraft desktop app.
@@ -37,7 +38,9 @@ class FlowcraftControlServer {
     required SketchController controller,
     this.port = 5199,
     Directory? configDir,
+    McpProjectsHost? projects,
   }) : _controller = controller,
+       _projects = projects,
        _configDir = configDir ?? _defaultConfigDir();
 
   static Directory _defaultConfigDir() {
@@ -49,6 +52,7 @@ class FlowcraftControlServer {
   }
 
   final SketchController _controller;
+  final McpProjectsHost? _projects;
   final int port;
   final Directory _configDir;
 
@@ -71,6 +75,7 @@ class FlowcraftControlServer {
   late final McpHttpHandler _mcp = McpHttpHandler(
     controller: _controller,
     token: _token,
+    projects: _projects,
   );
 
   File get _tokenFile =>

@@ -94,6 +94,22 @@ void main() {
       },
     );
 
+    test('bounds crops to region', () async {
+      final bytes = await CanvasExporter.renderPng(
+        [_rect()],
+        background: _background,
+        pixelRatio: 1.0,
+        // Padding must be ignored: the region is the image.
+        bounds: const Rect.fromLTWH(120, 60, 80, 40),
+      );
+
+      final image = await _decode(bytes);
+      addTearDown(image.dispose);
+
+      expect(image.width, 80);
+      expect(image.height, 40);
+    });
+
     test('emits a decodable PNG', () async {
       final bytes = await CanvasExporter.renderPng([
         _rect(),

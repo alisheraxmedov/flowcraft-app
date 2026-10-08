@@ -6,6 +6,7 @@ import 'package:flowcraft/flowcraft.dart';
 // Not part of the barrel — the transport's limits are internal to the
 // server, but they are exactly what these tests have to name.
 import 'package:flowcraft/services/mcp_http_handler.dart';
+import 'package:flowcraft/services/mcp_host.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A controller whose draw path fails with a message that names a local
@@ -18,6 +19,12 @@ class _ExplodingController extends SketchController {
 }
 
 void main() {
+  // `renderPng` (flowcraft_screenshot) needs a live engine binding, whose
+  // test HttpOverrides would answer every real request with a 400 — the
+  // server under test is real, so those overrides are lifted again.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  HttpOverrides.global = null;
+
   late Directory tempConfigDir;
   late SketchController controller;
   late FlowcraftControlServer server;
@@ -446,6 +453,10 @@ void main() {
         'flowcraft_update',
         'flowcraft_delete',
         'flowcraft_clear',
+        'flowcraft_screenshot',
+        'flowcraft_guide',
+        'flowcraft_checkpoint',
+        'flowcraft_project',
       ]);
       // A tool without a usable schema is unusable to a model, so make
       // sure the full JSON Schema survives serialization.
@@ -1093,5 +1104,350 @@ void main() {
       expect(response.statusCode, 200);
       await response.drain<void>();
     });
+
+    group('filtered flowcraft_read, screenshot, guide, checkpoints', () {
+      Future<Map<String, dynamic>> call(
+        String name, [
+        Map<String, dynamic> arguments = const {},
+      ]) async {
+        final body = await rpc(
+          'tools/call',
+          params: {'name': name, 'arguments': arguments},
+        );
+        return body['result'] as Map<String, dynamic>;
+      }
+
+      Map<String, dynamic> jsonOf(Map<String, dynamic> result) =>
+          jsonDecode((result['content'] as List).first['text'] as String)
+              as Map<String, dynamic>;
+
+      Future<void> drawThree() => call('flowcraft_draw', {
+        'elements': [
+          {'type': 'rectangle', 'x': 0, 'y': 0, 'width': 50, 'height': 50},
+          {'type': 'ellipse', 'x': 500, 'y': 0, 'width': 50, 'height': 50},
+          {'type': 'rectangle', 'x': 1000, 'y': 0, 'width': 50, 'height': 50},
+        ],
+      });
+
+      test('read filters by types', () async {
+        await drawThree();
+
+        final json = jsonOf(
+          await call('flowcraft_read', {
+            'types': ['ellipse'],
+          }),
+        );
+
+        expect(json['total'], 1);
+        expect((json['elements'] as List).single['type'], 'ellipse');
+      });
+
+      test('read filters by ids', () async {
+        await drawThree();
+        final all = jsonOf(await call('flowcraft_read'));
+        final second = (all['elements'] as List)[1]['id'];
+
+        final json = jsonOf(
+          await call('flowcraft_read', {
+            'ids': [second],
+          }),
+        );
+
+        expect(json['total'], 1);
+        expect((json['elements'] as List).single['id'], second);
+      });
+
+      test('read region intersects element bounds', () async {
+        await drawThree();
+
+        final json = jsonOf(
+          await call('flowcraft_read', {
+            'region': {'x': 490, 'y': 10, 'width': 30, 'height': 30},
+          }),
+        );
+
+        expect(json['total'], 1);
+        expect((json['elements'] as List).single['type'], 'ellipse');
+      });
+
+      test('read pages with limit, offset and nextOffset', () async {
+        await drawThree();
+
+        final first = jsonOf(await call('flowcraft_read', {'limit': 2}));
+        expect(first['total'], 3);
+        expect(first['count'], 2);
+        expect(first['nextOffset'], 2);
+
+        final last = jsonOf(
+          await call('flowcraft_read', {'limit': 2, 'offset': 2}),
+        );
+        expect((last['elements'] as List).length, 1);
+        expect(last.containsKey('nextOffset'), isFalse);
+      });
+
+      test('read rejects wrongly typed filters instead of crashing', () async {
+        final result = await call('flowcraft_read', {'types': 'rectangle'});
+
+        expect(result['isError'], isTrue);
+      });
+
+      test(
+        'screenshot returns an image block starting with PNG magic bytes',
+        () async {
+          await drawThree();
+
+          final result = await call('flowcraft_screenshot', {'maxSide': 400});
+
+          expect(result['isError'], isFalse);
+          final image = (result['content'] as List).first as Map;
+          expect(image['type'], 'image');
+          expect(image['mimeType'], 'image/png');
+          final bytes = base64Decode(image['data'] as String);
+          expect(bytes.sublist(0, 8), [137, 80, 78, 71, 13, 10, 26, 10]);
+        },
+      );
+
+      test('screenshot of an empty selection fails', () async {
+        final result = await call('flowcraft_screenshot');
+
+        expect(result['isError'], isTrue);
+      });
+
+      test(
+        'guide returns the requested topic and rejects unknown ones',
+        () async {
+          final layout = await call('flowcraft_guide', {'topic': 'layout'});
+          expect(
+            (layout['content'] as List).single['text'],
+            contains('260x120'),
+          );
+
+          final bad = await call('flowcraft_guide', {'topic': 'nope'});
+          expect(bad['isError'], isTrue);
+        },
+      );
+
+      test(
+        'draw → list shows cp-1 → restore brings scene back and canUndo is true',
+        () async {
+          await drawThree();
+
+          final listed = jsonOf(
+            await call('flowcraft_checkpoint', {'action': 'list'}),
+          );
+          final cps = listed['checkpoints'] as List;
+          expect(cps.single['id'], 'cp-1');
+          expect(cps.single['elementCount'], 0);
+
+          final restored = await call('flowcraft_checkpoint', {
+            'action': 'restore',
+            'id': 'cp-1',
+          });
+
+          expect(restored['isError'], isFalse);
+          expect(controller.elements, isEmpty);
+          // History-tracked, so Ctrl+Z in the app undoes the restore.
+          expect(controller.canUndo, isTrue);
+        },
+      );
+
+      test('restoring an unknown checkpoint fails', () async {
+        final result = await call('flowcraft_checkpoint', {
+          'action': 'restore',
+          'id': 'cp-99',
+        });
+
+        expect(result['isError'], isTrue);
+      });
+    });
   });
+
+  group('flowcraft_project', () {
+    late _FakeHost host;
+    late FlowcraftControlServer withHost;
+    late Uri hostBase;
+
+    setUp(() async {
+      host = _FakeHost(controller);
+      withHost = FlowcraftControlServer(
+        controller: controller,
+        port: 0,
+        configDir: tempConfigDir,
+        projects: host.asHost,
+      );
+      await withHost.start();
+      hostBase = Uri.parse('http://127.0.0.1:${withHost.boundPort}/mcp');
+    });
+
+    tearDown(() => withHost.stop());
+
+    Future<Map<String, dynamic>> project(
+      Map<String, dynamic> args, {
+      Uri? at,
+    }) async {
+      final request = await client.postUrl(at ?? hostBase);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('X-Flowcraft-Token', withHost.token);
+      request.write(
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'tools/call',
+          'params': {'name': 'flowcraft_project', 'arguments': args},
+        }),
+      );
+      final response = await request.close();
+      final body = await readJson(response);
+      return body['result'] as Map<String, dynamic>;
+    }
+
+    String textOf(Map<String, dynamic> r) =>
+        (r['content'] as List).single['text'] as String;
+
+    test('list JSON', () async {
+      final result = await project({'action': 'list'});
+
+      final projects = (jsonDecode(textOf(result)) as Map)['projects'] as List;
+      expect(projects.map((p) => p['name']), ['Alpha', 'Beta']);
+      expect(projects.first['active'], isTrue);
+    });
+
+    test('open by name switches activeId and frames', () async {
+      final gen = controller.frameRequestGen;
+
+      final result = await project({'action': 'open', 'name': 'beta'});
+
+      expect(result['isError'], isFalse);
+      expect(host.active, 'p2');
+      expect(controller.frameRequestGen, greaterThan(gen));
+    });
+
+    test('ambiguous name fails', () async {
+      host.projects.add(_project('p3', 'Beta'));
+
+      final result = await project({'action': 'open', 'name': 'Beta'});
+
+      expect(result['isError'], isTrue);
+      expect(textOf(result), contains('p2'));
+      expect(host.active, 'p1');
+    });
+
+    test('create and rename go through the host', () async {
+      final created = await project({'action': 'create', 'name': 'Gamma'});
+      expect(created['isError'], isFalse);
+      expect(host.projects.last.name, 'Gamma');
+      expect(host.active, host.projects.last.id);
+
+      final renamed = await project({
+        'action': 'rename',
+        'id': 'p1',
+        'name': 'Alpha 2',
+      });
+      expect(renamed['isError'], isFalse);
+      expect(host.projects.first.name, 'Alpha 2');
+    });
+
+    test('wrongly typed arguments fail cleanly', () async {
+      final result = await project({'action': 'open', 'id': 7});
+
+      expect(result['isError'], isTrue);
+    });
+
+    test('a checkpoint from another project is refused', () async {
+      // The host's active project is p1 while this draw is checkpointed.
+      await project({'action': 'list'});
+      final draw = await client.postUrl(hostBase);
+      draw.headers.contentType = ContentType.json;
+      draw.headers.set('X-Flowcraft-Token', withHost.token);
+      draw.write(
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'tools/call',
+          'params': {
+            'name': 'flowcraft_draw',
+            'arguments': {
+              'elements': [
+                {'type': 'rectangle', 'x': 0, 'y': 0, 'width': 5, 'height': 5},
+              ],
+            },
+          },
+        }),
+      );
+      await (await draw.close()).drain<void>();
+      await project({'action': 'open', 'id': 'p2'});
+
+      final request = await client.postUrl(hostBase);
+      request.headers.contentType = ContentType.json;
+      request.headers.set('X-Flowcraft-Token', withHost.token);
+      request.write(
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'tools/call',
+          'params': {
+            'name': 'flowcraft_checkpoint',
+            'arguments': {'action': 'restore', 'id': 'cp-1'},
+          },
+        }),
+      );
+      final body = await readJson(await request.close());
+
+      final result = body['result'] as Map<String, dynamic>;
+      expect(result['isError'], isTrue);
+      expect(textOf(result), contains('another project'));
+    });
+
+    test('no host → unavailable', () async {
+      final result = await project({
+        'action': 'list',
+      }, at: base.replace(path: '/mcp'));
+
+      expect(result['isError'], isTrue);
+      expect(textOf(result), contains('unavailable'));
+    });
+  });
+}
+
+FlowProject _project(String id, String name) => FlowProject(
+  id: id,
+  name: name,
+  createdAt: DateTime(2026),
+  updatedAt: DateTime(2026),
+  elementCount: 0,
+);
+
+/// In-memory stand-in for the closures `McpViewModel` wires onto
+/// `ProjectsViewModel`: opening loads a one-rectangle scene, as a real open
+/// would load the saved one.
+class _FakeHost {
+  _FakeHost(this._controller);
+
+  final SketchController _controller;
+  final List<FlowProject> projects = [
+    _project('p1', 'Alpha'),
+    _project('p2', 'Beta'),
+  ];
+  String? active = 'p1';
+
+  McpProjectsHost get asHost => McpProjectsHost(
+    list: () => List.of(projects),
+    activeId: () => active,
+    open: (id) async {
+      active = id;
+      _controller.loadScene([
+        SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 100, 50)),
+      ]);
+    },
+    create: (name) async {
+      final p = _project('p${projects.length + 1}', name);
+      projects.add(p);
+      active = p.id;
+      _controller.loadScene(const []);
+    },
+    rename: (id, name) async {
+      final i = projects.indexWhere((p) => p.id == id);
+      projects[i] = projects[i].copyWith(name: name);
+    },
+  );
 }

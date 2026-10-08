@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flowcraft/core/domain/arrow_binding.dart';
+import 'package:flowcraft/models/flow_project.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
@@ -9,6 +13,9 @@ import 'app_version.dart';
 import 'canvas_exporter.dart';
 import 'diagram_layout.dart';
 import 'diagram_spec.dart';
+import 'mcp_checkpoints.dart';
+import 'mcp_guide.dart';
+import 'mcp_host.dart';
 
 /// The tools the app's built-in MCP server exposes, in `tools/list` order.
 ///
@@ -37,8 +44,9 @@ const List<McpTool> flowcraftMcpTools = [
         'flowcraft_delete: those tools address elements by the id this '
         'returns, so you can correct one shape (move/resize/recolour/relabel '
         'or delete it) instead of clearing the board and redrawing '
-        'everything.',
-    inputSchema: _emptySchema,
+        'everything. Large canvases: narrow with ids / types / region, and '
+        'page with limit and offset (the reply carries total and nextOffset).',
+    inputSchema: _readSchema,
     run: _runRead,
   ),
   McpTool(
@@ -56,6 +64,7 @@ const List<McpTool> flowcraftMcpTools = [
         'instead — it positions the boxes for you.',
     inputSchema: _drawSchema,
     run: _runDraw,
+    mutates: true,
   ),
   McpTool(
     name: 'flowcraft_diagram',
@@ -70,6 +79,7 @@ const List<McpTool> flowcraftMcpTools = [
         'dependency graphs, state machines and architecture diagrams.',
     inputSchema: _diagramSchema,
     run: _runDiagram,
+    mutates: true,
   ),
   McpTool(
     name: 'flowcraft_update',
@@ -85,6 +95,7 @@ const List<McpTool> flowcraftMcpTools = [
         'way — delete it and draw a new one instead.',
     inputSchema: _updateSchema,
     run: _runUpdate,
+    mutates: true,
   ),
   McpTool(
     name: 'flowcraft_delete',
@@ -95,12 +106,55 @@ const List<McpTool> flowcraftMcpTools = [
         'rather than the whole board.',
     inputSchema: _deleteSchema,
     run: _runDelete,
+    mutates: true,
   ),
   McpTool(
     name: 'flowcraft_clear',
     description: 'Removes every shape from the FlowCraft canvas.',
     inputSchema: _emptySchema,
     run: _runClear,
+    mutates: true,
+  ),
+  McpTool(
+    name: 'flowcraft_screenshot',
+    description:
+        'Returns a PNG image of the canvas (or only the elements matching '
+        'ids / types / region) so you can look at what you drew and fix '
+        'overlaps, clipped text or crossed arrows. Fails when nothing '
+        'matches.',
+    inputSchema: _screenshotSchema,
+    run: _runScreenshot,
+  ),
+  McpTool(
+    name: 'flowcraft_guide',
+    description:
+        'Returns the FlowCraft drawing guide: every tool, the element '
+        'vocabulary, layout and colour conventions, and examples. Read it '
+        'once before drawing.',
+    inputSchema: _guideSchema,
+    run: _runGuide,
+  ),
+  McpTool(
+    name: 'flowcraft_checkpoint',
+    description:
+        'Canvas snapshots. A checkpoint is taken automatically before every '
+        'tool that changes the canvas (the last 20 are kept, in memory). '
+        'action "list" shows them, "create" takes one now (optional label), '
+        '"restore" with an id brings that scene back; the restore is one '
+        'undo step in the app. A checkpoint can only be restored in the '
+        'project it was taken in.',
+    inputSchema: _checkpointSchema,
+    run: _runCheckpoint,
+  ),
+  McpTool(
+    name: 'flowcraft_project',
+    description:
+        'Manages the saved whiteboards. action "list" shows them, "current" '
+        'the open one, "open" switches to one by id or unique name, "create" '
+        'starts a new empty one with a name, "rename" renames the project '
+        'with the given id. Switching saves the outgoing project first.',
+    inputSchema: _projectSchema,
+    run: _runProject,
   ),
 ];
 
@@ -117,6 +171,7 @@ class McpTool {
     required this.description,
     required this.inputSchema,
     required this.run,
+    this.mutates = false,
   });
 
   final String name;
@@ -125,11 +180,17 @@ class McpTool {
   /// JSON Schema for `arguments`, sent verbatim in `tools/list`.
   final Map<String, Object?> inputSchema;
 
-  final McpToolResult Function(
-    SketchController controller,
+  /// May await (a screenshot rasterises), hence [FutureOr].
+  final FutureOr<McpToolResult> Function(
+    McpToolContext ctx,
     Map<String, Object?> arguments,
   )
   run;
+
+  /// Whether a call changes the canvas. The handler snapshots the scene
+  /// into [McpCheckpoints] before running such a tool, so a bad edit by an
+  /// agent can be rolled back with `flowcraft_checkpoint`.
+  final bool mutates;
 
   /// This tool's entry in a `tools/list` result.
   Map<String, Object?> toJson() => {
@@ -146,18 +207,40 @@ class McpTool {
 /// That's what lets the model read the failure text and retry on its own;
 /// a JSON-RPC error would be swallowed by the client's transport layer.
 class McpToolResult {
-  const McpToolResult(this.text) : isError = false;
-  const McpToolResult.failed(this.text) : isError = true;
+  const McpToolResult(this.text) : isError = false, png = null;
+  const McpToolResult.failed(this.text) : isError = true, png = null;
+
+  /// A PNG image block, optionally followed by a caption.
+  McpToolResult.image(Uint8List this.png, {String? text})
+    : text = text ?? '',
+      isError = false;
 
   final String text;
   final bool isError;
+  final Uint8List? png;
 
   Map<String, Object?> toJson() => {
     'content': [
-      {'type': 'text', 'text': text},
+      if (png != null)
+        {'type': 'image', 'data': base64Encode(png!), 'mimeType': 'image/png'},
+      if (png == null || text.isNotEmpty) {'type': 'text', 'text': text},
     ],
     'isError': isError,
   };
+}
+
+/// What a tool handler works on: the live canvas, the checkpoint ring and
+/// (null in tests that don't wire one) the saved-project library.
+class McpToolContext {
+  const McpToolContext({
+    required this.controller,
+    required this.checkpoints,
+    this.projects,
+  });
+
+  final SketchController controller;
+  final McpCheckpoints checkpoints;
+  final McpProjectsHost? projects;
 }
 
 const Map<String, Object?> _emptySchema = {
@@ -221,6 +304,103 @@ const Map<String, Object?> _elementProperties = {
         'Hex color as "#RRGGBB" or "#AARRGGBB", '
         'optional. No fill if omitted.',
   },
+};
+
+/// Filters shared by every tool that works on "some of the canvas".
+const Map<String, Object?> _selectionProperties = {
+  'ids': {
+    'type': 'array',
+    'items': {'type': 'string'},
+    'description': 'Only these element ids.',
+  },
+  'types': {
+    'type': 'array',
+    'items': {'type': 'string'},
+    'description': 'Only these element types, e.g. ["rectangle", "arrow"].',
+  },
+  'region': {
+    'type': 'object',
+    'description': 'Only elements whose bounds touch this canvas rectangle.',
+    'properties': {
+      'x': {'type': 'number'},
+      'y': {'type': 'number'},
+      'width': {'type': 'number'},
+      'height': {'type': 'number'},
+    },
+    'required': ['x', 'y', 'width', 'height'],
+  },
+};
+
+const Map<String, Object?> _readSchema = {
+  'type': 'object',
+  'properties': {
+    ..._selectionProperties,
+    'limit': {
+      'type': 'integer',
+      'description': 'Page size, 1-2000. Default 500.',
+    },
+    'offset': {
+      'type': 'integer',
+      'description': 'Elements to skip, for paging. Default 0.',
+    },
+  },
+};
+
+const Map<String, Object?> _screenshotSchema = {
+  'type': 'object',
+  'properties': {
+    ..._selectionProperties,
+    'maxSide': {
+      'type': 'integer',
+      'description':
+          'Longest side of the image in pixels, 64-8192. Default 1568. '
+          'Smaller images are cheaper to look at.',
+    },
+  },
+};
+
+const Map<String, Object?> _guideSchema = {
+  'type': 'object',
+  'properties': {
+    'topic': {
+      'type': 'string',
+      'enum': ['all', 'tools', 'vocabulary', 'layout', 'style', 'examples'],
+      'description': 'Section to return. Default all.',
+    },
+  },
+};
+
+const Map<String, Object?> _checkpointSchema = {
+  'type': 'object',
+  'properties': {
+    'action': {
+      'type': 'string',
+      'enum': ['list', 'create', 'restore'],
+    },
+    'id': {'type': 'string', 'description': 'Checkpoint id for restore.'},
+    'label': {'type': 'string', 'description': 'Optional name for create.'},
+  },
+  'required': ['action'],
+};
+
+const Map<String, Object?> _projectSchema = {
+  'type': 'object',
+  'properties': {
+    'action': {
+      'type': 'string',
+      'enum': ['list', 'current', 'open', 'create', 'rename'],
+    },
+    'id': {
+      'type': 'string',
+      'description': 'Project id (open by id, or the project to rename).',
+    },
+    'name': {
+      'type': 'string',
+      'description':
+          'open: project name instead of id. create / rename: the new name.',
+    },
+  },
+  'required': ['action'],
 };
 
 const Map<String, Object?> _drawSchema = {
@@ -354,10 +534,8 @@ const Map<String, Object?> _deleteSchema = {
 /// Reaching this handler at all proves the app is up — the server running
 /// it *is* the app — so the interesting parts of the answer are which
 /// build this is and how much is currently on the canvas.
-McpToolResult _runStatus(
-  SketchController controller,
-  Map<String, Object?> arguments,
-) {
+McpToolResult _runStatus(McpToolContext ctx, Map<String, Object?> arguments) {
+  final controller = ctx.controller;
   final count = controller.elements.length;
   return McpToolResult(
     'FlowCraft app (version $appVersion) is running and reachable. The '
@@ -365,10 +543,8 @@ McpToolResult _runStatus(
   );
 }
 
-McpToolResult _runDraw(
-  SketchController controller,
-  Map<String, Object?> arguments,
-) {
+McpToolResult _runDraw(McpToolContext ctx, Map<String, Object?> arguments) {
+  final controller = ctx.controller;
   final raw = arguments['elements'];
   if (raw is! List || raw.isEmpty) {
     return const McpToolResult.failed('No elements provided.');
@@ -404,10 +580,8 @@ Set<String> _bindableIds(SketchController controller) => {
     if (ArrowBinding.isBindable(e)) e.id,
 };
 
-McpToolResult _runDiagram(
-  SketchController controller,
-  Map<String, Object?> arguments,
-) {
+McpToolResult _runDiagram(McpToolContext ctx, Map<String, Object?> arguments) {
+  final controller = ctx.controller;
   final nodes = arguments['nodes'];
   final edges = arguments['edges'] ?? const [];
   if (nodes is! List || edges is! List) {
@@ -452,24 +626,31 @@ McpToolResult _runDiagram(
   );
 }
 
-/// Serialises the whole canvas as JSON text so the model gets one parseable
-/// blob rather than prose it has to scrape ids out of. Each element carries
-/// its `id`, which is the handle `flowcraft_update`/`flowcraft_delete` then
-/// address it by.
-McpToolResult _runRead(
-  SketchController controller,
-  Map<String, Object?> arguments,
-) {
-  final described = describeDiagramElements(controller.elements);
+/// Serialises (a page of) the canvas as JSON text so the model gets one
+/// parseable blob rather than prose it has to scrape ids out of. Each element
+/// carries its `id`, which is the handle `flowcraft_update`/`flowcraft_delete`
+/// then address it by. `count` is the size of this page; `total` is how many
+/// elements matched the filters.
+McpToolResult _runRead(McpToolContext ctx, Map<String, Object?> arguments) {
+  final selected = selectElements(ctx.controller, arguments);
+  final limit = _intArg(arguments, 'limit', 500, 1, 2000);
+  final offset = _intArg(arguments, 'offset', 0, 0, 1 << 30);
+  final page = selected.skip(offset).take(limit).toList();
+  final next = offset + page.length;
   return McpToolResult(
-    jsonEncode({'count': described.length, 'elements': described}),
+    jsonEncode({
+      'count': page.length,
+      'total': selected.length,
+      'offset': offset,
+      'limit': limit,
+      if (next < selected.length) 'nextOffset': next,
+      'elements': describeDiagramElements(page),
+    }),
   );
 }
 
-McpToolResult _runUpdate(
-  SketchController controller,
-  Map<String, Object?> arguments,
-) {
+McpToolResult _runUpdate(McpToolContext ctx, Map<String, Object?> arguments) {
+  final controller = ctx.controller;
   final raw = arguments['elements'];
   if (raw is! List || raw.isEmpty) {
     return const McpToolResult.failed(
@@ -532,10 +713,8 @@ McpToolResult _runUpdate(
   return McpToolResult(message.toString());
 }
 
-McpToolResult _runDelete(
-  SketchController controller,
-  Map<String, Object?> arguments,
-) {
+McpToolResult _runDelete(McpToolContext ctx, Map<String, Object?> arguments) {
+  final controller = ctx.controller;
   final raw = arguments['ids'];
   if (raw is! List || raw.isEmpty) {
     return const McpToolResult.failed(
@@ -569,10 +748,354 @@ McpToolResult _runDelete(
   return McpToolResult(message.toString());
 }
 
-McpToolResult _runClear(
-  SketchController controller,
-  Map<String, Object?> arguments,
-) {
+McpToolResult _runClear(McpToolContext ctx, Map<String, Object?> arguments) {
+  final controller = ctx.controller;
   controller.clear();
   return const McpToolResult('Canvas cleared.');
+}
+
+// ── Selection & argument validation ─────────────────────────────────────
+
+/// Elements matching `ids`, `types` and `region` in [args], in stacking
+/// order. Absent filters match everything. Shared by read and screenshot so
+/// "the same selection" means the same thing everywhere.
+List<SketchElement> selectElements(
+  SketchController controller,
+  Map<String, Object?> args,
+) {
+  final ids = _stringSet(args, 'ids');
+  final types = _stringSet(args, 'types');
+  final region = _region(args['region']);
+  return [
+    for (final e in controller.elements)
+      if ((ids == null || ids.contains(e.id)) &&
+          (types == null || types.contains(e.toJson()['type'])) &&
+          (region == null || _touches(e.bounds, region)))
+        e,
+  ];
+}
+
+/// Closed-interval overlap: [Rect.overlaps] ignores zero-area bounds (a
+/// horizontal line), which a region should still catch.
+bool _touches(Rect a, Rect b) =>
+    a.left <= b.right &&
+    b.left <= a.right &&
+    a.top <= b.bottom &&
+    b.top <= a.bottom;
+
+Set<String>? _stringSet(Map<String, Object?> args, String key) {
+  final raw = args[key];
+  if (raw == null) return null;
+  if (raw is! List || raw.any((e) => e is! String)) {
+    throw DiagramSpecException('"$key" must be an array of strings.');
+  }
+  return raw.cast<String>().toSet();
+}
+
+Rect? _region(Object? raw) {
+  if (raw == null) return null;
+  double side(String key) {
+    final v = raw is Map ? raw[key] : null;
+    if (v is! num || !v.isFinite) {
+      throw DiagramSpecException(
+        '"region" must be an object with finite numbers x, y, width, height.',
+      );
+    }
+    return v.toDouble();
+  }
+
+  final rect = Rect.fromLTWH(
+    side('x'),
+    side('y'),
+    side('width'),
+    side('height'),
+  );
+  if (rect.width < 0 || rect.height < 0) {
+    throw DiagramSpecException('"region" width and height cannot be negative.');
+  }
+  return rect;
+}
+
+int _intArg(
+  Map<String, Object?> args,
+  String key,
+  int fallback,
+  int lo,
+  int hi,
+) {
+  final raw = args[key];
+  if (raw == null) return fallback;
+  if (raw is! num || raw != raw.truncate() || raw < lo || raw > hi) {
+    throw DiagramSpecException('"$key" must be an integer from $lo to $hi.');
+  }
+  return raw.toInt();
+}
+
+String? _stringArg(Map<String, Object?> args, String key) {
+  final raw = args[key];
+  if (raw == null) return null;
+  if (raw is! String) throw DiagramSpecException('"$key" must be a string.');
+  return raw;
+}
+
+// ── screenshot / guide ──────────────────────────────────────────────────
+
+/// A reply bigger than this is wasted on a model (and some clients refuse
+/// it), so the render is retried at half resolution.
+const int _maxScreenshotBytes = 4 * 1024 * 1024;
+
+Future<McpToolResult> _runScreenshot(
+  McpToolContext ctx,
+  Map<String, Object?> arguments,
+) async {
+  final selected = selectElements(ctx.controller, arguments);
+  if (selected.isEmpty) {
+    return const McpToolResult.failed(
+      'Nothing to capture: no element matches (or the canvas is empty).',
+    );
+  }
+  final maxSide = _intArg(arguments, 'maxSide', 1568, 64, 8192);
+  final region = _region(arguments['region']);
+  final frame = region ?? CanvasExporter.contentBounds(selected).inflate(32);
+  var ratio = math.min(
+    2.0,
+    maxSide / math.max(1.0, math.max(frame.width, frame.height)),
+  );
+  Uint8List png;
+  var attempt = 0;
+  do {
+    png = await CanvasExporter.renderPng(
+      selected,
+      background: const Color(0xFFFFFFFF),
+      pixelRatio: ratio,
+      bounds: region,
+    );
+    ratio /= 2;
+  } while (png.length > _maxScreenshotBytes && ++attempt <= 2);
+  if (png.length > _maxScreenshotBytes) {
+    return const McpToolResult.failed(
+      'The screenshot is too large even at reduced size; pass a smaller '
+      'region or maxSide.',
+    );
+  }
+  // IHDR: big-endian width and height at byte 16.
+  final header = ByteData.sublistView(png, 16, 24);
+  return McpToolResult.image(
+    png,
+    text:
+        '${header.getUint32(0)}x${header.getUint32(4)} px, '
+        '${selected.length} element(s).',
+  );
+}
+
+McpToolResult _runGuide(McpToolContext ctx, Map<String, Object?> arguments) {
+  final topic = _stringArg(arguments, 'topic') ?? 'all';
+  if (topic == 'all') return McpToolResult(mcpGuideText);
+  final section = mcpGuideSections[topic];
+  if (section == null) {
+    return McpToolResult.failed(
+      'Unknown topic "$topic". Use all, ${mcpGuideSections.keys.join(', ')}.',
+    );
+  }
+  return McpToolResult(section);
+}
+
+// ── checkpoints ─────────────────────────────────────────────────────────
+
+McpToolResult _runCheckpoint(
+  McpToolContext ctx,
+  Map<String, Object?> arguments,
+) {
+  final projectId = ctx.projects?.activeId();
+  final checkpoints = ctx.checkpoints;
+  switch (_stringArg(arguments, 'action')) {
+    case 'list':
+      return McpToolResult(
+        jsonEncode({
+          'checkpoints': [
+            for (final c in checkpoints.list())
+              {
+                'id': c.id,
+                'cause': c.cause,
+                'createdAt': c.createdAt.toUtc().toIso8601String(),
+                'elementCount': c.elements.length,
+                'restorable': c.projectId == projectId,
+              },
+          ],
+        }),
+      );
+    case 'create':
+      // ponytail: an unchanged scene reuses the previous checkpoint (and its
+      // cause), so a label is dropped then; add a rename if that matters.
+      final c = checkpoints.capture(
+        ctx.controller,
+        _stringArg(arguments, 'label') ?? 'manual',
+        projectId,
+      );
+      return McpToolResult(jsonEncode({'id': c.id}));
+    case 'restore':
+      final id = _stringArg(arguments, 'id');
+      if (id == null || id.isEmpty) {
+        return const McpToolResult.failed('restore needs a checkpoint "id".');
+      }
+      final target = checkpoints.find(id);
+      if (target == null) {
+        return McpToolResult.failed(
+          'No checkpoint "$id" (call action "list" for the current ones).',
+        );
+      }
+      if (target.projectId != projectId) {
+        return McpToolResult.failed(
+          'Checkpoint "$id" belongs to another project; open that project '
+          'to restore it.',
+        );
+      }
+      checkpoints.capture(ctx.controller, 'restore', projectId);
+      // History-tracked on purpose: Ctrl+Z in the app undoes the restore.
+      ctx.controller.replaceAll(target.elements);
+      return McpToolResult(
+        'Restored $id (${target.elements.length} element(s)).',
+      );
+    default:
+      return const McpToolResult.failed(
+        'action must be "list", "create" or "restore".',
+      );
+  }
+}
+
+// ── projects ────────────────────────────────────────────────────────────
+
+Future<McpToolResult> _runProject(
+  McpToolContext ctx,
+  Map<String, Object?> arguments,
+) async {
+  final host = ctx.projects;
+  if (host == null) {
+    return const McpToolResult.failed(
+      'Project management is unavailable in this session.',
+    );
+  }
+  final action = _stringArg(arguments, 'action');
+  final name = _stringArg(arguments, 'name')?.trim();
+  switch (action) {
+    case 'list':
+      final active = host.activeId();
+      return McpToolResult(
+        jsonEncode({
+          'projects': [
+            for (final p in host.list())
+              {
+                'id': p.id,
+                'name': p.name,
+                'elementCount': p.elementCount,
+                'updatedAt': p.updatedAt.toUtc().toIso8601String(),
+                'active': p.id == active,
+                if (p.isBroken) 'broken': true,
+              },
+          ],
+        }),
+      );
+    case 'current':
+      final active = host.activeId();
+      final project = _projectById(host, active);
+      if (project == null) {
+        return const McpToolResult.failed('No project is open.');
+      }
+      return McpToolResult(
+        jsonEncode({
+          'id': project.id,
+          'name': project.name,
+          'elementCount': ctx.controller.elements.length,
+        }),
+      );
+    case 'open':
+      final id = _stringArg(arguments, 'id');
+      final matches = [
+        for (final p in host.list())
+          if (id != null
+              ? p.id == id
+              : name != null && p.name.toLowerCase() == name.toLowerCase())
+            p,
+      ];
+      if (id == null && name == null) {
+        return const McpToolResult.failed('open needs an "id" or a "name".');
+      }
+      if (matches.isEmpty) {
+        return McpToolResult.failed(
+          'No project matches "${id ?? name}" (call action "list").',
+        );
+      }
+      if (matches.length > 1) {
+        return McpToolResult.failed(
+          'Several projects are named "$name"; open one by id: '
+          '${matches.map((p) => p.id).join(', ')}.',
+        );
+      }
+      final target = matches.single;
+      if (target.isBroken) {
+        return McpToolResult.failed('Project "${target.id}" is unreadable.');
+      }
+      await host.open(target.id);
+      if (host.activeId() != target.id) {
+        return McpToolResult.failed(
+          'Could not open "${target.name}"; see the app for the reason.',
+        );
+      }
+      _frameContent(ctx.controller);
+      return McpToolResult(
+        'Opened "${target.name}" (${ctx.controller.elements.length} '
+        'element(s)).',
+      );
+    case 'create':
+      if (name == null || name.isEmpty || name.length > 200) {
+        return const McpToolResult.failed(
+          'create needs a non-empty "name" of at most 200 characters.',
+        );
+      }
+      final before = host.activeId();
+      await host.create(name);
+      final created = host.activeId();
+      if (created == null || created == before) {
+        return const McpToolResult.failed(
+          'Could not create the project; see the app for the reason.',
+        );
+      }
+      _frameContent(ctx.controller);
+      return McpToolResult(jsonEncode({'id': created, 'name': name}));
+    case 'rename':
+      final id = _stringArg(arguments, 'id');
+      if (id == null || _projectById(host, id) == null) {
+        return McpToolResult.failed('rename needs the "id" of a project.');
+      }
+      if (name == null || name.isEmpty || name.length > 200) {
+        return const McpToolResult.failed(
+          'rename needs a non-empty new "name" of at most 200 characters.',
+        );
+      }
+      await host.rename(id, name);
+      if (_projectById(host, id)?.name != name) {
+        return const McpToolResult.failed(
+          'Could not rename the project; see the app for the reason.',
+        );
+      }
+      return McpToolResult('Renamed to "$name".');
+    default:
+      return const McpToolResult.failed(
+        'action must be list, current, open, create or rename.',
+      );
+  }
+}
+
+FlowProject? _projectById(McpProjectsHost host, String? id) {
+  for (final p in host.list()) {
+    if (p.id == id) return p;
+  }
+  return null;
+}
+
+/// Brings a freshly opened project's content on screen (nothing to frame on
+/// an empty canvas).
+void _frameContent(SketchController controller) {
+  if (controller.elements.isEmpty) return;
+  controller.requestFrame(CanvasExporter.contentBounds(controller.elements));
 }

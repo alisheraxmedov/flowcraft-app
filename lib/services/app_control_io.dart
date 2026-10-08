@@ -4,6 +4,7 @@ import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 import 'app_control_exception.dart';
 import 'flowcraft_control_server.dart';
+import 'mcp_host.dart';
 
 export 'app_control_exception.dart';
 
@@ -15,10 +16,17 @@ class AppControlServer {
   /// there is exactly one place that decides it ([mcpServerPortProvider])
   /// and tests can ask for port 0 — `flutter test` runs files in parallel,
   /// and a fixed port would have them fighting over one socket.
-  AppControlServer({required SketchController controller, required int port})
-    : _server = _isDesktop
-          ? FlowcraftControlServer(controller: controller, port: port)
-          : null;
+  AppControlServer({
+    required SketchController controller,
+    required int port,
+    McpProjectsHost? projects,
+  }) : _server = _isDesktop
+           ? FlowcraftControlServer(
+               controller: controller,
+               port: port,
+               projects: projects,
+             )
+           : null;
 
   static bool get _isDesktop =>
       Platform.isMacOS || Platform.isWindows || Platform.isLinux;

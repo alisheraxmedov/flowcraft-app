@@ -33,6 +33,10 @@ class CanvasExporter {
   /// painted opaque underneath so the result matches what the canvas shows
   /// rather than arriving with a transparent void behind hachure fills.
   ///
+  /// With [bounds] the image is exactly that canvas rectangle (no padding)
+  /// — a crop to a region of interest — instead of the padded union of the
+  /// elements; elements outside it are simply clipped away.
+  ///
   /// An empty [elements] list yields a blank `padding × 2` square instead of
   /// throwing, so a caller that skipped the emptiness check still gets a
   /// valid image back.
@@ -41,11 +45,12 @@ class CanvasExporter {
     required Color background,
     double pixelRatio = 2.0,
     double padding = 32,
+    Rect? bounds,
   }) async {
     assert(pixelRatio > 0, 'pixelRatio must be positive');
     assert(padding >= 0, 'padding must not be negative');
 
-    final content = contentBounds(elements).inflate(padding);
+    final content = bounds ?? contentBounds(elements).inflate(padding);
     // Clamp before rasterising: a wide scene at the default 2x ratio can
     // ask for an image past Skia's max texture size, and `toImage` answers
     // an oversized request by allocating w × h × 4 bytes and taking the app
