@@ -19,6 +19,7 @@ class FlowProject {
     required this.updatedAt,
     required this.elementCount,
     this.isBroken = false,
+    this.linkedPath,
   });
 
   /// A brand-new, empty project stamped with the current time.
@@ -73,11 +74,19 @@ class FlowProject {
   /// deleted but not opened.
   final bool isBroken;
 
+  /// Absolute path of a file the repository mirrors every save to (and
+  /// prefers over its own copy when that file is newer), or `null` when the
+  /// project is not linked. Additive in the header and the index: files
+  /// written before linking existed simply lack the key and load unlinked.
+  final String? linkedPath;
+
   FlowProject copyWith({
     String? name,
     DateTime? updatedAt,
     int? elementCount,
     bool? isBroken,
+    String? linkedPath,
+    bool clearLinkedPath = false,
   }) {
     return FlowProject(
       id: id,
@@ -86,6 +95,7 @@ class FlowProject {
       updatedAt: updatedAt ?? this.updatedAt,
       elementCount: elementCount ?? this.elementCount,
       isBroken: isBroken ?? this.isBroken,
+      linkedPath: clearLinkedPath ? null : (linkedPath ?? this.linkedPath),
     );
   }
 
@@ -96,6 +106,7 @@ class FlowProject {
       'createdAt': createdAt.toUtc().toIso8601String(),
       'updatedAt': updatedAt.toUtc().toIso8601String(),
       'elementCount': elementCount,
+      if (linkedPath != null) 'linkedPath': linkedPath,
     };
   }
 
@@ -116,6 +127,7 @@ class FlowProject {
           ? created
           : _parseTime(json['updatedAt']),
       elementCount: (json['elementCount'] as num?)?.toInt() ?? 0,
+      linkedPath: json['linkedPath'] as String?,
     );
   }
 
@@ -133,12 +145,20 @@ class FlowProject {
         other.createdAt == createdAt &&
         other.updatedAt == updatedAt &&
         other.elementCount == elementCount &&
-        other.isBroken == isBroken;
+        other.isBroken == isBroken &&
+        other.linkedPath == linkedPath;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, createdAt, updatedAt, elementCount, isBroken);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    createdAt,
+    updatedAt,
+    elementCount,
+    isBroken,
+    linkedPath,
+  );
 
   @override
   String toString() => 'FlowProject($id, "$name", $elementCount elements)';

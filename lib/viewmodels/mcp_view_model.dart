@@ -154,6 +154,14 @@ class McpViewModel extends Notifier<McpServerStatus> {
         rename: (id, name) => ref
             .read(projectsViewModelProvider.notifier)
             .renameProject(id, name),
+        link: (id, path) async {
+          final error = await ref
+              .read(projectsViewModelProvider.notifier)
+              .linkProject(id, path);
+          if (error != null) throw StateError(error);
+        },
+        unlink: (id) =>
+            ref.read(projectsViewModelProvider.notifier).unlinkProject(id),
       ),
     );
     ready = _apply(start: true);

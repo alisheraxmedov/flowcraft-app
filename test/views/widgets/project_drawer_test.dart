@@ -1,3 +1,4 @@
+import 'package:flowcraft/views/widgets/link_file_dialog.dart';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -95,6 +96,46 @@ void main() {
 
     expect(find.text('After'), findsOneWidget);
     expect(find.text('Before'), findsNothing);
+  });
+
+  testWidgets('Link to file… opens dialog and links', (tester) async {
+    final project = await repository.create('Doc');
+    await pumpDrawer(tester);
+
+    await tester.tap(find.byTooltip('Project actions').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Link to file…'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '/tmp/board.txt');
+    await tester.tap(find.text('Link'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('.flowcraft or .json'), findsWidgets);
+
+    await tester.enterText(find.byType(TextField), '/tmp/board.flowcraft');
+    await tester.tap(find.text('Link'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LinkFileDialog), findsNothing);
+    expect(
+      state().projects.firstWhere((p) => p.id == project.id).linkedPath,
+      '/tmp/board.flowcraft',
+    );
+  });
+
+  testWidgets('linked path shown, Unlink file clears it', (tester) async {
+    final project = await repository.create('Doc');
+    await repository.link(project.id, '/tmp/board.flowcraft');
+    await pumpDrawer(tester);
+
+    expect(find.text('/tmp/board.flowcraft'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Project actions').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Unlink file'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('/tmp/board.flowcraft'), findsNothing);
   });
 
   testWidgets('delete needs an explicit confirm', (tester) async {

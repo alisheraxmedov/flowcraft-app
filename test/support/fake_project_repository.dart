@@ -21,6 +21,9 @@ class FakeProjectRepository implements ProjectRepository {
   DateTime _tick() => _clock = _clock.add(const Duration(seconds: 1));
 
   @override
+  void Function(Object error)? onMirrorError;
+
+  @override
   String get directoryPath => 'memory';
 
   @override
@@ -77,6 +80,27 @@ class FakeProjectRepository implements ProjectRepository {
     );
     _scenes[id] = FlowProjectScene(project: renamed, elements: scene.elements);
     return renamed;
+  }
+
+  /// Only the extension rule is simulated — path policy belongs to the real
+  /// repository's tests.
+  @override
+  Future<FlowProject> link(String id, String path) async {
+    if (!path.endsWith('.flowcraft') && !path.endsWith('.json')) {
+      throw const ExportPathException('file must end in .flowcraft or .json');
+    }
+    final scene = await load(id);
+    final linked = scene.project.copyWith(linkedPath: path, updatedAt: _tick());
+    _scenes[id] = FlowProjectScene(project: linked, elements: scene.elements);
+    return linked;
+  }
+
+  @override
+  Future<FlowProject> unlink(String id) async {
+    final scene = await load(id);
+    final plain = scene.project.copyWith(clearLinkedPath: true);
+    _scenes[id] = FlowProjectScene(project: plain, elements: scene.elements);
+    return plain;
   }
 
   @override

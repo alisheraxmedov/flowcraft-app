@@ -1449,5 +1449,7 @@ class _FakeHost {
       final i = projects.indexWhere((p) => p.id == id);
       projects[i] = projects[i].copyWith(name: name);
     },
+    link: (id, path) async {},
+    unlink: (id) async {},
   );
 }

@@ -309,4 +309,81 @@ void main() {
       ]);
     });
   });
+
+  group('linking a file', () {
+    late Directory root;
+    late String linkedPath;
+
+    setUp(() {
+      root = Directory.systemTemp.createTempSync('fc_link_vm_');
+      final projects = Directory('${root.path}/home/.flowcraft/projects')
+        ..createSync(recursive: true);
+      Directory('${root.path}/out').createSync();
+      linkedPath = '${root.path}/out/board.flowcraft';
+      // Rebuild the container on a repo whose parent is the data dir.
+      container.dispose();
+      repository = ProjectRepository(directoryPath: projects.path);
+      container = ProviderContainer(
+        overrides: [projectRepositoryProvider.overrideWithValue(repository)],
+      );
+    });
+
+    tearDown(() async {
+      // The outer tearDown disposes the container once this has run.
+      await container.read(projectsViewModelProvider.notifier).flush();
+      root.deleteSync(recursive: true);
+    });
+
+    test('linkProject persists and mirrors', () async {
+      await model().ready;
+      final id = state().activeId!;
+      canvas().add(_rect('a'));
+
+      expect(await model().linkProject(id, linkedPath), isNull);
+
+      expect(state().active?.linkedPath, linkedPath);
+      expect(File(linkedPath).existsSync(), isTrue);
+      expect(
+        ProjectSerializer.decodeScene(
+          File(linkedPath).readAsStringSync(),
+        ).elements.map((e) => e.id),
+        ['a'],
+      );
+      expect((await repository.list()).single.linkedPath, linkedPath);
+    });
+
+    test(
+      'link refuses bad extension / missing parent / ~/.flowcraft path',
+      () async {
+        await model().ready;
+        final id = state().activeId!;
+        final data = '${root.path}/home/.flowcraft';
+
+        for (final bad in [
+          '${root.path}/out/board.txt',
+          '${root.path}/missing/board.flowcraft',
+          '$data/stolen.flowcraft',
+          'relative/board.flowcraft',
+        ]) {
+          expect(await model().linkProject(id, bad), isNotNull, reason: bad);
+        }
+        expect(state().active?.linkedPath, isNull);
+        expect(File('$data/stolen.flowcraft').existsSync(), isFalse);
+      },
+    );
+
+    test('unlink stops mirroring', () async {
+      await model().ready;
+      final id = state().activeId!;
+      await model().linkProject(id, linkedPath);
+      await model().unlinkProject(id);
+      File(linkedPath).deleteSync();
+
+      canvas().add(_rect('later'));
+      await model().flush();
+
+      expect(state().active?.linkedPath, isNull);
+      expect(File(linkedPath).existsSync(), isFalse);
+    });
+  });
 }

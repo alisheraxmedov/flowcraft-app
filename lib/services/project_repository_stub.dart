@@ -12,6 +12,9 @@ import 'package:flowcraft/models/sketch_element.dart';
 class ProjectRepository {
   ProjectRepository({String? directoryPath});
 
+  /// Present for API parity with the io build; never called here.
+  void Function(Object error)? onMirrorError;
+
   String get directoryPath => '';
 
   Future<List<FlowProject>> list() async => const <FlowProject>[];
@@ -27,6 +30,10 @@ class ProjectRepository {
 
   Future<FlowProject> rename(String id, String name) async =>
       throw _unsupported;
+
+  Future<FlowProject> link(String id, String path) async => throw _unsupported;
+
+  Future<FlowProject> unlink(String id) async => throw _unsupported;
 
   Future<void> delete(String id) async => throw _unsupported;
 

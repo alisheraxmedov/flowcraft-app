@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flowcraft/core/serialization/project_serializer.dart';
 import 'package:flowcraft/models/flow_project.dart';
 import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/services/export_file_sink_io.dart';
+import 'package:flowcraft/services/scene_import_source.dart';
 
 /// File-backed store for saved whiteboards, one JSON file per project under
 /// `~/.flowcraft/projects/` — the same config root the MCP control server
@@ -40,6 +43,12 @@ class ProjectRepository {
   static const String _tempExtension = '.tmp';
 
   final Directory _directory;
+
+  /// Told about a failure that must not fail the operation it happened in:
+  /// a linked-file mirror that could not be written, or a linked file too
+  /// damaged to read. The copy under `~/.flowcraft` is the safe one, so
+  /// these are warnings for the view model to show, never exceptions.
+  void Function(Object error)? onMirrorError;
 
   /// Headers of every project this instance has read or written, by id.
   ///
@@ -85,9 +94,38 @@ class ProjectRepository {
     if (!await file.exists()) {
       throw StateError('No project with id "$id".');
     }
-    final scene = ProjectSerializer.decodeScene(await file.readAsString());
+    var scene = ProjectSerializer.decodeScene(await file.readAsString());
+    final linked = scene.project.linkedPath;
+    if (linked != null) scene = await _preferNewer(scene, linked);
     _headers[id] = scene.project;
     return scene;
+  }
+
+  /// [local], or the linked file's scene when that file is newer — a repo
+  /// pull or an edit in another tool. The slack absorbs the gap between
+  /// [save] stamping `updatedAt` and its own mirror landing a moment later,
+  /// which would otherwise make every save look like an outside edit.
+  /// A linked file that is missing is simply ignored; one that can't be
+  /// read falls back to the local scene and is reported.
+  Future<FlowProjectScene> _preferNewer(
+    FlowProjectScene local,
+    String linked,
+  ) async {
+    try {
+      final file = File(linked);
+      if (!await file.exists()) return local;
+      final newerThan = local.project.updatedAt.add(const Duration(seconds: 2));
+      if (!(await file.stat()).modified.isAfter(newerThan)) return local;
+      final remote = ProjectSerializer.decodeScene(await file.readAsString());
+      return FlowProjectScene(
+        project: local.project.copyWith(elementCount: remote.elements.length),
+        elements: remote.elements,
+        droppedCount: remote.droppedCount,
+      );
+    } catch (error) {
+      onMirrorError?.call('Linked file $linked is unreadable: $error');
+      return local;
+    }
   }
 
   /// Overwrites [id]'s scene with [elements], bumping `updatedAt` and the
@@ -102,11 +140,68 @@ class ProjectRepository {
       elementCount: elements.length,
       isBroken: false,
     );
-    await _writeScene(FlowProjectScene(project: updated, elements: elements));
+    final source = await _writeScene(
+      FlowProjectScene(project: updated, elements: elements),
+    );
     _headers[id] = updated;
     await _upsertIndex(updated);
+    final linked = updated.linkedPath;
+    if (linked != null) {
+      try {
+        await _mirror(linked, source);
+      } catch (error) {
+        onMirrorError?.call('Could not update linked file $linked: $error');
+      }
+    }
     return updated;
   }
+
+  /// Points [id] at [path] and writes the current scene there straight
+  /// away, so a bad path is refused now rather than on some later autosave.
+  /// Nothing is persisted unless that first mirror succeeds.
+  Future<FlowProject> link(String id, String path) async {
+    final lower = path.toLowerCase();
+    if (!lower.endsWith('.flowcraft') && !lower.endsWith('.json')) {
+      throw const ExportPathException('file must end in .flowcraft or .json');
+    }
+    final target = SceneImportSource.expandHome(path.trim());
+    final file = _sceneFile(id);
+    if (!await file.exists()) throw StateError('No project with id "$id".');
+    final source = await file.readAsString();
+    final linked = ProjectSerializer.decodeHeader(
+      source,
+    ).copyWith(linkedPath: target, updatedAt: DateTime.now());
+    final next = ProjectSerializer.replaceHeader(source, linked);
+    await _mirror(target, next);
+    await _writeAtomic(file, next);
+    _headers[id] = linked;
+    await _upsertIndex(linked);
+    return linked;
+  }
+
+  /// Stops mirroring; the linked file is left on disk untouched.
+  Future<FlowProject> unlink(String id) async {
+    final file = _sceneFile(id);
+    if (!await file.exists()) throw StateError('No project with id "$id".');
+    final source = await file.readAsString();
+    final plain = ProjectSerializer.decodeHeader(
+      source,
+    ).copyWith(clearLinkedPath: true);
+    await _writeAtomic(file, ProjectSerializer.replaceHeader(source, plain));
+    _headers[id] = plain;
+    await _upsertIndex(plain);
+    return plain;
+  }
+
+  /// All path policy (absolute, no `..`, parent exists, no symlink, nothing
+  /// under the data directory) lives in [ExportFileSink.writeTo]; the data
+  /// directory is this repository's own parent, `~/.flowcraft` by default.
+  Future<void> _mirror(String path, String source) => ExportFileSink.writeTo(
+    path,
+    utf8.encode(source),
+    overwrite: true,
+    protectedDirectoryPath: _directory.parent.path,
+  );
 
   Future<FlowProject> create(String name) async {
     await _directory.create(recursive: true);
@@ -278,12 +373,12 @@ class ProjectRepository {
     return ProjectSerializer.decodeHeader(await file.readAsString());
   }
 
-  Future<void> _writeScene(FlowProjectScene scene) async {
+  /// Returns the JSON written, so [save] can mirror the very same bytes.
+  Future<String> _writeScene(FlowProjectScene scene) async {
     await _directory.create(recursive: true);
-    await _writeAtomic(
-      _sceneFile(scene.project.id),
-      ProjectSerializer.encodeScene(scene),
-    );
+    final source = ProjectSerializer.encodeScene(scene);
+    await _writeAtomic(_sceneFile(scene.project.id), source);
+    return source;
   }
 
   /// Write-then-rename so a crash mid-save leaves the previous version

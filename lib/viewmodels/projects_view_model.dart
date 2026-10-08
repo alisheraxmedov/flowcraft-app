@@ -49,6 +49,7 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
   Future<void> _operations = Future<void>.value();
 
   bool _disposed = false;
+  bool _warned = false;
 
   @override
   ProjectsState build() {
@@ -60,6 +61,13 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
       onSaved: _onSaved,
       onError: (error) => _fail('Autosave failed', error),
     );
+    // A linked-file problem is a warning, not a failed save or open: the
+    // project itself is fine. `_warned` keeps `_openProject` from clearing
+    // the banner it just raised.
+    _repository.onMirrorError = (error) {
+      _warned = true;
+      _fail('Linked file', error);
+    };
 
     // Desktop windows can close without any widget being disposed first, so
     // the last debounced edit is flushed from the exit hook rather than
@@ -105,6 +113,16 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
   Future<void> renameProject(String id, String name) =>
       _queue(() => _renameProject(id, name));
 
+  /// Links [id] to the file at [path] and mirrors to it at once. Resolves to
+  /// `null` on success, or the reason it was refused — returned rather than
+  /// put in `state.error` so the link dialog can show it inline; nothing is
+  /// persisted on a refusal.
+  Future<String?> linkProject(String id, String path) =>
+      _queue(() => _linkProject(id, path));
+
+  /// Stops mirroring [id]; the linked file stays on disk as it is.
+  Future<void> unlinkProject(String id) => _queue(() => _unlinkProject(id));
+
   Future<void> deleteProject(String id) => _queue(() => _deleteProject(id));
 
   /// Clears the last error banner once the user has read it.
@@ -115,14 +133,15 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
   /// Runs [operation] after every previously-queued one. Errors are absorbed
   /// into the chain (each operation reports its own via [_fail]) so one
   /// failure can't wedge every later switch.
-  Future<void> _queue(Future<void> Function() operation) {
+  Future<T> _queue<T>(Future<T> Function() operation) {
     final result = _operations.then((_) => operation());
-    _operations = result.catchError((Object _) {});
+    _operations = result.then<void>((_) {}, onError: (Object _) {});
     return result;
   }
 
   Future<void> _openProject(String id) async {
     if (state.activeId == id) return;
+    _warned = false;
     try {
       // Read the file *before* unbinding: strokes and MCP draw calls that
       // land while the disk is busy still belong to the outgoing project,
@@ -132,7 +151,7 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
       await _autosave.unbind();
       _replaceCanvas(scene.elements, droppedOnLoad: scene.droppedCount);
       _autosave.bind(id);
-      _set(state.copyWith(activeId: id, clearError: true));
+      _set(state.copyWith(activeId: id, clearError: !_warned));
     } catch (error) {
       // Nothing was unbound if the load threw, so the outgoing project is
       // still being autosaved — no repair needed.
@@ -164,6 +183,30 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
       _set(state.copyWith(clearError: true));
     } catch (error) {
       _fail('Could not rename project', error);
+    }
+    await refresh();
+  }
+
+  Future<String?> _linkProject(String id, String path) async {
+    try {
+      // Flush first so the first mirror already holds the pending edit.
+      if (state.activeId == id) await _autosave.flush();
+      await _repository.link(id, path);
+      _set(state.copyWith(clearError: true));
+      await refresh();
+      return null;
+    } catch (error) {
+      return '$error';
+    }
+  }
+
+  Future<void> _unlinkProject(String id) async {
+    try {
+      if (state.activeId == id) await _autosave.flush();
+      await _repository.unlink(id);
+      _set(state.copyWith(clearError: true));
+    } catch (error) {
+      _fail('Could not unlink file', error);
     }
     await refresh();
   }

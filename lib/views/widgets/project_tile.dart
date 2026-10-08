@@ -20,6 +20,8 @@ class ProjectTile extends StatelessWidget {
     required this.onOpen,
     required this.onRename,
     required this.onDelete,
+    required this.onLink,
+    required this.onUnlink,
   });
 
   final FlowProject project;
@@ -27,6 +29,8 @@ class ProjectTile extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onRename;
   final VoidCallback onDelete;
+  final VoidCallback onLink;
+  final VoidCallback onUnlink;
 
   @override
   Widget build(BuildContext context) {
@@ -80,11 +84,25 @@ class ProjectTile extends StatelessWidget {
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (project.linkedPath != null)
+                        Text(
+                          project.linkedPath!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.caption.copyWith(
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.7,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
                 _RowMenu(
                   canRename: !broken,
+                  isLinked: project.linkedPath != null,
+                  onLink: onLink,
+                  onUnlink: onUnlink,
                   onRename: onRename,
                   onDelete: onDelete,
                 ),
@@ -135,11 +153,17 @@ class _ActiveMarker extends StatelessWidget {
 class _RowMenu extends StatelessWidget {
   const _RowMenu({
     required this.canRename,
+    required this.isLinked,
+    required this.onLink,
+    required this.onUnlink,
     required this.onRename,
     required this.onDelete,
   });
 
   final bool canRename;
+  final bool isLinked;
+  final VoidCallback onLink;
+  final VoidCallback onUnlink;
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
@@ -153,6 +177,18 @@ class _RowMenu extends StatelessWidget {
           onPressed: canRename ? onRename : null,
           child: const Text('Rename'),
         ),
+        if (isLinked)
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.link_off_rounded, size: 18),
+            onPressed: onUnlink,
+            child: const Text('Unlink file'),
+          )
+        else
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.link_rounded, size: 18),
+            onPressed: canRename ? onLink : null,
+            child: const Text('Link to file…'),
+          ),
         MenuItemButton(
           leadingIcon: Icon(
             Icons.delete_outline_rounded,

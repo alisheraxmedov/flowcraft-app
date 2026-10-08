@@ -15,6 +15,8 @@ class McpProjectsHost {
     required this.open,
     required this.create,
     required this.rename,
+    required this.link,
+    required this.unlink,
   });
 
   final List<FlowProject> Function() list;
@@ -22,4 +24,8 @@ class McpProjectsHost {
   final Future<void> Function(String id) open;
   final Future<void> Function(String name) create;
   final Future<void> Function(String id, String name) rename;
+
+  /// Throws with the refusal reason when [path] is unusable.
+  final Future<void> Function(String id, String path) link;
+  final Future<void> Function(String id) unlink;
 }

@@ -436,4 +436,122 @@ void main() {
       expect(repository.load('proj_nope'), throwsA(isA<StateError>()));
     });
   });
+
+  group('linked file', () {
+    late Directory root;
+    late Directory out;
+    late ProjectRepository linkedRepo;
+    late String linkedPath;
+    final errors = <Object>[];
+
+    setUp(() {
+      root = Directory.systemTemp.createTempSync('fc_link_');
+      // Mirrors the real layout: the repo's parent is the protected data dir.
+      final projects = Directory('${root.path}/home/.flowcraft/projects')
+        ..createSync(recursive: true);
+      out = Directory('${root.path}/out')..createSync();
+      linkedPath = '${out.path}/board.flowcraft';
+      errors.clear();
+      linkedRepo = ProjectRepository(directoryPath: projects.path)
+        ..onMirrorError = errors.add;
+    });
+
+    tearDown(() => root.deleteSync(recursive: true));
+
+    File local(String id) =>
+        File('${root.path}/home/.flowcraft/projects/$id.json');
+
+    test('save mirrors to the linked file atomically', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.link(p.id, linkedPath);
+      await linkedRepo.save(id: p.id, elements: [_rect('a'), _rect('b')]);
+
+      expect(
+        File(linkedPath).readAsStringSync(),
+        local(p.id).readAsStringSync(),
+      );
+      expect(
+        out.listSync().map((e) => e.path),
+        [linkedPath],
+        reason: 'no temp file left beside the target',
+      );
+      expect(errors, isEmpty);
+    });
+
+    test('mirror failure does not fail the main save', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.link(p.id, linkedPath);
+      out.deleteSync(recursive: true);
+
+      final saved = await linkedRepo.save(id: p.id, elements: [_rect('a')]);
+
+      expect(saved.elementCount, 1);
+      expect((await linkedRepo.load(p.id)).elements.single.id, 'a');
+      expect(errors, hasLength(1));
+    });
+
+    test('load prefers a newer linked file', () async {
+      final p = await linkedRepo.create('Doc');
+      final linked = await linkedRepo.link(p.id, linkedPath);
+      File(linkedPath).writeAsStringSync(
+        ProjectSerializer.encodeScene(
+          FlowProjectScene(project: linked, elements: [_rect('x'), _rect('y')]),
+        ),
+      );
+      File(
+        linkedPath,
+      ).setLastModifiedSync(DateTime.now().add(const Duration(minutes: 5)));
+
+      final loaded = await linkedRepo.load(p.id);
+
+      expect(loaded.elements.map((e) => e.id), ['x', 'y']);
+      expect(loaded.project.linkedPath, linkedPath);
+    });
+
+    test('an older or just-mirrored linked file does not win', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.link(p.id, linkedPath);
+      await linkedRepo.save(id: p.id, elements: [_rect('mine')]);
+
+      expect((await linkedRepo.load(p.id)).elements.single.id, 'mine');
+    });
+
+    test('corrupt linked file falls back to local', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.link(p.id, linkedPath);
+      await linkedRepo.save(id: p.id, elements: [_rect('mine')]);
+      File(linkedPath).writeAsStringSync('{ not json');
+      File(
+        linkedPath,
+      ).setLastModifiedSync(DateTime.now().add(const Duration(minutes: 5)));
+
+      final loaded = await linkedRepo.load(p.id);
+
+      expect(loaded.elements.single.id, 'mine');
+      expect(errors, hasLength(1));
+    });
+
+    test('old index/header without linkedPath loads', () async {
+      final p = await repository.create('Old');
+      final scene = jsonDecode(sceneFile(p.id).readAsStringSync()) as Map;
+      expect((scene['project'] as Map).containsKey('linkedPath'), isFalse);
+      indexFile().deleteSync();
+
+      final listed = await repository.list();
+      expect(listed.single.linkedPath, isNull);
+      expect((await repository.load(p.id)).project.linkedPath, isNull);
+    });
+
+    test('link survives rename and index rebuild; unlink clears it', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.link(p.id, linkedPath);
+      await linkedRepo.rename(p.id, 'Renamed');
+      File('${root.path}/home/.flowcraft/projects/index.json').deleteSync();
+
+      expect((await linkedRepo.list()).single.linkedPath, linkedPath);
+
+      await linkedRepo.unlink(p.id);
+      expect((await linkedRepo.load(p.id)).project.linkedPath, isNull);
+    });
+  });
 }

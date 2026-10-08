@@ -7,6 +7,7 @@ import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/models/flow_project.dart';
 import 'package:flowcraft/viewmodels/projects_state.dart';
 import 'package:flowcraft/viewmodels/projects_view_model.dart';
+import 'package:flowcraft/views/widgets/link_file_dialog.dart';
 import 'package:flowcraft/views/widgets/project_dialogs.dart';
 import 'package:flowcraft/views/widgets/project_tile.dart';
 
@@ -59,6 +60,13 @@ class ProjectDrawer extends ConsumerWidget {
                   onOpen: (project) => _open(context, model, project.id),
                   onRename: (project) => _rename(context, model, project),
                   onDelete: (project) => _delete(context, model, project),
+                  onLink: (project) => showDialog<void>(
+                    context: context,
+                    builder: (_) => LinkFileDialog(
+                      onLink: (path) => model.linkProject(project.id, path),
+                    ),
+                  ),
+                  onUnlink: (project) => model.unlinkProject(project.id),
                 ),
               ),
             ],
@@ -159,12 +167,16 @@ class _ProjectList extends StatelessWidget {
     required this.onOpen,
     required this.onRename,
     required this.onDelete,
+    required this.onLink,
+    required this.onUnlink,
   });
 
   final ProjectsState state;
   final ValueChanged<FlowProject> onOpen;
   final ValueChanged<FlowProject> onRename;
   final ValueChanged<FlowProject> onDelete;
+  final ValueChanged<FlowProject> onLink;
+  final ValueChanged<FlowProject> onUnlink;
 
   @override
   Widget build(BuildContext context) {
@@ -185,6 +197,8 @@ class _ProjectList extends StatelessWidget {
           onOpen: () => onOpen(project),
           onRename: () => onRename(project),
           onDelete: () => onDelete(project),
+          onLink: () => onLink(project),
+          onUnlink: () => onUnlink(project),
         );
       },
     );
