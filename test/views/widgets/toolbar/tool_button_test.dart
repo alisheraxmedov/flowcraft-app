@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -142,5 +143,46 @@ void main() {
     expect(th.tickMarkShape, SliderTickMarkShape.noTickMark);
     expect(th.showValueIndicator, ShowValueIndicator.never);
     expect(th.activeTrackColor, FcTokens.light.accent);
+  });
+
+  testWidgets('hover tooltip is a compact pill, not a full-width bar', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _host(
+        ToolButton(tool: SketchTool.rectangle, selected: false, onTap: () {}),
+        AppTheme.light(),
+      ),
+    );
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(find.byType(ToolButton)));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final chip = find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration! as BoxDecoration).color == const Color(0x2EFFFFFF),
+    );
+    expect(chip, findsOneWidget);
+    final bubble = find.ancestor(
+      of: chip,
+      matching: find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration! as BoxDecoration).color == FcTokens.light.tooltipBg,
+      ),
+    );
+    final b = tester.getSize(bubble);
+    expect(b.width, lessThan(200));
+    expect(b.height, 28);
+    expect(tester.getSize(chip).width, lessThanOrEqualTo(24));
   });
 }

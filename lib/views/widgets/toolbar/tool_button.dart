@@ -136,19 +136,24 @@ class _KeyChip extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
       padding: const EdgeInsets.symmetric(horizontal: 5),
-      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: const Color(0x2EFFFFFF),
         borderRadius: BorderRadius.circular(5),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: 'Geist Mono',
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          height: 1,
-          color: color,
+      // Shrink-wrapped centring: `Container(alignment:)` would expand to the
+      // full width the tooltip's rich text offers a WidgetSpan.
+      child: Center(
+        widthFactor: 1,
+        heightFactor: 1,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Geist Mono',
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            height: 1,
+            color: color,
+          ),
         ),
       ),
     );
