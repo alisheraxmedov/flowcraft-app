@@ -104,8 +104,8 @@ text edit along with it.
   (`app_control`, `project_repository`, `export_file_sink`) rather than `path_provider`.
   Adding `file_picker` / `file_selector` / `path_provider` changes the macOS build's
   behaviour — don't, without deciding that tradeoff deliberately.
-- **Chrome colours come from `context.fc` (`FcTokens`), not `AppColors`.** Islands are the only
-  surfaces that blur; menus and dialogs use opaque blended glass. `blurSigma` 0 is the kill
+- **Chrome colours come from `context.fc` (`FcTokens`), not `AppColors`.** Islands, menus, popovers
+  and dialogs share one blurred glass card (`blurSigma` 24). `blurSigma` 0 is the kill
   switch for slow Windows/Linux GPUs. Chrome icons are `FcIconGlyph(FcIcons.x)`, not `Icon(Icons.x)`.
 - **Riverpod 3 has no public `ChangeNotifierProvider`.** `SketchController` stays a plain
   `ChangeNotifier`, exposed via a non-reactive `Provider<SketchController>` for DI only.

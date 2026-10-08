@@ -77,8 +77,8 @@ class EditMenuButton extends StatelessWidget {
                   if (shortcut.intent is! InsertImageIntent &&
                       shortcut.intent is! FitToContentIntent)
                     row(shortcut),
-                // Align & distribute folds into one row of Arrange (the table
-                // flags it `submenu`).
+                // Align, distribute and Zoom to fit fold into one "Align &
+                // view" row of Arrange (the table flags Align `submenu`).
                 if (group.title == 'Arrange')
                   FcSubmenu(
                     label: 'Align & view',

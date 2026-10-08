@@ -49,10 +49,10 @@ decision, live in [`CHANGESLOGS/`](CHANGESLOGS/).
   outline when the shape moves, resizes or rotates. Hold Cmd/Ctrl to leave an
   end unattached; over MCP use `fromId` / `toId`. Straight arrows do not route
   around obstacles. Older scenes load unchanged.
-- **Zoom to fit** (Shift+1, or Edit › Zoom to fit), and the view re-frames
+- **Zoom to fit** (Shift+1, or Edit › Align & view › Zoom to fit), and the view re-frames
   onto what an agent has just drawn when it landed off-screen.
 - **Align and distribute.** Align edges or centres of a multi-selection and
-  distribute three or more items evenly, from the Edit menu or the keyboard
+  distribute three or more items evenly, from the Edit menu's Align & view submenu or the keyboard
   (Cmd/Ctrl+Shift+arrows, Alt+H, Alt+V, Alt+Shift+H, Alt+Shift+V).
 - **See and verify over MCP.** `flowcraft_screenshot` returns a PNG of the
   canvas or of a selection, so an agent can check its own drawing, and
@@ -80,7 +80,7 @@ decision, live in [`CHANGESLOGS/`](CHANGESLOGS/).
   with right-angle bends.
 - **Icon library** (I). 24 built-in glyphs placed from the tool rail or by name
   over MCP.
-- **Images.** Edit › Insert image from file… (Cmd/Ctrl+Shift+I) and MCP `image`
+- **Images.** Export › Insert image from file… (Cmd/Ctrl+Shift+I) and MCP `image`
   elements embed PNG, JPEG, WebP and GIF files, up to 4 MiB each and 16 MiB per
   scene. There is no paste or drag-and-drop: the app has no plugins, and
   Flutter's clipboard is text-only.

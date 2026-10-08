@@ -305,7 +305,7 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
   whatever lies wholly inside a frame belongs to it, and dragging the frame moves its contents.
 - **Icon library** (`I`): 24 built-in glyphs (database, server, cloud, user, queue, …) chosen from
   a grid on the tool pill.
-- **Images**: **Edit › Insert image from file…** (`Cmd`+`Shift`+`I`) embeds a PNG, JPEG, WebP or GIF
+- **Images**: **Export › Insert image from file…** (`Cmd`+`Shift`+`I`) embeds a PNG, JPEG, WebP or GIF
   by path, up to 4 MiB each and 16 MiB per scene. See the [FAQ](#faq) for why there is no
   paste or drag-and-drop.
 - **ER diagrams**: entity tables with typed attribute rows and PK/FK tags, crow's-foot
@@ -339,9 +339,9 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
   windows. Z-order: bring forward, send backward, bring to front, send to back.
 - Snapping to the grid and to other elements' edges and centres, with a guide line showing why, and
   `Alt` to place something freely.
-- **Zoom to fit** (`Shift`+`1`, or **Edit › Zoom to fit**), and the view re-frames onto whatever an
+- **Zoom to fit** (`Shift`+`1`, or **Edit › Align & view › Zoom to fit**), and the view re-frames onto whatever an
   agent has just drawn if it landed off-screen.
-- **Align and distribute** a multi-selection from the **Edit** menu or the keyboard: align edges
+- **Align and distribute** a multi-selection from the **Edit** menu's *Align & view* submenu or the keyboard: align edges
   or centres, and space three or more items evenly.
 - Snapshot-based undo/redo, 50 steps deep by default. One continuous drag is one undo entry.
 - Light and dark themes (light by default), toggled from the bottom-right island, which also holds
@@ -412,8 +412,8 @@ from the live bindings so it cannot drift.
 | Arrow keys | Nudge the selection 1px (`Shift` for 10px) |
 | `?` | Shortcut reference |
 
-Everything here except Undo and Redo is also reachable from the top bar's **Edit** menu, which shows
-each binding beside its command; Undo and Redo live in the bottom-right island (the shortcuts work
+Everything here except Undo and Redo is also reachable from the top bar's **Edit** menu (Insert image
+from file… lives in the **Export** menu), which shows each binding beside its command; Undo and Redo live in the bottom-right island (the shortcuts work
 everywhere). **Clear canvas** is in the Edit menu's *Canvas* group and shows an Undo snackbar.
 
 **On the canvas:** `Shift`-click adds to or removes from the selection, and `Shift`-drag extends a
@@ -589,7 +589,7 @@ arrows are simply unattached.
 ### Can I paste or drag images in?
 
 No. FlowCraft ships with zero Flutter plugins, and Flutter's own clipboard carries text only and
-has no desktop drop target, so receiving a pasted or dropped image would need a plugin. Use **Edit ›
+has no desktop drop target, so receiving a pasted or dropped image would need a plugin. Use **Export ›
 Insert image from file…** (`Cmd`/`Ctrl`+`Shift`+`I`) and type the file's path, or have an agent send
 an `image` element with a `path` or `dataUrl`. Images are embedded in the scene, so keep them small:
 4 MiB each, 16 MiB per scene.
