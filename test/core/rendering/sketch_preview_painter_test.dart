@@ -140,6 +140,21 @@ void main() {
     });
   });
 
+  test('frame tool drag previews a rectangle outline', () async {
+    final session = SketchDragSession(
+      kind: SketchSessionKind.createBounded,
+      startCanvas: const Offset(20, 20),
+      startScreen: const Offset(20, 20),
+      style: const SketchStyle(strokeColor: Color(0xFFFF0000)),
+      tool: SketchTool.frame,
+    )..currentCanvas = const Offset(180, 180);
+    final px = await _rasterise(session);
+    int red(int x, int y) => px.getUint8((y * 200 + x) * 4 + 1);
+    // Top edge (y=20) is inked; centre is untouched white.
+    expect(red(100, 20) < 200 || red(100, 19) < 200, isTrue);
+    expect(red(100, 100), 255);
+  });
+
   test('shouldRepaint tracks revision, viewport and marquee colour only', () {
     final a = SketchPreviewPainter(
       session: null,

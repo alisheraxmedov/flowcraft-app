@@ -177,6 +177,14 @@ class SketchPreviewPainter extends CustomPainter {
       case SketchTool.sticky:
         _paintStickyPreview(canvas, rect);
         break;
+      case SketchTool.frame:
+        // Clean 1px border, like the committed SketchFrame.
+        _drawStroke(
+          canvas,
+          Path()..addRect(rect),
+          style.copyWith(strokeWidth: 1.0, strokeStyle: StrokeStyle.solid),
+        );
+        break;
       case SketchTool.line:
         _drawStroke(
           canvas,
