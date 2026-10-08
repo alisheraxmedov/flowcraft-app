@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/painting.dart' show TextPainter, TextSpan;
@@ -351,6 +352,103 @@ void main() {
         1,
         reason: 'one closed oval, not thousands of hatch lines',
       );
+    });
+  });
+
+  group('phase 2 element types', () {
+    testWidgets('image decoded once, disposed on sweep', (tester) async {
+      await tester.runAsync(() async {
+        final recorder = PictureRecorder();
+        Canvas(recorder).drawRect(
+          const Rect.fromLTWH(0, 0, 4, 4),
+          Paint()..color = const Color(0xFFFF0000),
+        );
+        final src = await recorder.endRecording().toImage(4, 4);
+        final png = (await src.toByteData(format: ImageByteFormat.png))!;
+        final image = SketchImage.create(
+          rect: const Rect.fromLTWH(0, 0, 40, 40),
+          mimeType: 'image/png',
+          bytes: png.buffer.asUint8List(),
+        );
+
+        final cache = SketchRenderCache();
+        final ready = Completer<void>();
+        cache.addListener(() {
+          if (!ready.isCompleted) ready.complete();
+        });
+        expect(cache.imageFor(image), isNull, reason: 'still decoding');
+        expect(cache.imageFor(image), isNull);
+        await ready.future;
+        final decoded = cache.imageFor(image)!;
+        expect(identical(cache.imageFor(image), decoded), isTrue);
+        expect(cache.imageDecodeCount, 1);
+
+        // Sweeping is lazy up to `sweepSlack` stale inserts.
+        final pad = SketchText.create(position: Offset.zero, text: 'x');
+        for (var i = 0; i < SketchRenderCache.sweepSlack; i++) {
+          cache.textPainter(
+            pad.copyWith(text: '$i'),
+            () => TextPainter(
+              text: const TextSpan(text: 'x'),
+              textDirection: TextDirection.ltr,
+            )..layout(),
+          );
+        }
+        cache.sweep(const [], generation: 1);
+        expect(decoded.debugDisposed, isTrue);
+        cache.dispose();
+      });
+    });
+
+    test('icon painter cached', () {
+      final cache = SketchRenderCache();
+      final icon = SketchIcon.create(
+        rect: const Rect.fromLTWH(0, 0, 64, 48),
+        name: 'database',
+      );
+      final a = cache.iconPainter(icon);
+      expect(identical(cache.iconPainter(icon), a), isTrue);
+      expect(cache.textEntryCount, 1);
+      // Sized to the shorter side.
+      expect(a.text!.style!.fontSize, 48);
+      cache.dispose();
+    });
+
+    test('elbow stroke path has bends', () {
+      const style = SketchStyle(roughness: 0.0);
+      final cache = SketchRenderCache();
+      final elbow = SketchArrow.create(
+        start: Offset.zero,
+        end: const Offset(100, 60),
+        style: style,
+        elbowed: true,
+      );
+      final straight = elbow.copyWith(elbowed: false);
+      double length(Path p) =>
+          p.computeMetrics().fold(0.0, (a, m) => a + m.length);
+      // H-V-H: 50 + 60 + 50 along the axes, against the 116.6 diagonal
+      // (the straight rough line is double-stroked, so compare per pass).
+      expect(length(cache.strokePath(elbow)), closeTo(160, 0.5));
+      expect(length(cache.strokePath(straight)), isNot(closeTo(160, 5)));
+      cache.dispose();
+    });
+
+    test('entity labels are laid out once per instance', () {
+      final cache = SketchRenderCache();
+      final e = SketchEntity.create(
+        rect: const Rect.fromLTWH(0, 0, 200, 0),
+        name: 'user',
+        attributes: const [
+          EntityAttribute(name: 'id', type: 'int', primaryKey: true),
+          EntityAttribute(name: 'name'),
+        ],
+      );
+      final labels = cache.entityLabels(e);
+      expect(identical(cache.entityLabels(e), labels), isTrue);
+      expect(labels.rows, hasLength(2));
+      expect(labels.rows[0].tag, isNotNull);
+      expect(labels.rows[1].type, isNull);
+      cache.dispose();
     });
   });
 }

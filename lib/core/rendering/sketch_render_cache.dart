@@ -1,6 +1,12 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:flutter/painting.dart' show TextPainter;
+import 'package:flutter/foundation.dart' show ChangeNotifier;
+import 'package:flutter/painting.dart'
+    show FontWeight, TextDirection, TextPainter, TextSpan, TextStyle;
+
+import 'package:flowcraft/core/domain/text_metrics.dart';
+import 'package:flowcraft/models/icon_catalog.dart';
 
 import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/models/sketch_element.dart';
@@ -28,7 +34,12 @@ import 'package:flowcraft/core/rendering/rough_generator.dart';
 /// (it was 512, FIFO) meant a 1 000-element board evicted, on every frame,
 /// exactly the entries the next frame needed — a 0 % hit rate above the
 /// cap, and every rough path rebuilt every frame.
-class SketchRenderCache {
+///
+/// Also owns the decoded [Image] of every [SketchImage] (decoded once, off
+/// the paint path, disposed when the element leaves the cache). It is a
+/// [ChangeNotifier] so a finished decode repaints whoever listens — the
+/// painter subscribes through its `repaint`.
+class SketchRenderCache extends ChangeNotifier {
   SketchRenderCache();
 
   /// Insertions tolerated between two walks of the maps by [sweep].
@@ -46,6 +57,16 @@ class SketchRenderCache {
   final Map<SketchElement, Path> _fill = {};
   final Map<SketchElement, Path> _outline = {};
   final Map<SketchElement, TextPainter> _text = {};
+  final Map<SketchEntity, EntityLabels> _entityText = {};
+
+  /// Decoded bitmaps; a present key with a `null` value is "decoding" (or
+  /// undecodable — a bad file is not retried every frame).
+  final Map<SketchImage, Image?> _images = {};
+  bool _disposed = false;
+
+  /// How many decodes have been started. Exposed for tests asserting an
+  /// image is decoded once however often it is painted.
+  int imageDecodeCount = 0;
 
   int? _sweptGen;
   int _insertsSinceSweep = 0;
@@ -104,6 +125,117 @@ class SketchRenderCache {
     TextPainter Function() build,
   ) => _text[element] ?? _insert(_text, element, build());
 
+  /// Padding between an entity's edge and its text, in canvas px.
+  static const double entityPad = 8.0;
+
+  /// Width of an entity's PK/FK tag column; zero when no row has a key, so
+  /// plain tables don't waste a gutter.
+  static double entityTagWidth(SketchEntity e) =>
+      e.attributes.any((a) => a.primaryKey || a.foreignKey)
+      ? e.fontSize * 2.4
+      : 0.0;
+
+  /// The tag text of [a] (`PK`, `FK`, `PK FK`), or null for a plain column.
+  static String? entityTag(EntityAttribute a) => a.primaryKey || a.foreignKey
+      ? [if (a.primaryKey) 'PK', if (a.foreignKey) 'FK'].join(' ')
+      : null;
+
+  /// The glyph of icon [name] laid out at [size] px in [color]. The caller
+  /// owns the painter.
+  static TextPainter layoutIcon(String name, double size, Color color) {
+    final data = iconFor(name);
+    return TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(data.codePoint),
+        style: TextStyle(
+          fontFamily: data.fontFamily,
+          package: data.fontPackage,
+          fontSize: size,
+          color: color,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+  }
+
+  /// [icon]'s glyph at `min(width, height)`, in its stroke colour and
+  /// opacity; built once per instance and owned by the cache.
+  TextPainter iconPainter(SketchIcon icon) => textPainter(
+    icon,
+    () => layoutIcon(
+      icon.name,
+      math.min(icon.rect.width, icon.rect.height),
+      icon.style.strokeColor.withValues(alpha: icon.style.opacity),
+    ),
+  );
+
+  /// Laid-out header and rows of [entity], built once per instance.
+  EntityLabels entityLabels(SketchEntity entity) =>
+      _entityText[entity] ?? _insert(_entityText, entity, _buildLabels(entity));
+
+  EntityLabels _buildLabels(SketchEntity e) {
+    final color = e.style.strokeColor.withValues(alpha: e.style.opacity);
+    TextPainter mono(String t, double size, {bool bold = false}) =>
+        TextMetrics.layout(
+          text: t,
+          fontSize: size,
+          fontFamily: 'mono',
+          fontWeight: bold ? FontWeight.w500 : null,
+          color: color,
+        );
+    return EntityLabels(
+      header: TextMetrics.layout(
+        text: e.name,
+        fontSize: e.fontSize,
+        fontWeight: FontWeight.w700,
+        color: color,
+      ),
+      rows: [
+        for (final a in e.attributes)
+          (
+            tag: entityTag(a) == null
+                ? null
+                : mono(entityTag(a)!, e.fontSize * 0.75, bold: true),
+            name: TextMetrics.layout(
+              text: a.name,
+              fontSize: e.fontSize,
+              color: color,
+            ),
+            type: a.type.isEmpty ? null : mono(a.type, e.fontSize * 0.85),
+          ),
+      ],
+    );
+  }
+
+  /// The decoded bitmap of [image], or null while it is still decoding (the
+  /// painter draws a placeholder and is repainted via [notifyListeners]).
+  Image? imageFor(SketchImage image) {
+    if (_images.containsKey(image)) return _images[image];
+    _images[image] = null;
+    _insertsSinceSweep++;
+    _decode(image);
+    return null;
+  }
+
+  Future<void> _decode(SketchImage element) async {
+    imageDecodeCount++;
+    Image? decoded;
+    try {
+      final codec = await instantiateImageCodec(element.bytes);
+      decoded = (await codec.getNextFrame()).image;
+      codec.dispose();
+    } catch (_) {
+      return; // Undecodable: stays a placeholder, not retried.
+    }
+    // Swept (or the cache closed) while decoding: nobody will paint it.
+    if (_disposed || !_images.containsKey(element)) {
+      decoded.dispose();
+      return;
+    }
+    _images[element] = decoded;
+    notifyListeners();
+  }
+
   V _insert<V>(Map<SketchElement, V> map, SketchElement element, V value) {
     _insertsSinceSweep++;
     return map[element] = value;
@@ -130,11 +262,24 @@ class SketchRenderCache {
       if (stale) painter.dispose();
       return stale;
     });
+    _entityText.removeWhere((e, labels) {
+      final stale = !live.contains(e);
+      if (stale) labels.dispose();
+      return stale;
+    });
+    _images.removeWhere((e, image) {
+      final stale = !live.contains(e);
+      if (stale) image?.dispose();
+      return stale;
+    });
   }
 
   /// Releases every cached painter. Call when the owning widget goes away;
   /// the cache is not usable afterwards.
+  @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     _insertsSinceSweep = 0;
     _stroke.clear();
     _fill.clear();
@@ -143,6 +288,15 @@ class SketchRenderCache {
       painter.dispose();
     }
     _text.clear();
+    for (final labels in _entityText.values) {
+      labels.dispose();
+    }
+    _entityText.clear();
+    for (final image in _images.values) {
+      image?.dispose();
+    }
+    _images.clear();
+    super.dispose();
   }
 
   // ── builders ─────────────────────────────────────────────────────────────
@@ -178,19 +332,44 @@ class SketchRenderCache {
       case SketchLine l:
         path = RoughGenerator.line(l.start, l.end, roughness: r, seed: seed);
       case SketchArrow a:
-        path = RoughGenerator.line(a.start, a.end, roughness: r, seed: seed);
+        path = a.elbowed
+            // Straight segments: the default smoothing would round the very
+            // bends that make the route elbowed.
+            ? RoughGenerator.polyline(
+                a.points,
+                roughness: r,
+                seed: seed,
+                smooth: false,
+              )
+            : RoughGenerator.line(a.start, a.end, roughness: r, seed: seed);
       case SketchFreedraw f:
         path = RoughGenerator.polyline(
           f.points,
           roughness: 0.0, // freehand already noisy
           seed: seed,
         );
+      case SketchFrame f:
+        // Clean 1px border, not rough: a frame is a container, not a shape.
+        path = Path()..addRect(f.rect);
+      case SketchEntity e:
+        path = RoughGenerator.rectangle(e.rect, roughness: r, seed: seed);
+        // Header and row dividers, each a rough line like the box edge.
+        for (var i = 0; i < e.attributes.length; i++) {
+          final y = e.rect.top + e.headerHeight + i * e.rowHeight;
+          path.addPath(
+            RoughGenerator.line(
+              Offset(e.rect.left, y),
+              Offset(e.rect.right, y),
+              roughness: r,
+              seed: seed + i + 1,
+            ),
+            Offset.zero,
+          );
+        }
       case SketchText _:
-      case SketchFrame _:
       case SketchIcon _:
       case SketchImage _:
-      case SketchEntity _:
-        return Path(); // Painted in phase 2 rendering.
+        return Path(); // Glyph / bitmap, drawn by the painter.
     }
     // The pattern is in canvas units (pre-zoom), so the dashed result is
     // zoom-invariant and as cacheable as the rough path itself.
@@ -219,15 +398,17 @@ class SketchRenderCache {
         return s.collapsed
             ? StickyBubbleGeometry.badgeFillPath(s.rect)
             : StickyBubbleGeometry.bubblePath(s.rect, s.cornerRadius);
+      case SketchFrame f:
+        path.addRect(f.rect);
+      case SketchEntity e:
+        path.addRect(e.rect);
       case SketchLine _:
       case SketchArrow _:
       case SketchFreedraw _:
       case SketchText _:
-      case SketchFrame _:
       case SketchIcon _:
       case SketchImage _:
-      case SketchEntity _:
-        break; // Painted in phase 2 rendering.
+        break; // No interior.
     }
     return path;
   }
@@ -271,6 +452,24 @@ class SketchRenderCache {
         return hachure;
       case FillStyle.none:
         return Path();
+    }
+  }
+}
+
+/// Laid-out text of one [SketchEntity]: the header and, per attribute, the
+/// optional tag and type (mono) around the name. Owned by the cache.
+class EntityLabels {
+  EntityLabels({required this.header, required this.rows});
+
+  final TextPainter header;
+  final List<({TextPainter? tag, TextPainter name, TextPainter? type})> rows;
+
+  void dispose() {
+    header.dispose();
+    for (final r in rows) {
+      r.tag?.dispose();
+      r.name.dispose();
+      r.type?.dispose();
     }
   }
 }

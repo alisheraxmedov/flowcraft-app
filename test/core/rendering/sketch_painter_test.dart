@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flowcraft/core/rendering/arrow_head.dart';
+import 'package:flowcraft/core/rendering/rough_generator.dart';
 import 'package:flowcraft/core/rendering/sketch_painter.dart';
 import 'package:flowcraft/core/rendering/sketch_render_cache.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
@@ -28,6 +30,7 @@ const SketchStyle _hatched = SketchStyle(
 Future<ByteData> _rasterise(
   List<SketchElement> elements, {
   Size size = const Size(200, 200),
+  ({List<String> ids, double t})? reveal,
 }) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, Offset.zero & size);
@@ -40,6 +43,7 @@ Future<ByteData> _rasterise(
     cache: SketchRenderCache(),
     selectionColor: const Color(0xFF000000),
     canvasSize: size,
+    reveal: reveal,
   ).paint(canvas, size);
   final picture = recorder.endRecording();
   final image = await picture.toImage(size.width.toInt(), size.height.toInt());
@@ -337,5 +341,100 @@ void main() {
         cache.dispose();
       },
     );
+  });
+
+  group('reveal (live draw animation)', () {
+    final box = SketchRectangle.create(
+      id: 'r',
+      rect: const Rect.fromLTWH(40, 40, 100, 80),
+      style: const SketchStyle(
+        strokeColor: _strokeBlue,
+        fillColor: _hatchRed,
+        fillStyle: FillStyle.solid,
+        roughness: 0.0,
+      ),
+    );
+
+    test('reveal t=0 paints none of the ids, t=1 all', () async {
+      final blank = await _rasterise(const []);
+      final normal = await _rasterise([box]);
+      final at0 = await _rasterise([box], reveal: (ids: ['r'], t: 0.0));
+      final at1 = await _rasterise([box], reveal: (ids: ['r'], t: 1.0));
+      expect(at0.buffer.asUint8List(), blank.buffer.asUint8List());
+      expect(at1.buffer.asUint8List(), normal.buffer.asUint8List());
+      expect(normal.buffer.asUint8List(), isNot(blank.buffer.asUint8List()));
+    });
+
+    test('elements outside the reveal paint normally', () async {
+      final normal = await _rasterise([box]);
+      final other = await _rasterise([box], reveal: (ids: ['x'], t: 0.0));
+      expect(other.buffer.asUint8List(), normal.buffer.asUint8List());
+    });
+
+    test(
+      'mid-reveal is partial: fewer ink pixels than the finished one',
+      () async {
+        int ink(ByteData px) {
+          var n = 0;
+          for (var i = 0; i < px.lengthInBytes; i += 4) {
+            if (px.getUint8(i + 1) < 200) n++;
+          }
+          return n;
+        }
+
+        final half = await _rasterise([box], reveal: (ids: ['r'], t: 0.5));
+        final full = await _rasterise([box]);
+        expect(ink(half), greaterThan(0));
+        expect(ink(half), lessThan(ink(full)));
+      },
+    );
+  });
+
+  test('v1 arrow paints identically (default heads)', () async {
+    const style = SketchStyle(strokeColor: _strokeBlue, roughness: 1.0);
+    final arrow = SketchArrow.create(
+      id: 'a',
+      start: const Offset(30, 40),
+      end: const Offset(160, 120),
+      style: style,
+    );
+    // The pre-phase-2 painting, spelled out: rough line + filled triangle.
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, 200, 200));
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, 200, 200),
+      Paint()..color = const Color(0xFFFFFFFF),
+    );
+    canvas.drawPath(
+      RoughGenerator.line(
+        arrow.start,
+        arrow.end,
+        roughness: arrow.style.roughness,
+        seed: arrow.style.seed,
+      ),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = arrow.style.strokeWidth
+        ..color = _strokeBlue.withValues(alpha: arrow.style.opacity),
+    );
+    canvas.drawPath(
+      ArrowHead.path(
+        arrow.start,
+        arrow.end,
+        arrow.style.strokeWidth * 6 > arrow.arrowSize
+            ? arrow.style.strokeWidth * 6
+            : arrow.arrowSize,
+      ),
+      Paint()..color = _strokeBlue.withValues(alpha: arrow.style.opacity),
+    );
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(200, 200);
+    final expected = (await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!;
+    final actual = await _rasterise([arrow]);
+    expect(actual.buffer.asUint8List(), expected.buffer.asUint8List());
   });
 }

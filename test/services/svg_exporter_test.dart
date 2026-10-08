@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -81,5 +82,112 @@ void main() {
   test('rotation emits transform', () async {
     final svg = await SvgExporter.render([_rect(angle: math.pi / 2)]);
     expect(svg, contains('transform="rotate(90 60 50)"'));
+  });
+
+  test('frame emits rect + name', () async {
+    final svg = await SvgExporter.render([
+      SketchFrame.create(
+        rect: const Rect.fromLTWH(0, 0, 200, 100),
+        name: 'Backend',
+      ),
+    ]);
+    expect(svg, contains('<rect x="0" y="0" width="200" height="100"'));
+    expect(svg, contains('stroke-width="1"'));
+    expect(svg, contains('>Backend</tspan>'));
+  });
+
+  test('icon emits <image>', () async {
+    final svg = await SvgExporter.render([
+      SketchIcon.create(
+        rect: const Rect.fromLTWH(0, 0, 64, 64),
+        name: 'database',
+      ),
+    ]);
+    expect(svg, contains('<image '));
+    expect(svg, contains('href="data:image/png;base64,'));
+  });
+
+  test('image emits data URI with its mime', () async {
+    final svg = await SvgExporter.render([
+      SketchImage.create(
+        rect: const Rect.fromLTWH(0, 0, 40, 30),
+        mimeType: 'image/webp',
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      ),
+    ]);
+    expect(svg, contains('href="data:image/webp;base64,AQIDBA=="'));
+    expect(svg, contains('width="40" height="30"'));
+  });
+
+  test('entity emits a row per attribute', () async {
+    final svg = await SvgExporter.render([
+      SketchEntity.create(
+        rect: const Rect.fromLTWH(0, 0, 220, 0),
+        name: 'user',
+        attributes: const [
+          EntityAttribute(name: 'id', type: 'int', primaryKey: true),
+          EntityAttribute(name: 'email', type: 'text'),
+          EntityAttribute(name: 'team_id', foreignKey: true),
+        ],
+      ),
+    ]);
+    // Header + one <text> per row.
+    expect('<text '.allMatches(svg).length, 4);
+    expect(svg, contains('>PK</tspan>'));
+    expect(svg, contains('>FK</tspan>'));
+    expect(svg, contains('>email</tspan>'));
+    expect(svg, contains('JetBrains Mono, monospace'));
+    expect(svg, contains('text-anchor="end"'));
+  });
+
+  test('elbow arrow emits multi-segment path', () async {
+    final svg = await SvgExporter.render([
+      SketchArrow.create(
+        start: Offset.zero,
+        end: const Offset(100, 60),
+        style: const SketchStyle(roughness: 0),
+        elbowed: true,
+      ),
+    ]);
+    final d = RegExp(r'd="(M[^"]*)"').firstMatch(svg)!.group(1)!;
+    // Bend corners are on the polyline: (50,0) and (50,60).
+    expect(d, contains('50 0'));
+    expect(d, contains('50 60'));
+    expect('L'.allMatches(d).length, greaterThan(10));
+  });
+
+  test("crow's-foot head emits path", () async {
+    final svg = await SvgExporter.render([
+      SketchArrow.create(
+        start: Offset.zero,
+        end: const Offset(100, 0),
+        endHead: ArrowheadStyle.zeroOrMany,
+        startHead: ArrowheadStyle.one,
+      ),
+    ]);
+    // Shaft + two glyph paths, glyphs as unfilled strokes.
+    expect('<path '.allMatches(svg).length, 3);
+    expect('fill="none"'.allMatches(svg).length, 3);
+  });
+
+  test('bold/mono/align attributes', () async {
+    final svg = await SvgExporter.render([
+      SketchText.create(
+        position: Offset.zero,
+        text: 'a longer line\nhi',
+        fontFamily: 'mono',
+        bold: true,
+        align: TextAlign.center,
+      ),
+    ]);
+    expect(svg, contains('font-family="JetBrains Mono, monospace"'));
+    expect(svg, contains('font-weight="bold"'));
+    expect(svg, contains('text-anchor="middle"'));
+    final plain = await SvgExporter.render([
+      SketchText.create(position: Offset.zero, text: 'x'),
+    ]);
+    expect(plain, contains('font-family="Inter, sans-serif"'));
+    expect(plain, isNot(contains('font-weight')));
+    expect(plain, isNot(contains('text-anchor')));
   });
 }
