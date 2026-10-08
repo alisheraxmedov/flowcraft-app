@@ -11,6 +11,25 @@ decision, live in [`CHANGESLOGS/`](CHANGESLOGS/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Glass Canvas redesign.** The whole interface is rebuilt as floating glass islands:
+  - Top-left: logo, project name and the **Projects** popover (replaces the project drawer; a row's
+    **…** menu has Rename, Link to file… / Unlink file and Delete).
+  - Top-centre: a tool pill with all 14 tools.
+  - Top-right: the **Agents** chip and popover (MCP server switch, animate-drawing switch, and the
+    endpoint, Copy connect and Setup while the server runs; the reason and Retry if it fails to
+    start), the **Edit** menu and **Export**. The Connect dialog is now four tabs.
+  - Left: one **Inspector** island for style, arrow, position, kind and font settings. It works on
+    one or many elements, or on the next shape you draw when a drawing tool is active, and keeps
+    **Edit JSON**.
+  - Bottom-right: Undo, Redo, Grid and Theme.
+  - Every control now lives in exactly one place: Undo/Redo only bottom-right (shortcuts
+    unchanged), Delete only in the Edit menu, and **Clear canvas** in the Edit menu's Canvas group
+    with an Undo snackbar. The Edit menu no longer has a History group.
+  - New UI typeface Geist (and Geist Mono); the canvas fonts are unchanged. Interface icons are the
+    design's Lucide icons, drawn 1:1. The light theme is hand-tuned and the default.
+
 ### Added
 
 - **Read/edit MCP surface.** Three new tools join `flowcraft_draw`, so an AI

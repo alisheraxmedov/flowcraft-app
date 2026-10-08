@@ -24,6 +24,9 @@ lib/
 │   └── mcp_view_model.dart      MCP control-server on/off, owns AppControlServer lifecycle
 ├── views/                Screens + presentation widgets (splash_view.dart,
 │                          whiteboard_view.dart + widgets/)
+│   ├── widgets/agents_popover.dart    Agents chip + popover (MCP switch, endpoint, Copy connect, Setup, Retry)
+│   ├── widgets/projects_popover.dart  Projects popover (replaces the old project drawer)
+│   └── widgets/glass/                 GlassIsland, FcIcons/FcIconGlyph, FcSegmented, FcIconButton
 ├── services/              External I/O boundary — the MCP server, storage, JSON→element parsing
 │   ├── flowcraft_control_server.dart  Loopback HTTP router (dart:io), owns auth + token
 │   ├── mcp_http_handler.dart          MCP over Streamable HTTP: JSON-RPC on POST /mcp
@@ -40,7 +43,7 @@ lib/
 │   ├── diagram_layout.dart            Nodes + edges → laid-out elements
 │   └── text_import/                   Mermaid, DBML, Excalidraw parsers
 └── core/                  Framework-agnostic infra: canvas, domain, rendering, interactions,
-                            serialization, utils
+                            serialization, theme (incl. fc_tokens.dart — the Glass Canvas tokens), utils
 ```
 
 `test/` mirrors `lib/` 1:1.
@@ -49,12 +52,14 @@ lib/
 `HttpServer` and serves `/mcp` — a spec-compliant MCP endpoint over the **Streamable HTTP**
 transport — straight into the live `SketchController`. Users register the running app with
 `claude mcp add --transport http flowcraft http://127.0.0.1:5199/mcp --header "X-Flowcraft-Token: <token>"`;
-the MCP card in `views/widgets/mcp_card.dart` copies that line (and shows per-CLI config)
+the Agents popover in `views/widgets/agents_popover.dart` copies that line (and shows per-CLI config)
 with the real port/token filled in. No second process, no extra download.
 
 The protocol is hand-rolled on `dart:io` + `dart:convert` — deliberately, and it must stay
 that way: `package:dart_mcp` is stdio-only, so it could not serve this endpoint even if the
-app took the dependency. Keep the app at **zero new pubspec dependencies**.
+app took the dependency. The app has exactly **one** new runtime dependency, `path_parsing`
+(pure Dart, not a Flutter plugin), approved by the user to render the design's Lucide icons 1:1
+through `FcIcons`/`FcIconGlyph`; add no others without a deliberate decision.
 
 **Any test that pumps the app must override `mcpServerPortProvider` with 0.** Reading
 `mcpViewModelProvider` — which `SplashView`/`WhiteboardView` do — starts a *real* `HttpServer`.
@@ -99,6 +104,9 @@ text edit along with it.
   (`app_control`, `project_repository`, `export_file_sink`) rather than `path_provider`.
   Adding `file_picker` / `file_selector` / `path_provider` changes the macOS build's
   behaviour — don't, without deciding that tradeoff deliberately.
+- **Chrome colours come from `context.fc` (`FcTokens`), not `AppColors`.** Islands are the only
+  surfaces that blur; menus and dialogs use opaque blended glass. `blurSigma` 0 is the kill
+  switch for slow Windows/Linux GPUs. Chrome icons are `FcIconGlyph(FcIcons.x)`, not `Icon(Icons.x)`.
 - **Riverpod 3 has no public `ChangeNotifierProvider`.** `SketchController` stays a plain
   `ChangeNotifier`, exposed via a non-reactive `Provider<SketchController>` for DI only.
   Widgets that need to rebuild on canvas edits (`WhiteboardCanvas`, `SketchToolbarRich`)

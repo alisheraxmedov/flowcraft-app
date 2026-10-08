@@ -89,14 +89,15 @@ over the **Streamable HTTP** transport at:
 http://127.0.0.1:5199/mcp
 ```
 
-The **System** card in the bottom-right corner of the window shows the live status, the endpoint,
-a **Copy connect** button and a **Setup** dialog with ready-made config for each CLI — all with the
-real port and token already filled in. The switch on that card turns the server off if you would
-rather it not listen.
+The **Agents** chip in the top-right corner of the window shows the live status; click it to open
+the Agents popover, which has the **MCP Server** switch, the endpoint, a **Copy connect** button and
+a **Setup** dialog with ready-made config for each CLI (one tab each) — all with the real port and
+token already filled in. The switch turns the server off if you would rather it not listen; the
+endpoint, **Copy connect** and **Setup** only appear while it is running.
 
 Every request must carry the app's auth token, which FlowCraft writes to `~/.flowcraft/control.token`
 on first start. In the snippets below, replace `<your-token>` with that value (or just use the
-card's **Copy connect** / **Setup** buttons, which paste it for you).
+Agents popover's **Copy connect** / **Setup** buttons, which paste it for you).
 
 ### Claude Code
 
@@ -153,12 +154,12 @@ Field names occasionally change between CLI versions — check your CLI's own MC
 snippet is rejected. Keep the token out of shared repositories: anything holding it can draw on
 your canvas.
 
-### If the System card shows an error
+### If the Agents chip shows an error
 
 Something else already holds port `5199` — usually a FlowCraft window you forgot was open. The port
 is deliberately fixed rather than falling back to a random free one: the config you saved in your
 CLI has to keep working across restarts, and a port that silently changed every launch would break
-it without ever saying so. Close the other instance and press **Retry**.
+it without ever saying so. Close the other instance and press **Retry** in the Agents popover, which shows the reason.
 
 ---
 
@@ -210,7 +211,7 @@ coordinates itself, and models are famously bad at spatial packing, so give it a
 260×120 boxes with at least 80px of space between them."* Ask it to call `flowcraft_screenshot`
 after drawing to look at its own work, and to fix single elements with `flowcraft_update` rather
 than clearing and redrawing. `flowcraft_guide` hands the agent the house conventions in one call.
-The view scrolls to whatever the agent just drew, and the strokes animate in (the **System** card
+The view scrolls to whatever the agent just drew, and the strokes animate in (the Agents popover
 has an *Animate agent drawing* switch).
 
 ---
@@ -303,7 +304,7 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
 - **Frames** (`F`): a named container drawn behind what it wraps. Membership is containment —
   whatever lies wholly inside a frame belongs to it, and dragging the frame moves its contents.
 - **Icon library** (`I`): 24 built-in glyphs (database, server, cloud, user, queue, …) chosen from
-  a grid on the tool rail.
+  a grid on the tool pill.
 - **Images**: **Edit › Insert image from file…** (`Cmd`+`Shift`+`I`) embeds a PNG, JPEG, WebP or GIF
   by path, up to 4 MiB each and 16 MiB per scene. See the [FAQ](#faq) for why there is no
   paste or drag-and-drop.
@@ -324,8 +325,10 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
 - Stroke colour, fill colour, stroke width, opacity.
 - Stroke patterns: solid, dashed, dotted.
 - Fill patterns: none, solid, hachure, cross-hatch.
-- Every style control applies to the whole current selection as a **single undo entry**, and the
-  toolbar reflects the selection (with a neutral indicator when a multi-selection disagrees).
+- Styling lives in the **Inspector** island on the left. Every control applies to the whole current
+  selection as a **single undo entry**, and the Inspector reflects the selection (with a neutral
+  indicator when a multi-selection disagrees). With a drawing tool active and nothing selected, it
+  styles the next shape you draw instead.
 
 **Editing**
 
@@ -341,7 +344,8 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
 - **Align and distribute** a multi-selection from the **Edit** menu or the keyboard: align edges
   or centres, and space three or more items evenly.
 - Snapshot-based undo/redo, 50 steps deep by default. One continuous drag is one undo entry.
-- Light and dark themes.
+- Light and dark themes (light by default), toggled from the bottom-right island, which also holds
+  Undo, Redo and the grid switch.
 
 **Files**
 
@@ -358,7 +362,7 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
 - **See and verify**: `flowcraft_screenshot` returns a PNG of the canvas, and `flowcraft_export`
   writes PNG, SVG or JSON inline or to a path.
 - **Checkpoints** before every canvas-changing tool call, restorable as one undo step.
-- **Live draw animation**: agent drawings draw themselves on, with a switch on the System card.
+- **Live draw animation**: agent drawings draw themselves on, with a switch in the Agents popover.
 
 **Under the hood**
 
@@ -408,8 +412,9 @@ from the live bindings so it cannot drift.
 | Arrow keys | Nudge the selection 1px (`Shift` for 10px) |
 | `?` | Shortcut reference |
 
-Everything here is also reachable from the top bar's **Edit** menu, which shows each binding beside
-its command.
+Everything here except Undo and Redo is also reachable from the top bar's **Edit** menu, which shows
+each binding beside its command; Undo and Redo live in the bottom-right island (the shortcuts work
+everywhere). **Clear canvas** is in the Edit menu's *Canvas* group and shows an Undo snackbar.
 
 **On the canvas:** `Shift`-click adds to or removes from the selection, and `Shift`-drag extends a
 marquee instead of replacing it. Clicking any member of a group selects the whole group. Moves,
@@ -421,14 +426,14 @@ or dropping one of its endpoints to leave that end unattached to any shape.
 
 ## Projects, autosave and export
 
-Every whiteboard is a named project. The menu button in the top bar opens the project sidebar —
-**new**, rename in place, delete, and switch. The canvas swaps instantly and the outgoing project is
-flushed to disk on the way out. The open project's name sits in the top bar and is click-to-rename.
+Every whiteboard is a named project. The project name in the top-left island opens the Projects popover —
+**new**, rename, delete, and switch. The canvas swaps instantly and the outgoing project is
+flushed to disk on the way out. The open project's name sits beside the logo and is click-to-rename.
 Nothing needs saving manually; edits are written behind you as you draw, and again when the app
 exits.
 
 Projects live in `~/.flowcraft/projects/`, one JSON file each, written atomically (temp file +
-rename). The `index.json` beside them is only a cache that makes the sidebar fast — if it is lost or
+rename). The `index.json` beside them is only a cache that makes the Projects popover fast — if it is lost or
 corrupt it is rebuilt by scanning the scene files themselves, so a bad index can never cost you a
 whiteboard.
 
@@ -453,7 +458,7 @@ text. Either add it to the current canvas or replace the canvas with it. Loading
 an element FlowCraft cannot read is skipped rather than failing the whole file, and you are told how
 many were dropped instead of finding out later.
 
-**Linking a board to a file.** A project's menu in the sidebar has **Link to file…**: type an
+**Linking a board to a file.** A project row's **…** menu in the Projects popover has **Link to file…**: type an
 absolute path ending in `.flowcraft` or `.json`, for example inside a repository. From then on every
 save also writes the same scene to that file, so it can be committed. When the file is newer than
 the project (you pulled, or edited it elsewhere), the file wins the next time the project loads.
@@ -525,7 +530,7 @@ Exports go to `~/Documents/FlowCraft/`. The MCP auth token is in `~/.flowcraft/c
 
 ### Can I use FlowCraft without any AI at all?
 
-Yes. Turn the MCP server off with the switch on the System card — or simply never register it with a
+Yes. Turn the MCP server off with the switch in the Agents popover — or simply never register it with a
 CLI — and FlowCraft is an ordinary offline whiteboard.
 
 ### Can I export diagrams as PNG or SVG?
@@ -543,14 +548,14 @@ report to.
 ### Why is the MCP port fixed at 5199?
 
 Because you paste the endpoint into a CLI config once and it has to keep working. A port that
-changed on every launch would silently break that saved config. If the bind fails, the System card
+changed on every launch would silently break that saved config. If the bind fails, the Agents popover
 says so and offers a Retry instead of showing a green light over a dead endpoint.
 
 ### Can FlowCraft draw ER diagrams or database schemas?
 
 Yes. An entity is a table with typed attribute rows and PK/FK tags, relationships are arrows with
 crow's-foot ends that attach to a specific row, and `flowcraft_diagram` or `flowcraft_import` will lay
-a whole schema out for you. You can also build them by hand from the properties panel, which takes
+a whole schema out for you. You can also build them by hand from the Inspector, which takes
 one `name type [PK] [FK]` row per line.
 
 ### Can FlowCraft import Mermaid or DBML?
@@ -644,13 +649,13 @@ The MCP control server is deliberately small and deliberately closed off.
 - **No telemetry.** No analytics, no crash reporting, no usage pings, no update checks. There is no
   FlowCraft-operated server anywhere in the product.
 - **No plugins.** The app ships with zero Flutter plugins, so there is no third-party native code in
-  the bundle. Its entire runtime dependency list is `flutter_riverpod` and `material_symbols_icons`.
-- **No outbound requests.** The Inter and JetBrains Mono typefaces are bundled as assets
-  (`assets/fonts/`, both SIL OFL 1.1) rather than loaded from a font CDN, so there is no first-run
+  the bundle. Its entire runtime dependency list is `flutter_riverpod`, `material_symbols_icons` and `path_parsing` (pure Dart, used to draw the interface icons).
+- **No outbound requests.** The Inter, JetBrains Mono, Geist and Geist Mono typefaces are bundled as assets
+  (`assets/fonts/`, all SIL OFL 1.1) rather than loaded from a font CDN, so there is no first-run
   download and no host to contact. Grep the source for an outbound URL and you will not find one.
 
 **Treat the token as a secret.** Anything that holds it can draw on, and clear, your canvas. Do not
-commit it to a shared repository — use the System card's **Copy connect** button, which fills in the
+commit it to a shared repository — use the Agents popover's **Copy connect** button, which fills in the
 real value at the moment you need it.
 
 ---
@@ -713,9 +718,10 @@ flowcraft/
 │   │
 │   ├── views/                        ← Screens + presentation widgets
 │   │   ├── splash_view.dart             (awaits real startup work)
-│   │   ├── whiteboard_view.dart         (canvas + tool panel)
-│   │   └── widgets/                     (toolbars, text editor, sketch layer,
-│   │                                     project drawer, export menu, MCP card)
+│   │   ├── whiteboard_view.dart         (canvas + floating glass islands)
+│   │   └── widgets/                     (tool pill, Inspector, Agents and Projects
+│   │                                     popovers, Edit/Export menus, dialogs,
+│   │                                     glass/ island widgets + Lucide icons)
 │   │
 │   ├── services/                     ← External I/O boundary
 │   │   ├── app_control.dart              (conditional import: io/web)
@@ -734,7 +740,7 @@ flowcraft/
 │   │   ├── diagram_layout.dart           (nodes + edges → laid-out elements)
 │   │   └── text_import/                  (Mermaid, DBML, Excalidraw parsers)
 │   │
-│   └── core/                         ← Framework-agnostic infrastructure
+│   └── core/                         ← Framework-agnostic infrastructure (incl. theme/ with FcTokens)
 │       ├── canvas/                      (pan/zoom host, grid painter)
 │       ├── domain/                      (geometry, hit-testing, arrow binding, graph
 │       │                                 layout, elbow routing, frame membership)
@@ -819,8 +825,9 @@ The constraints most likely to get a PR rejected:
 - **Keep the app at zero Flutter plugins.** It is load-bearing: it is why the macOS build behaves the
   way it does, why export writes to a fixed folder instead of showing a native save dialog, and why
   `services/` uses `_io`/`_stub` conditional-import pairs instead of `path_provider`.
-- **Keep the pubspec dependency list where it is.** The MCP protocol is hand-rolled on `dart:io`
-  precisely so the app does not take an SDK dependency.
+- **Keep the pubspec dependency list where it is.** The only addition beyond Riverpod and the icon
+  font is `path_parsing`, approved deliberately to render the interface icons. The MCP protocol is
+  hand-rolled on `dart:io` precisely so the app does not take an SDK dependency.
 - **Any test that pumps the app must override `mcpServerPortProvider` with `0`.** Reading
   `mcpViewModelProvider` starts a real `HttpServer`, and `flutter test` runs files in parallel — a
   fixed port makes two test files race each other and lose to a FlowCraft window you have open.
@@ -832,3 +839,7 @@ The constraints most likely to get a PR rejected:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Bundled third-party assets: the Inter, JetBrains Mono, Geist and Geist Mono typefaces (SIL OFL 1.1;
+licences beside the fonts in `assets/fonts/`) and the interface icons from
+[Lucide](https://lucide.dev) (ISC; `assets/icons/Lucide-LICENSE.txt`).
