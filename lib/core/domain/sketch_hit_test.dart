@@ -25,6 +25,10 @@ class SketchHitTest {
   /// bubble hiding behind it.
   static bool isResizable(SketchElement element) => switch (element) {
     SketchSticky s => !s.collapsed,
+    SketchFrame _ ||
+    SketchIcon _ ||
+    SketchImage _ ||
+    SketchEntity _ ||
     SketchRectangle _ ||
     SketchEllipse _ ||
     SketchDiamond _ ||
@@ -84,18 +88,22 @@ class SketchHitTest {
         return SketchGeometry.distanceToSegment(p, l.start, l.end) <= tolerance;
       case SketchArrow a:
         final p = _toLocal(point, a);
-        return SketchGeometry.distanceToSegment(p, a.start, a.end) <= tolerance;
+        return SketchGeometry.pointNearPolyline(p, a.points, tolerance);
       case SketchFreedraw f:
         final p = _toLocal(point, f);
         return SketchGeometry.pointNearPolyline(p, f.points, tolerance);
       case SketchText t:
         final p = _toLocal(point, t);
         return t.unrotatedBounds.inflate(tolerance).contains(p);
-      case SketchFrame _:
+      case SketchFrame f:
+        // Border band + name label only: the interior must stay clickable
+        // for the children drawn over it.
+        if (_hitStrokeRect(point, f.rect, f.angle, tolerance)) return true;
+        return f.name.isNotEmpty &&
+            SketchGeometry.pointInRotatedRect(point, _frameLabel(f), f.angle);
       case SketchIcon _:
       case SketchImage _:
       case SketchEntity _:
-        // Placeholder: plain rect hit; frame border-only hit lands in phase 2.
         return SketchGeometry.pointInRotatedRect(
           point,
           element.unrotatedBounds,
@@ -103,6 +111,18 @@ class SketchHitTest {
         );
     }
   }
+
+  /// Where a frame's name is drawn: just above its top-left corner.
+  /// ponytail: width is a per-character estimate, not measured text; measure
+  /// with a TextPainter if labels ever mis-hit.
+  static Rect _frameLabel(SketchFrame f) => Rect.fromLTWH(
+    f.rect.left,
+    f.rect.top - _labelHeight,
+    f.name.length * 8.0 + 8,
+    _labelHeight,
+  );
+
+  static const double _labelHeight = 20;
 
   /// [point] in [element]'s own frame — unrotated about the pivot the
   /// painter rotates about, which is the centre of its bounds.
@@ -157,12 +177,30 @@ class SketchHitTest {
       if (!SketchGeometry.rectsTouch(e.bounds, region)) continue;
       final caught = switch (e) {
         SketchLine l => _segmentCaught(l, l.start, l.end, region),
-        SketchArrow a => _segmentCaught(a, a.start, a.end, region),
+        SketchArrow a => _polylineCaught(a, a.points, region),
+        SketchFrame f =>
+          region.left <= f.bounds.left &&
+              region.top <= f.bounds.top &&
+              region.right >= f.bounds.right &&
+              region.bottom >= f.bounds.bottom,
         _ => true,
       };
       if (caught) hits.add(e);
     }
     return hits;
+  }
+
+  static bool _polylineCaught(
+    SketchElement element,
+    List<Offset> points,
+    Rect region,
+  ) {
+    for (var i = 0; i < points.length - 1; i++) {
+      if (_segmentCaught(element, points[i], points[i + 1], region)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Whether the stored segment [start]–[end] of [element], placed on the

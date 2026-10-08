@@ -534,4 +534,56 @@ void main() {
       );
     });
   });
+
+  group('phase 2 shapes', () {
+    final frame = SketchFrame.create(
+      rect: const Rect.fromLTWH(0, 0, 200, 100),
+      name: 'Backend',
+    );
+
+    test('frame interior miss, border hit, label hit', () {
+      expect(SketchHitTest.hit(frame, const Offset(100, 50), 4.0), isFalse);
+      expect(SketchHitTest.hit(frame, const Offset(0, 50), 4.0), isTrue);
+      expect(SketchHitTest.hit(frame, const Offset(20, -10), 4.0), isTrue);
+    });
+
+    test('marquee needs to contain a frame fully', () {
+      expect(
+        SketchHitTest.intersecting([
+          frame,
+        ], const Rect.fromLTWH(-5, -5, 100, 50)),
+        isEmpty,
+      );
+      expect(
+        SketchHitTest.intersecting([
+          frame,
+        ], const Rect.fromLTWH(-5, -5, 300, 200)),
+        [frame],
+      );
+    });
+
+    test('icon, image, entity hit by rect', () {
+      final icon = SketchIcon.create(
+        rect: const Rect.fromLTWH(0, 0, 64, 64),
+        name: 'database',
+      );
+      expect(SketchHitTest.hit(icon, const Offset(32, 32), 4.0), isTrue);
+      expect(SketchHitTest.hit(icon, const Offset(90, 32), 4.0), isFalse);
+    });
+
+    test('elbow bend segment hit', () {
+      final a = SketchArrow.create(
+        start: Offset.zero,
+        end: const Offset(100, 100),
+        elbowed: true,
+      );
+      // H-V-H: vertical leg at x = 50; the straight line would miss (50, 20).
+      expect(SketchHitTest.hit(a, const Offset(50, 20), 4.0), isTrue);
+      expect(SketchHitTest.hit(a, const Offset(20, 50), 4.0), isFalse);
+      expect(
+        SketchHitTest.intersecting([a], const Rect.fromLTWH(45, 10, 10, 10)),
+        [a],
+      );
+    });
+  });
 }

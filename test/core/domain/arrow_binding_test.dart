@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -189,6 +190,73 @@ void main() {
       expect(ArrowBinding.resolve(first, _map([a, b])), same(first));
       final plain = arrow();
       expect(ArrowBinding.resolve(plain, _map([a])), same(plain));
+    });
+  });
+
+  group('phase 2 targets', () {
+    test('elbowed end at side midpoint', () {
+      final a = _rect('a');
+      final b = _rect('b', const Rect.fromLTWH(400, 40, 200, 100));
+      final arrow =
+          SketchArrow.create(
+            start: const Offset(1, 1),
+            end: const Offset(2, 2),
+            elbowed: true,
+          ).copyWith(
+            startBinding: const SketchBinding(elementId: 'a', gap: 4),
+            endBinding: const SketchBinding(elementId: 'b'),
+          );
+      final r = ArrowBinding.resolve(arrow, _map([a, b]));
+      expect(r.start, const Offset(204, 50));
+      expect(r.end, const Offset(400, 90));
+    });
+
+    test('entity attribute anchor hits the row centre on the facing edge', () {
+      final e = SketchEntity.create(
+        rect: const Rect.fromLTWH(0, 0, 200, 0),
+        name: 'User',
+        attributes: const [
+          EntityAttribute(name: 'id'),
+          EntityAttribute(name: 'email'),
+        ],
+      );
+      final b = _rect('b', const Rect.fromLTWH(400, 0, 100, 100));
+      final arrow =
+          SketchArrow.create(
+            start: Offset.zero,
+            end: const Offset(1, 1),
+          ).copyWith(
+            startBinding: SketchBinding(elementId: e.id, attribute: 'email'),
+            endBinding: const SketchBinding(elementId: 'b'),
+          );
+      final r = ArrowBinding.resolve(arrow, _map([e, b]));
+      expect(r.start, Offset(200, e.rowCenterY('email')!));
+      final unknown = arrow.copyWith(
+        startBinding: SketchBinding(elementId: e.id, attribute: 'nope'),
+      );
+      final u = ArrowBinding.resolve(unknown, _map([e, b]));
+      expect(u.start.dx, closeTo(200, 0.01));
+      expect(u.start.dy, isNot(e.rowCenterY('email')));
+    });
+
+    test('icon/image/entity bindable, frame not', () {
+      const r = Rect.fromLTWH(0, 0, 10, 10);
+      expect(
+        ArrowBinding.isBindable(SketchIcon.create(rect: r, name: 'x')),
+        isTrue,
+      );
+      expect(
+        ArrowBinding.isBindable(
+          SketchImage.create(
+            rect: r,
+            mimeType: 'image/png',
+            bytes: Uint8List(1),
+          ),
+        ),
+        isTrue,
+      );
+      expect(ArrowBinding.isBindable(SketchEntity.create(rect: r)), isTrue);
+      expect(ArrowBinding.isBindable(SketchFrame.create(rect: r)), isFalse);
     });
   });
 }

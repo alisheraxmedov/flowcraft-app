@@ -3,6 +3,7 @@ import 'package:flutter/painting.dart' show Axis, Rect;
 import 'dart:ui' show Offset;
 
 import 'package:flowcraft/core/domain/arrow_binding.dart';
+import 'package:flowcraft/core/domain/frame_membership.dart';
 import 'package:flowcraft/core/domain/sketch_hit_test.dart';
 import 'package:flowcraft/core/serialization/sketch_serializer.dart';
 import 'package:flowcraft/core/utils/id_generator.dart';
@@ -43,6 +44,9 @@ class SketchController extends ChangeNotifier {
   ({Rect rect, bool onlyIfHidden})? _frameRequest;
   int _frameRequestGen = 0;
 
+  Iterable<String> _revealRequest = const [];
+  int _revealGen = 0;
+
   String? _editingElementId;
   Offset? _editingCanvasPosition;
 
@@ -74,6 +78,13 @@ class SketchController extends ChangeNotifier {
   /// Bumped by every accepted [requestFrame]. A counter rather than a value
   /// so "fit, pan away, fit again" is two distinct events for the view.
   int get frameRequestGen => _frameRequestGen;
+
+  /// Ids the view was last asked to animate in. See [requestReveal].
+  Iterable<String> get revealRequest => _revealRequest;
+
+  /// Bumped by every [requestReveal], so two reveals of equal ids are two
+  /// events for the view.
+  int get revealGen => _revealGen;
 
   bool get canUndo => _history.canUndo;
   bool get canRedo => _history.canRedo;
@@ -242,9 +253,10 @@ class SketchController extends ChangeNotifier {
   void translateSelected(Offset delta) {
     if (_selectedIds.isEmpty || delta == Offset.zero) return;
     _commitDragHistory();
+    final moving = {..._selectedIds, ..._frameMembersToMove()};
     for (var i = 0; i < _elements.length; i++) {
       final el = _elements[i];
-      if (_selectedIds.contains(el.id)) {
+      if (moving.contains(el.id)) {
         var moved = el.translate(delta);
         // An arrow dragged without the shape it is bound to has been pulled
         // off it: that end unbinds, or reconcile would snap it straight back.
@@ -253,12 +265,8 @@ class SketchController extends ChangeNotifier {
           final s = moved.startBinding;
           final e = moved.endBinding;
           moved = moved.copyWith(
-            startBinding: s != null && _selectedIds.contains(s.elementId)
-                ? s
-                : null,
-            endBinding: e != null && _selectedIds.contains(e.elementId)
-                ? e
-                : null,
+            startBinding: s != null && moving.contains(s.elementId) ? s : null,
+            endBinding: e != null && moving.contains(e.elementId) ? e : null,
           );
         }
         _elements[i] = moved;
@@ -268,6 +276,23 @@ class SketchController extends ChangeNotifier {
     _bumpPaint();
   }
 
+  /// Members of the selected frames that ride along with them. Captured once
+  /// per drag session (the first move) so an element the frame passes over
+  /// is not picked up mid-drag and a member is not dropped when it momentarily
+  /// pokes out; outside a session (nudge) it is computed per call.
+  Set<String> _frameMembersToMove() {
+    final cached = _dragFrameMembers;
+    if (cached != null) return cached;
+    final ids = <String>{
+      for (final f in _elements.whereType<SketchFrame>())
+        if (_selectedIds.contains(f.id))
+          for (final m in FrameMembership.members(f, _elements)) m.id,
+    };
+    if (_dragInProgress) _dragFrameMembers = ids;
+    return ids;
+  }
+
+  Set<String>? _dragFrameMembers;
   bool _dragInProgress = false;
   SketchSnapshot? _pendingDragSnapshot;
 
@@ -286,6 +311,10 @@ class SketchController extends ChangeNotifier {
     if (el is SketchDiamond) updated = el.copyWith(rect: newRect);
     if (el is SketchTriangle) updated = el.copyWith(rect: newRect);
     if (el is SketchSticky) updated = el.copyWith(rect: newRect);
+    if (el is SketchFrame) updated = el.copyWith(rect: newRect);
+    if (el is SketchIcon) updated = el.copyWith(rect: newRect);
+    if (el is SketchImage) updated = el.copyWith(rect: newRect);
+    if (el is SketchEntity) updated = el.copyWith(rect: newRect);
     if (updated == null) return;
     _commitDragHistory();
     _elements[idx] = updated;
@@ -516,6 +545,16 @@ class SketchController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Asks the view to animate the elements [ids] in.
+  ///
+  /// View-only, like [requestFrame]: it only notifies, never reaches
+  /// [_bumpPaint], so no autosave and no history entry.
+  void requestReveal(Iterable<String> ids) {
+    _revealRequest = List<String>.unmodifiable(ids);
+    _revealGen++;
+    notifyListeners();
+  }
+
   /// Restyles every selected element by running [transform] over its current
   /// style. Returns how many elements actually changed.
   ///
@@ -566,6 +605,7 @@ class SketchController extends ChangeNotifier {
   /// drag never changed anything. No-op if none active.
   void endDragSession() {
     _dragInProgress = false;
+    _dragFrameMembers = null;
     _pendingDragSnapshot = null;
     _rearmDragSnapshot = false;
   }
@@ -617,6 +657,7 @@ class SketchController extends ChangeNotifier {
     _selectedIds.clear();
     _history.clear();
     _dragInProgress = false;
+    _dragFrameMembers = null;
     _pendingDragSnapshot = null;
     _rearmDragSnapshot = false;
     _editingElementId = null;

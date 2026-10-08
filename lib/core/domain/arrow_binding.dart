@@ -25,7 +25,10 @@ class ArrowBinding {
       e is SketchEllipse ||
       e is SketchDiamond ||
       e is SketchTriangle ||
-      e is SketchSticky;
+      e is SketchSticky ||
+      e is SketchIcon ||
+      e is SketchImage ||
+      e is SketchEntity;
 
   /// Topmost bindable element whose bounds, grown by [tolerance], contain
   /// [point], skipping the element with id [exclude].
@@ -89,6 +92,38 @@ class ArrowBinding {
     return centre + dir * ((lo + hi) / 2 + gap);
   }
 
+  /// Where a binding to [shape] lands when facing [toward]: an entity row's
+  /// edge point when [binding] names a known attribute, the midpoint of the
+  /// facing side for an [elbowed] arrow, else the ray-exit [boundaryPoint].
+  /// ponytail: side/row anchors use the unrotated rect; a rotated target
+  /// needs the anchor rotated about its centre.
+  static Offset _anchor(
+    SketchElement shape,
+    SketchBinding binding,
+    Offset toward,
+    bool elbowed,
+  ) {
+    final r = shape.unrotatedBounds;
+    final c = r.center;
+    final d = toward - c;
+    final gap = binding.gap;
+    final attr = binding.attribute;
+    final rowY = shape is SketchEntity && attr != null
+        ? shape.rowCenterY(attr)
+        : null;
+    if (rowY != null) {
+      final right = d.dx >= 0;
+      return Offset(right ? r.right + gap : r.left - gap, rowY);
+    }
+    if (!elbowed || d == Offset.zero) {
+      return boundaryPoint(shape, toward, gap: gap);
+    }
+    if (d.dx.abs() >= d.dy.abs()) {
+      return Offset(d.dx >= 0 ? r.right + gap : r.left - gap, c.dy);
+    }
+    return Offset(c.dx, d.dy >= 0 ? r.bottom + gap : r.top - gap);
+  }
+
   /// [arrow] with its bindings validated against [byId] and its bound ends
   /// re-anchored on the shapes' outlines. Returns the identical instance
   /// when nothing changes, so callers can detect a no-op by identity.
@@ -131,17 +166,19 @@ class ArrowBinding {
 
     final start = startShape == null
         ? arrow.start
-        : boundaryPoint(
+        : _anchor(
             startShape,
+            sb!,
             endShape?.unrotatedBounds.center ?? arrow.end,
-            gap: sb!.gap,
+            arrow.elbowed,
           );
     final end = endShape == null
         ? arrow.end
-        : boundaryPoint(
+        : _anchor(
             endShape,
+            eb!,
             startShape?.unrotatedBounds.center ?? arrow.start,
-            gap: eb!.gap,
+            arrow.elbowed,
           );
 
     if (start == arrow.start &&

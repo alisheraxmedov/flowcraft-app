@@ -1565,4 +1565,54 @@ void main() {
       expect(c.frameRequestGen, 1);
     });
   });
+
+  group('phase 2 controller', () {
+    test('dragging a frame moves its members only, one undo entry', () {
+      final c = SketchController();
+      final frame = SketchFrame.create(
+        id: 'f',
+        rect: const Rect.fromLTWH(0, 0, 100, 100),
+      );
+      final inside = _rect(id: 'in', rect: const Rect.fromLTWH(10, 10, 20, 20));
+      final outside = _rect(
+        id: 'out',
+        rect: const Rect.fromLTWH(200, 0, 20, 20),
+      );
+      c.addAll([frame, inside, outside]);
+      c.select('f');
+      c.beginDragSession();
+      c.translateSelected(const Offset(5, 0));
+      // Frame now overlaps nothing new, but passes over `out` mid-drag.
+      c.translateSelected(const Offset(150, 0));
+      c.endDragSession();
+      Rect r(String id) => c.elements.firstWhere((e) => e.id == id).bounds;
+      expect(r('f').left, 155);
+      expect(r('in').left, 165);
+      expect(r('out').left, 200);
+      c.undo();
+      expect(r('f').left, 0);
+      expect(r('in').left, 10);
+    });
+
+    test('resizing a frame leaves members', () {
+      final c = SketchController();
+      c.addAll([
+        SketchFrame.create(id: 'f', rect: const Rect.fromLTWH(0, 0, 100, 100)),
+        _rect(id: 'in', rect: const Rect.fromLTWH(10, 10, 20, 20)),
+      ]);
+      c.resizeElement('f', const Rect.fromLTWH(0, 0, 300, 300));
+      expect(c.elements.firstWhere((e) => e.id == 'f').bounds.width, 300);
+      expect(c.elements.firstWhere((e) => e.id == 'in').bounds.left, 10);
+    });
+
+    test('requestReveal bumps revealGen not paintGen', () {
+      final c = SketchController();
+      final paint = c.paintGen;
+      c.requestReveal(['a', 'b']);
+      expect(c.revealGen, 1);
+      expect(c.revealRequest, ['a', 'b']);
+      expect(c.paintGen, paint);
+      expect(c.canUndo, isFalse);
+    });
+  });
 }
