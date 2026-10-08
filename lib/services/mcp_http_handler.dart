@@ -179,16 +179,13 @@ class McpHttpHandler {
   /// the `flowcraft_launch` step that no longer exists.
   static const String instructions =
       'Draws diagrams live on the FlowCraft desktop whiteboard app. Call '
-      'flowcraft_status to check connectivity, then flowcraft_draw with '
-      'shapes (rectangles for classes/modules, arrows for relations) to '
-      'render the diagram you have analyzed; for graphs of nodes and edges use '
-      'flowcraft_diagram, which lays them out and binds the arrows (arrows '
-      'can also attach to existing shapes via fromId/toId). Call '
-      'flowcraft_guide once for conventions and flowcraft_screenshot to check '
-      'your drawing. To correct a diagram, call '
-      'flowcraft_read to get each element and its id, then flowcraft_update '
-      'or flowcraft_delete to change or remove specific elements by id — no '
-      'need to clear the board and redraw everything.';
+      'flowcraft_guide first for the element vocabulary and conventions. '
+      'Use flowcraft_diagram for graphs of nodes and edges (it lays them out '
+      'and binds the arrows) and flowcraft_import for Mermaid, DBML or '
+      'Excalidraw text; flowcraft_draw is for free placement. Check your '
+      'work with flowcraft_screenshot, and fix single elements with '
+      'flowcraft_read then flowcraft_update / flowcraft_delete by id instead '
+      'of clearing the board.';
 
   static const String tokenHeader = 'X-Flowcraft-Token';
 

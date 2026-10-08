@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flowcraft/core/domain/arrow_binding.dart';
+import 'package:flowcraft/core/domain/frame_membership.dart';
+import 'package:flowcraft/core/serialization/sketch_serializer.dart';
 import 'package:flowcraft/models/flow_project.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
@@ -13,9 +15,15 @@ import 'app_version.dart';
 import 'canvas_exporter.dart';
 import 'diagram_layout.dart';
 import 'diagram_spec.dart';
+import 'export_file_sink.dart';
+import 'image_source.dart';
 import 'mcp_checkpoints.dart';
 import 'mcp_guide.dart';
 import 'mcp_host.dart';
+import 'svg_exporter.dart';
+import 'text_import/detect.dart';
+import 'text_import/excalidraw.dart';
+import 'text_import/dbml.dart';
 
 /// The tools the app's built-in MCP server exposes, in `tools/list` order.
 ///
@@ -44,8 +52,10 @@ const List<McpTool> flowcraftMcpTools = [
         'flowcraft_delete: those tools address elements by the id this '
         'returns, so you can correct one shape (move/resize/recolour/relabel '
         'or delete it) instead of clearing the board and redrawing '
-        'everything. Large canvases: narrow with ids / types / region, and '
-        'page with limit and offset (the reply carries total and nextOffset).',
+        'everything. Large canvases: narrow with ids / types / frame / region, '
+        'and page with limit and offset (the reply carries total and '
+        'nextOffset). Image elements omit their bytes unless '
+        'includeImageData is true.',
     inputSchema: _readSchema,
     run: _runRead,
   ),
@@ -61,7 +71,9 @@ const List<McpTool> flowcraftMcpTools = [
         'so text does not overlap. Call flowcraft_status first if unsure '
         'whether the app is reachable. For flowcharts, dependency graphs and '
         'anything else that is nodes plus edges, use flowcraft_diagram '
-        'instead — it positions the boxes for you.',
+        'instead — it positions the boxes for you; for Mermaid, DBML or '
+        'Excalidraw text use flowcraft_import. Also draws frames, icons, '
+        'images and ER entities (see flowcraft_guide).',
     inputSchema: _drawSchema,
     run: _runDraw,
     mutates: true,
@@ -76,9 +88,26 @@ const List<McpTool> flowcraftMcpTools = [
         'their boxes so they follow if a box is moved. Returns a map from '
         'your node ids to the element ids, usable with flowcraft_update and '
         'flowcraft_delete. Prefer this over flowcraft_draw for flowcharts, '
-        'dependency graphs, state machines and architecture diagrams.',
+        'dependency graphs, state machines and architecture diagrams. Nodes '
+        'with "attributes" become ER entities; "frames" group nodes.',
     inputSchema: _diagramSchema,
     run: _runDiagram,
+    mutates: true,
+  ),
+  McpTool(
+    name: 'flowcraft_import',
+    description:
+        'Imports a diagram written as text: Mermaid (flowchart / graph and '
+        'erDiagram), DBML, an Excalidraw scene or a FlowCraft JSON scene. '
+        'format "auto" (default) detects it. Mermaid and DBML are laid out '
+        'for you like flowcraft_diagram (subgraphs become frames, ER '
+        'relations get crow\'s-foot ends bound to the rows). A syntax error '
+        'is reported with its line number and leaves the canvas untouched. '
+        'mode "add" (default) places the result beside what is there; '
+        '"replace" clears the canvas first. The reply lists the new ids and '
+        'how many source elements were dropped as unsupported.',
+    inputSchema: _importSchema,
+    run: _runImport,
     mutates: true,
   ),
   McpTool(
@@ -119,11 +148,24 @@ const List<McpTool> flowcraftMcpTools = [
     name: 'flowcraft_screenshot',
     description:
         'Returns a PNG image of the canvas (or only the elements matching '
-        'ids / types / region) so you can look at what you drew and fix '
+        'ids / types / frame / region) so you can look at what you drew and fix '
         'overlaps, clipped text or crossed arrows. Fails when nothing '
         'matches.',
     inputSchema: _screenshotSchema,
     run: _runScreenshot,
+  ),
+  McpTool(
+    name: 'flowcraft_export',
+    description:
+        'Exports the canvas (or only the elements matching ids / types / '
+        'frame / region) as png, svg or json. Without "path" the result '
+        'comes back inline (png as an image, svg / json as text). With '
+        '"path" it is written to disk: an absolute path (or ~/...) whose '
+        'extension matches the format, in an existing folder; an existing '
+        'file needs overwrite: true, and ~/.flowcraft is off limits. Fails '
+        'when nothing matches.',
+    inputSchema: _exportSchema,
+    run: _runExport,
   ),
   McpTool(
     name: 'flowcraft_guide',
@@ -248,6 +290,39 @@ const Map<String, Object?> _emptySchema = {
   'properties': <String, Object?>{},
 };
 
+/// [ArrowheadStyle] names for the schemas (a test keeps this in step).
+const List<String> _arrowheadNames = [
+  'none',
+  'arrow',
+  'one',
+  'many',
+  'zeroOrOne',
+  'zeroOrMany',
+  'oneOrMany',
+];
+
+/// The `iconCatalog` names for the schemas. `McpTool` declarations are
+/// const, so this cannot be computed from the catalog; a test checks it
+/// against `iconCatalog.keys` (the guide builds its list from the catalog).
+const String iconNamesText =
+    'database, server, cloud, user, queue, lock, api, storage, cache, '
+    'function, web, mobile, mail, schedule, warning, key, file, folder, '
+    'globe, gear, bug, chart, robot, terminal';
+
+const Map<String, Object?> _attributeSchema = {
+  'type': 'object',
+  'properties': {
+    'name': {
+      'type': 'string',
+      'description': 'Row name, unique in the entity.',
+    },
+    'type': {'type': 'string', 'description': 'Column type, e.g. int.'},
+    'pk': {'type': 'boolean', 'description': 'Primary key (PK tag).'},
+    'fk': {'type': 'boolean', 'description': 'Foreign key (FK tag).'},
+  },
+  'required': ['name'],
+};
+
 /// The per-element shape vocabulary, shared verbatim by `flowcraft_draw`
 /// and `flowcraft_update` so reading, drawing and editing all speak the same
 /// field names. `flowcraft_read` emits exactly these keys (plus `id`), which
@@ -256,8 +331,82 @@ const Map<String, Object?> _elementProperties = {
   'type': {
     'type': 'string',
     'description':
-        'rectangle | ellipse | diamond | triangle | '
-        'sticky | text | arrow | line',
+        'rectangle | ellipse | diamond | triangle | sticky | text | arrow | '
+        'line | frame | icon | image | entity. frame: a named 1px container '
+        '(x/y/width/height/name) that is drawn behind what it wraps; icon: '
+        'a glyph (x/y/width/height/name); image: a picture (x/y + path or '
+        'dataUrl); entity: an ER table (x/y/width/name/attributes), its '
+        'height follows its rows.',
+  },
+  'name': {
+    'type': 'string',
+    'description':
+        'frame: the label above its top-left corner. entity: the table name. '
+        'icon: the glyph, one of $iconNamesText.',
+  },
+  'attributes': {
+    'type': 'array',
+    'description':
+        'Entity rows, top to bottom. Row names are unique; an arrow binds to '
+        'a row with fromAttribute / toAttribute.',
+    'items': _attributeSchema,
+  },
+  'path': {
+    'type': 'string',
+    'description':
+        'Image only: absolute file path (or ~/...) ending in .png, .jpg, '
+        '.jpeg, .webp or .gif; at most 4 MiB. Use this or dataUrl.',
+  },
+  'dataUrl': {
+    'type': 'string',
+    'description':
+        'Image only: "data:image/png;base64,..." (png, jpeg, webp or gif; at '
+        'most 4 MiB decoded). Use this or path. Omit width and height to get '
+        'the image\'s natural size; give one to keep the aspect ratio.',
+  },
+  'elbow': {
+    'type': 'boolean',
+    'description':
+        'Arrows only: route with right-angle bends instead of a straight '
+        'segment.',
+  },
+  'startHead': {
+    'type': 'string',
+    'enum': _arrowheadNames,
+    'description':
+        'Arrows only: glyph at the start. none (default), arrow, or an ER '
+        'cardinality: one, many, zeroOrOne, zeroOrMany, oneOrMany.',
+  },
+  'endHead': {
+    'type': 'string',
+    'enum': _arrowheadNames,
+    'description': 'Arrows only: glyph at the end. Default arrow.',
+  },
+  'fromAttribute': {
+    'type': 'string',
+    'description':
+        'Arrows only: with fromId naming an entity, the row name the start '
+        'attaches to (on the facing side, at that row). "" detaches.',
+  },
+  'toAttribute': {
+    'type': 'string',
+    'description':
+        'Arrows only: with toId naming an entity, the row name the end '
+        'attaches to. "" detaches.',
+  },
+  'fontFamily': {
+    'type': 'string',
+    'enum': ['sans', 'mono'],
+    'description':
+        'Label font: sans (Inter, default) or mono (JetBrains Mono).',
+  },
+  'bold': {'type': 'boolean', 'description': 'Bold label text.'},
+  'align': {
+    'type': 'string',
+    'enum': ['left', 'center', 'right'],
+    'description':
+        'Text elements only (type "text"): horizontal alignment of its '
+        'lines. Shape labels are always centred.',
   },
   'x': {'type': 'number', 'description': 'Left edge (bounded shapes/text).'},
   'y': {'type': 'number', 'description': 'Top edge (bounded shapes/text).'},
@@ -318,6 +467,12 @@ const Map<String, Object?> _selectionProperties = {
     'items': {'type': 'string'},
     'description': 'Only these element types, e.g. ["rectangle", "arrow"].',
   },
+  'frame': {
+    'type': 'string',
+    'description':
+        'Only this frame (by id or case-insensitive name) and the elements '
+        'wholly inside it. An unknown frame fails.',
+  },
   'region': {
     'type': 'object',
     'description': 'Only elements whose bounds touch this canvas rectangle.',
@@ -343,7 +498,86 @@ const Map<String, Object?> _readSchema = {
       'type': 'integer',
       'description': 'Elements to skip, for paging. Default 0.',
     },
+    'includeImageData': {
+      'type': 'boolean',
+      'description':
+          'Include the base64 bytes of image elements (up to 4 MiB each). '
+          'Default false: images report mimeType, width, height and bytes.',
+    },
   },
+};
+
+const Map<String, Object?> _exportSchema = {
+  'type': 'object',
+  'properties': {
+    'format': {
+      'type': 'string',
+      'enum': ['png', 'svg', 'json'],
+      'description':
+          'png (raster), svg (vector) or json (a FlowCraft scene, '
+          'importable with flowcraft_import).',
+    },
+    ..._selectionProperties,
+    'path': {
+      'type': 'string',
+      'description':
+          'Write to this file instead of returning inline: absolute (or '
+          '~/...), extension .png / .svg / .json matching format, existing '
+          'parent folder.',
+    },
+    'overwrite': {
+      'type': 'boolean',
+      'description': 'Replace an existing file at path. Default false.',
+    },
+    'pixelRatio': {
+      'type': 'number',
+      'description': 'png only: scale, 0.25-4. Default 2.',
+    },
+    'background': {
+      'type': 'string',
+      'description':
+          'Hex "#RRGGBB" or "#AARRGGBB". Default white for png, none for '
+          'svg.',
+    },
+  },
+  'required': ['format'],
+};
+
+const Map<String, Object?> _importSchema = {
+  'type': 'object',
+  'properties': {
+    'text': {
+      'type': 'string',
+      'description':
+          'The diagram source: Mermaid ("flowchart LR\\n a --> b" or '
+          '"erDiagram"), DBML ("Table users { id int [pk] }"), an '
+          'Excalidraw scene JSON or a FlowCraft scene JSON.',
+    },
+    'format': {
+      'type': 'string',
+      'enum': ['auto', 'mermaid', 'dbml', 'excalidraw', 'json'],
+      'description': 'Default auto: detected from the text.',
+    },
+    'mode': {
+      'type': 'string',
+      'enum': ['add', 'replace'],
+      'description':
+          '"add" (default) places the result beside existing content; '
+          '"replace" clears the canvas first.',
+    },
+    'direction': {
+      'type': 'string',
+      'enum': ['TB', 'LR', 'BT', 'RL'],
+      'description':
+          'Mermaid / DBML layout direction; overrides the one in the text.',
+    },
+    'connectors': {
+      'type': 'string',
+      'enum': ['straight', 'elbow'],
+      'description': 'Mermaid / DBML arrow routing. Default straight.',
+    },
+  },
+  'required': ['text'],
 };
 
 const Map<String, Object?> _screenshotSchema = {
@@ -482,6 +716,13 @@ const Map<String, Object?> _diagramSchema = {
             'type': 'string',
             'description': 'Hex outline, RRGGBB or AARRGGBB.',
           },
+          'attributes': {
+            'type': 'array',
+            'description':
+                'Makes the node an ER entity (table) with these rows; its '
+                'label is the table name.',
+            'items': _attributeSchema,
+          },
         },
         'required': ['id'],
       },
@@ -498,9 +739,50 @@ const Map<String, Object?> _diagramSchema = {
             'type': 'string',
             'description': 'Hex arrow colour, RRGGBB or AARRGGBB.',
           },
+          'fromCardinality': {
+            'type': 'string',
+            'enum': _arrowheadNames,
+            'description': 'Glyph at the from end (ER: one, zeroOrMany, ...).',
+          },
+          'toCardinality': {
+            'type': 'string',
+            'enum': _arrowheadNames,
+            'description': 'Glyph at the to end.',
+          },
+          'fromAttribute': {
+            'type': 'string',
+            'description': 'Entity row of the from node to attach to.',
+          },
+          'toAttribute': {
+            'type': 'string',
+            'description': 'Entity row of the to node to attach to.',
+          },
         },
         'required': ['from', 'to'],
       },
+    },
+    'frames': {
+      'type': 'array',
+      'description':
+          'Named containers drawn behind groups of nodes, each sized to '
+          'wrap its members.',
+      'items': {
+        'type': 'object',
+        'properties': {
+          'name': {'type': 'string', 'description': 'Label of the frame.'},
+          'members': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description': 'Node ids inside the frame.',
+          },
+        },
+        'required': ['name', 'members'],
+      },
+    },
+    'connectors': {
+      'type': 'string',
+      'enum': ['straight', 'elbow'],
+      'description': 'Arrow routing. Default straight.',
     },
     'direction': {
       'type': 'string',
@@ -543,7 +825,10 @@ McpToolResult _runStatus(McpToolContext ctx, Map<String, Object?> arguments) {
   );
 }
 
-McpToolResult _runDraw(McpToolContext ctx, Map<String, Object?> arguments) {
+Future<McpToolResult> _runDraw(
+  McpToolContext ctx,
+  Map<String, Object?> arguments,
+) async {
   final controller = ctx.controller;
   final raw = arguments['elements'];
   if (raw is! List || raw.isEmpty) {
@@ -553,20 +838,21 @@ McpToolResult _runDraw(McpToolContext ctx, Map<String, Object?> arguments) {
   // bridge's behaviour — an unrecognized mode must never wipe the canvas.
   final mode = arguments['mode'] == 'replace' ? 'replace' : 'add';
 
+  // Images may name a file or a data URL; the parser itself is synchronous,
+  // so they are turned into bytes first.
+  final resolved = await ImageSource.resolve(raw);
   // Replace wipes the canvas, so nothing on it can be bound to.
   final elements = parseDiagramElements(
-    raw,
+    resolved,
     bindableIds: mode == 'replace' ? const {} : _bindableIds(controller),
+    entities: mode == 'replace' ? const {} : _entities(controller),
   );
   if (mode == 'replace') {
     controller.replaceAll(elements);
   } else {
     controller.addAll(elements);
   }
-  controller.requestFrame(
-    CanvasExporter.contentBounds(elements),
-    onlyIfHidden: true,
-  );
+  _show(controller, elements);
   return McpToolResult(
     'Drew ${elements.length} element(s) on FlowCraft (mode: $mode). '
     'Canvas now has ${controller.elements.length} element(s) total. '
@@ -580,34 +866,71 @@ Set<String> _bindableIds(SketchController controller) => {
     if (ArrowBinding.isBindable(e)) e.id,
 };
 
-McpToolResult _runDiagram(McpToolContext ctx, Map<String, Object?> arguments) {
-  final controller = ctx.controller;
-  final nodes = arguments['nodes'];
-  final edges = arguments['edges'] ?? const [];
-  if (nodes is! List || edges is! List) {
-    throw DiagramSpecException('"nodes" and "edges" must be lists.');
-  }
-  final replace = arguments['mode'] == 'replace';
-  final existing = CanvasExporter.contentBounds(controller.elements);
-  // Add mode parks the new graph beside what is already there instead of
-  // overlapping it.
-  final origin = replace || controller.elements.isEmpty
-      ? Offset.zero
-      : Offset(existing.right + 96, existing.top);
+/// The canvas's entities by id, so an arrow's row names can be checked.
+Map<String, SketchEntity> _entities(SketchController controller) => {
+  for (final e in controller.elements)
+    if (e is SketchEntity) e.id: e,
+};
 
+/// Brings freshly added [elements] into view, then plays their draw-on.
+void _show(SketchController controller, List<SketchElement> elements) {
+  if (elements.isEmpty) return;
+  controller.requestFrame(
+    CanvasExporter.contentBounds(elements),
+    onlyIfHidden: true,
+  );
+  controller.requestReveal([for (final e in elements) e.id]);
+}
+
+/// Where a new graph goes: the origin in replace mode or on an empty
+/// canvas, otherwise beside what is already there.
+Offset _graphOrigin(SketchController controller, bool replace) {
+  if (replace || controller.elements.isEmpty) return Offset.zero;
+  final existing = CanvasExporter.contentBounds(controller.elements);
+  return Offset(existing.right + 96, existing.top);
+}
+
+/// Lays out a node/edge graph and puts it on the canvas; shared by
+/// `flowcraft_diagram` and the Mermaid / DBML branches of `flowcraft_import`.
+({List<SketchElement> elements, Map<String, String> nodeIds}) _placeGraph(
+  SketchController controller,
+  Map<String, Object?> graph, {
+  required bool replace,
+}) {
+  final nodes = graph['nodes'];
+  final edges = graph['edges'] ?? const [];
+  final frames = graph['frames'] ?? const [];
+  if (nodes is! List || edges is! List || frames is! List) {
+    throw DiagramSpecException('"nodes", "edges" and "frames" must be lists.');
+  }
   final built = buildDiagram(
     nodes: nodes,
     edges: edges,
-    direction: arguments['direction'] as String? ?? 'TB',
-    origin: origin,
+    frames: frames,
+    direction: _stringArg(graph, 'direction') ?? 'TB',
+    connectors: _stringArg(graph, 'connectors') ?? 'straight',
+    origin: _graphOrigin(controller, replace),
   );
   if (replace) {
     controller.replaceAll(built.elements);
   } else {
     controller.addAll(built.elements);
   }
-  final bounds = CanvasExporter.contentBounds(built.elements);
-  controller.requestFrame(bounds, onlyIfHidden: true);
+  _show(controller, built.elements);
+  return built;
+}
+
+Map<String, Object?> _boundsJson(List<SketchElement> elements) {
+  final b = CanvasExporter.contentBounds(elements);
+  return {'x': b.left, 'y': b.top, 'width': b.width, 'height': b.height};
+}
+
+McpToolResult _runDiagram(McpToolContext ctx, Map<String, Object?> arguments) {
+  final built = _placeGraph(
+    ctx.controller,
+    arguments,
+    replace: arguments['mode'] == 'replace',
+  );
   return McpToolResult(
     jsonEncode({
       'nodes': built.nodeIds,
@@ -615,13 +938,12 @@ McpToolResult _runDiagram(McpToolContext ctx, Map<String, Object?> arguments) {
         for (final e in built.elements)
           if (e is SketchArrow) e.id,
       ],
+      'frames': [
+        for (final e in built.elements)
+          if (e is SketchFrame) e.id,
+      ],
       'count': built.elements.length,
-      'bounds': {
-        'x': bounds.left,
-        'y': bounds.top,
-        'width': bounds.width,
-        'height': bounds.height,
-      },
+      'bounds': _boundsJson(built.elements),
     }),
   );
 }
@@ -637,6 +959,18 @@ McpToolResult _runRead(McpToolContext ctx, Map<String, Object?> arguments) {
   final offset = _intArg(arguments, 'offset', 0, 0, 1 << 30);
   final page = selected.skip(offset).take(limit).toList();
   final next = offset + page.length;
+  final described = describeDiagramElements(page);
+  // A 4 MiB base64 blob must never land in a model's context by accident.
+  if (arguments['includeImageData'] != true) {
+    for (var i = 0; i < page.length; i++) {
+      final el = page[i];
+      if (el is SketchImage) {
+        described[i]
+          ..remove('data')
+          ..['bytes'] = el.bytes.length;
+      }
+    }
+  }
   return McpToolResult(
     jsonEncode({
       'count': page.length,
@@ -644,7 +978,7 @@ McpToolResult _runRead(McpToolContext ctx, Map<String, Object?> arguments) {
       'offset': offset,
       'limit': limit,
       if (next < selected.length) 'nextOffset': next,
-      'elements': describeDiagramElements(page),
+      'elements': described,
     }),
   );
 }
@@ -661,6 +995,7 @@ McpToolResult _runUpdate(McpToolContext ctx, Map<String, Object?> arguments) {
 
   final byId = {for (final e in controller.elements) e.id: e};
   final bindable = _bindableIds(controller);
+  final entities = _entities(controller);
   final patched = <SketchElement>[];
   final missing = <String>[];
   for (final entry in raw) {
@@ -685,7 +1020,14 @@ McpToolResult _runUpdate(McpToolContext ctx, Map<String, Object?> arguments) {
       continue;
     }
     try {
-      patched.add(applyDiagramPatch(current, map, bindableIds: bindable));
+      patched.add(
+        applyDiagramPatch(
+          current,
+          map,
+          bindableIds: bindable,
+          entities: entities,
+        ),
+      );
     } on DiagramSpecException catch (e) {
       // Name the offending id so the model corrects that entry, not the
       // whole batch. `_callTool` would otherwise report a bare message.
@@ -756,9 +1098,11 @@ McpToolResult _runClear(McpToolContext ctx, Map<String, Object?> arguments) {
 
 // ── Selection & argument validation ─────────────────────────────────────
 
-/// Elements matching `ids`, `types` and `region` in [args], in stacking
-/// order. Absent filters match everything. Shared by read and screenshot so
-/// "the same selection" means the same thing everywhere.
+/// Elements matching `ids`, `types`, `frame` and `region` in [args], in
+/// stacking order. Absent filters match everything. `frame` is a frame's id
+/// or case-insensitive name and keeps the frame plus the elements wholly
+/// inside it; a frame that does not exist throws. Shared by read, screenshot
+/// and export so "the same selection" means the same thing everywhere.
 List<SketchElement> selectElements(
   SketchController controller,
   Map<String, Object?> args,
@@ -766,13 +1110,39 @@ List<SketchElement> selectElements(
   final ids = _stringSet(args, 'ids');
   final types = _stringSet(args, 'types');
   final region = _region(args['region']);
+  final inFrame = _frameSelection(controller, _stringArg(args, 'frame'));
   return [
     for (final e in controller.elements)
       if ((ids == null || ids.contains(e.id)) &&
+          (inFrame == null || inFrame.contains(e.id)) &&
           (types == null || types.contains(e.toJson()['type'])) &&
           (region == null || _touches(e.bounds, region)))
         e,
   ];
+}
+
+/// Ids of the frame named [key] and its members; null when [key] is null.
+Set<String>? _frameSelection(SketchController controller, String? key) {
+  if (key == null) return null;
+  final frames = controller.elements.whereType<SketchFrame>();
+  final byId = frames.where((f) => f.id == key).toList();
+  final hits = byId.isNotEmpty
+      ? byId
+      : frames.where((f) => f.name.toLowerCase() == key.toLowerCase()).toList();
+  if (hits.isEmpty) {
+    throw DiagramSpecException(
+      frames.isEmpty
+          ? 'No frame "$key": the canvas has no frames.'
+          : 'No frame "$key". Frames on the canvas: '
+                '${frames.map((f) => '"${f.name}" (${f.id})').join(', ')}.',
+    );
+  }
+  return {
+    for (final f in hits) ...[
+      f.id,
+      for (final m in FrameMembership.members(f, controller.elements)) m.id,
+    ],
+  };
 }
 
 /// Closed-interval overlap: [Rect.overlaps] ignores zero-area bounds (a
@@ -886,6 +1256,204 @@ Future<McpToolResult> _runScreenshot(
         '${header.getUint32(0)}x${header.getUint32(4)} px, '
         '${selected.length} element(s).',
   );
+}
+
+// ── import / export ─────────────────────────────────────────────────────
+
+const int _maxImportChars = 8 * 1024 * 1024;
+
+Future<McpToolResult> _runImport(
+  McpToolContext ctx,
+  Map<String, Object?> arguments,
+) async {
+  final controller = ctx.controller;
+  final text = _stringArg(arguments, 'text');
+  if (text == null || text.trim().isEmpty) {
+    return const McpToolResult.failed('import needs a non-empty "text".');
+  }
+  if (text.length > _maxImportChars) {
+    return const McpToolResult.failed('"text" is larger than 8 MiB.');
+  }
+  final replace = arguments['mode'] == 'replace';
+  final requested = _stringArg(arguments, 'format') ?? 'auto';
+  final format = switch (requested) {
+    'auto' => switch (detectTextFormat(text)) {
+      TextFormat.json => 'json',
+      TextFormat.excalidraw => 'excalidraw',
+      TextFormat.mermaid => 'mermaid',
+      TextFormat.dbml => 'dbml',
+      TextFormat.unknown => null,
+    },
+    'mermaid' || 'dbml' || 'excalidraw' || 'json' => requested,
+    _ => throw DiagramSpecException(
+      'Unknown format "$requested". Use auto, mermaid, dbml, excalidraw or '
+      'json.',
+    ),
+  };
+  if (format == null) {
+    return const McpToolResult.failed(
+      'Could not tell what format this is. Mermaid starts with "flowchart", '
+      '"graph" or "erDiagram"; DBML with "Table"; or pass "format" '
+      'explicitly.',
+    );
+  }
+
+  if (format == 'mermaid' || format == 'dbml') {
+    // Parsing happens before anything touches the canvas, so a bad line
+    // (reported with its number) leaves it as it was.
+    final graph = <String, Object?>{
+      ...(format == 'mermaid' ? parseMermaid(text) : parseDbml(text)),
+      if (arguments['direction'] != null) 'direction': arguments['direction'],
+      if (arguments['connectors'] != null)
+        'connectors': arguments['connectors'],
+    };
+    final built = _placeGraph(controller, graph, replace: replace);
+    return McpToolResult(
+      jsonEncode({
+        'format': format,
+        'count': built.elements.length,
+        'nodes': built.nodeIds,
+        'dropped': 0,
+      }),
+    );
+  }
+
+  final List<SketchElement> parsed;
+  final int dropped;
+  if (format == 'excalidraw') {
+    final r = parseExcalidraw(text);
+    parsed = r.elements;
+    dropped = r.dropped;
+  } else {
+    final load = SketchSerializer.loadJson(text);
+    parsed = load.elements;
+    dropped = load.droppedCount;
+  }
+  if (parsed.isEmpty) {
+    return McpToolResult.failed(
+      dropped == 0
+          ? 'That $format scene holds no elements.'
+          : 'None of its $dropped element(s) could be imported.',
+    );
+  }
+  var incoming = parsed;
+  if (!replace && controller.elements.isNotEmpty) {
+    // Below the existing content, left-aligned with it.
+    final existing = CanvasExporter.contentBounds(controller.elements);
+    final fresh = CanvasExporter.contentBounds(parsed);
+    final shift = Offset(
+      existing.left - fresh.left,
+      existing.bottom + 96 - fresh.top,
+    );
+    incoming = [for (final e in parsed) e.translate(shift)];
+  }
+  if (replace) {
+    controller.replaceAll(incoming);
+  } else {
+    // A FlowCraft scene exported from this board carries ids already in use.
+    // ponytail: pasteElements re-ids but leaves arrow bindings pointing at
+    // the old ids, so such arrows lose their binding; remap if it matters.
+    final taken = {for (final e in controller.elements) e.id};
+    if (incoming.any((e) => taken.contains(e.id))) {
+      controller.pasteElements(incoming, offset: Offset.zero);
+      incoming = controller.elements.sublist(
+        controller.elements.length - incoming.length,
+      );
+    } else {
+      controller.addAll(incoming);
+    }
+  }
+  _show(controller, incoming);
+  return McpToolResult(
+    jsonEncode({
+      'format': format,
+      'count': incoming.length,
+      'ids': [for (final e in incoming) e.id],
+      'dropped': dropped,
+    }),
+  );
+}
+
+Future<McpToolResult> _runExport(
+  McpToolContext ctx,
+  Map<String, Object?> arguments,
+) async {
+  final format = _stringArg(arguments, 'format');
+  if (format != 'png' && format != 'svg' && format != 'json') {
+    return const McpToolResult.failed('format must be png, svg or json.');
+  }
+  final selected = selectElements(ctx.controller, arguments);
+  if (selected.isEmpty) {
+    return const McpToolResult.failed(
+      'Nothing to export: no element matches (or the canvas is empty).',
+    );
+  }
+  final path = _stringArg(arguments, 'path');
+  final overwrite = arguments['overwrite'] == true;
+  if (path != null && !path.toLowerCase().endsWith('.$format')) {
+    return McpToolResult.failed(
+      'path must end in .$format for format $format.',
+    );
+  }
+  final ratio = arguments['pixelRatio'] ?? 2;
+  if (ratio is! num || !(ratio >= 0.25 && ratio <= 4)) {
+    return const McpToolResult.failed('"pixelRatio" must be from 0.25 to 4.');
+  }
+  final background = _colorArg(arguments, 'background');
+
+  final List<int> bytes;
+  switch (format) {
+    case 'png':
+      bytes = await CanvasExporter.renderPng(
+        selected,
+        background: background ?? const Color(0xFFFFFFFF),
+        pixelRatio: ratio.toDouble(),
+        bounds: _region(arguments['region']),
+      );
+    case 'svg':
+      bytes = utf8.encode(
+        await SvgExporter.render(selected, background: background),
+      );
+    default:
+      bytes = utf8.encode(SketchSerializer.serialize(selected));
+  }
+
+  if (path == null) {
+    if (format == 'png') {
+      return McpToolResult.image(
+        Uint8List.fromList(bytes),
+        text: '${selected.length} element(s), ${bytes.length} bytes.',
+      );
+    }
+    return McpToolResult(utf8.decode(bytes));
+  }
+  try {
+    final written = await ExportFileSink.writeTo(
+      path,
+      bytes,
+      overwrite: overwrite,
+      // The default protected folder is ~/.flowcraft (projects + token).
+    );
+    return McpToolResult(
+      jsonEncode({'path': written, 'bytes': bytes.length, 'format': format}),
+    );
+  } on ExportPathException catch (e) {
+    return McpToolResult.failed(e.message);
+  }
+}
+
+/// A `#RRGGBB` / `#AARRGGBB` argument, null when absent.
+Color? _colorArg(Map<String, Object?> args, String key) {
+  final raw = _stringArg(args, key);
+  if (raw == null) return null;
+  final hex = raw.startsWith('#') ? raw.substring(1) : raw;
+  final value = RegExp(r'^([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$').hasMatch(hex)
+      ? int.parse(hex, radix: 16)
+      : null;
+  if (value == null) {
+    throw DiagramSpecException('"$key" must be "#RRGGBB" or "#AARRGGBB".');
+  }
+  return Color(hex.length == 6 ? 0xFF000000 | value : value);
 }
 
 McpToolResult _runGuide(McpToolContext ctx, Map<String, Object?> arguments) {

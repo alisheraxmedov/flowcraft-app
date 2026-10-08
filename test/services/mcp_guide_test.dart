@@ -10,7 +10,19 @@ void main() {
   });
 
   test('guide covers the vocabulary the tools accept', () {
-    for (final word in ['fromId', 'toId', 'flowcraft_diagram', 'sticky']) {
+    for (final word in [
+      'fromId',
+      'toId',
+      'flowcraft_diagram',
+      'sticky',
+      'frame',
+      'entity',
+      'dataUrl',
+      'elbow',
+      'fontFamily',
+      'erDiagram',
+      'Table users',
+    ]) {
       expect(mcpGuideText, contains(word), reason: word);
     }
   });
