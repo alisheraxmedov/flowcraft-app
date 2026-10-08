@@ -117,12 +117,13 @@ class AppTheme {
         thumbColor: t.accent,
         trackHeight: 4,
         // Mockup: a native range input - thin track spanning the whole
-        // control, small thumb, no hover halo and no `divisions` tick dots.
+        // control, 16px thumb, no hover halo and no `divisions` tick dots.
         trackShape: const _FullWidthTrack(),
         tickMarkShape: SliderTickMarkShape.noTickMark,
+        showValueIndicator: ShowValueIndicator.never,
         overlayShape: SliderComponentShape.noOverlay,
         thumbShape: const RoundSliderThumbShape(
-          enabledThumbRadius: 7,
+          enabledThumbRadius: 8,
           elevation: 0,
           pressedElevation: 0,
         ),
