@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'package:flowcraft/core/theme/app_radius.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/views/widgets/fc_dialog.dart';
 import 'package:flowcraft/views/widgets/shortcuts/canvas_shortcut_table.dart';
 import 'package:flowcraft/views/widgets/shortcuts/shortcut_label.dart';
 
@@ -23,11 +24,10 @@ class ShortcutsHelpDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final platform = Theme.of(context).platform;
 
-    return AlertDialog(
-      title: const Text('Keyboard shortcuts'),
+    return FcDialog(
+      title: 'Keyboard shortcuts',
       content: SizedBox(
         width: 560,
         child: SingleChildScrollView(
@@ -54,9 +54,8 @@ class ShortcutsHelpDialog extends StatelessWidget {
         ),
       ),
       actions: [
-        TextButton(
+        FilledButton(
           onPressed: () => Navigator.of(context).pop(),
-          style: TextButton.styleFrom(foregroundColor: colorScheme.primary),
           child: const Text('Close'),
         ),
       ],
@@ -116,8 +115,8 @@ class _Row extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: AppRadius.xsRadius,
+              color: context.fc.surface2,
+              borderRadius: BorderRadius.circular(5),
             ),
             child: Text(
               keys,

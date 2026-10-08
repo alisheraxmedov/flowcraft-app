@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/viewmodels/scene_importer.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/fc_dialog.dart';
 import 'package:flowcraft/views/widgets/import/import_actions.dart';
 import 'package:flowcraft/views/widgets/import/import_feedback.dart';
 
@@ -59,9 +59,9 @@ class _PasteSceneDialogState extends State<PasteSceneDialog> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return AlertDialog(
+    return FcDialog(
       scrollable: true,
-      title: const Text('Paste JSON, Excalidraw, Mermaid or DBML'),
+      title: 'Paste JSON, Excalidraw, Mermaid or DBML',
       content: SizedBox(
         width: 560,
         child: TextField(
@@ -78,7 +78,6 @@ class _PasteSceneDialogState extends State<PasteSceneDialog> {
             hintText:
                 '{"version": 1, "elements": [ … ]}  ·  graph TD; a --> b  ·  Table users { … }',
             contentPadding: EdgeInsets.all(AppSpacing.toolbarGap),
-            border: OutlineInputBorder(borderRadius: AppRadius.smRadius),
           ),
         ),
       ),

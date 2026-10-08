@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,14 +25,41 @@ MenuItemButton _item(WidgetTester tester, String label) {
 }
 
 void main() {
-  testWidgets('looks like the pill it replaces', (tester) async {
+  testWidgets('is the accent-filled pill with the upload glyph', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(_host(controller));
 
     expect(find.text('Export'), findsOneWidget);
-    expect(find.byIcon(Icons.ios_share_rounded), findsOneWidget);
+    final pill = tester.widget<Container>(
+      find
+          .ancestor(of: find.text('Export'), matching: find.byType(Container))
+          .first,
+    );
+    expect((pill.decoration! as BoxDecoration).color, FcTokens.light.accent);
+    expect(tester.getSize(find.byType(ExportMenuButton)).height, 32);
+    final glyph = tester.widget<FcIconGlyph>(find.byType(FcIconGlyph));
+    expect(glyph.icon, same(FcIcons.upload));
+    expect(glyph.size, 16);
+  });
+
+  testWidgets('the menu ends with the "Saves to" footer note', (tester) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Saves to ~/Documents/FlowCraft'), findsOneWidget);
+    final png = find.ancestor(
+      of: find.text('Export as PNG'),
+      matching: find.byType(MenuItemButton),
+    );
+    expect(tester.getSize(png).height, 34, reason: 'mockup rows are h34');
   });
 
   testWidgets('opens a menu with the three export routes', (tester) async {

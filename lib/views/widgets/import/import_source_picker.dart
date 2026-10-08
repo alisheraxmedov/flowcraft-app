@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/services/importable_scene.dart';
@@ -71,7 +70,6 @@ class ImportSourcePicker extends StatelessWidget {
             isDense: true,
             labelText: 'Or a path to any scene file',
             hintText: '~/Downloads/board.flowcraft.json',
-            border: OutlineInputBorder(borderRadius: AppRadius.smRadius),
           ),
         ),
       ],

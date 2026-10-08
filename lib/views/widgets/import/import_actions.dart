@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/viewmodels/scene_importer.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 
 /// The choice both import dialogs end on, plus their in-place error line.
 ///
@@ -42,8 +43,8 @@ class ImportActions extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: AppSpacing.toolbarGap),
             child: Row(
               children: [
-                Icon(
-                  Icons.error_outline_rounded,
+                FcIconGlyph(
+                  FcIcons.circleAlert,
                   size: 16,
                   color: colorScheme.error,
                 ),

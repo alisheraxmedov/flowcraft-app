@@ -4,6 +4,7 @@ import 'package:flowcraft/services/importable_scene.dart';
 import 'package:flowcraft/services/scene_import_source.dart';
 import 'package:flowcraft/viewmodels/scene_importer.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/fc_dialog.dart';
 import 'package:flowcraft/views/widgets/import/import_actions.dart';
 import 'package:flowcraft/views/widgets/import/import_feedback.dart';
 import 'package:flowcraft/views/widgets/import/import_source_picker.dart';
@@ -137,9 +138,9 @@ class _ImportSceneDialogState extends State<ImportSceneDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return FcDialog(
       scrollable: true,
-      title: const Text('Import a scene'),
+      title: 'Import a scene',
       content: SizedBox(
         width: 560,
         child: ImportSourcePicker(

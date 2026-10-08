@@ -1,7 +1,7 @@
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/views/widgets/insert_image_dialog.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 SketchRectangle _rect(String id, {double x = 0}) {
@@ -67,17 +67,98 @@ void main() {
     await tester.pumpWidget(_host(controller));
     await _openMenu(tester);
 
-    // Compared field by field: `SingleActivator` has no `==`, so two
-    // identical activators are never equal objects.
-    final duplicate = _item(tester, 'Duplicate').shortcut! as SingleActivator;
-    expect(duplicate.trigger, LogicalKeyboardKey.keyD);
-    expect(duplicate.meta, isTrue);
-    expect(duplicate.control, isFalse, reason: 'macOS uses Cmd, not Ctrl');
+    Finder hint(String label, String keys) => find.descendant(
+      of: find.ancestor(
+        of: find.text(label),
+        matching: find.byType(MenuItemButton),
+      ),
+      matching: find.text(keys),
+    );
+    expect(hint('Duplicate', '⌘D'), findsOneWidget);
+    expect(hint('Bring to front', '⇧⌘]'), findsOneWidget);
+  });
 
-    final front = _item(tester, 'Bring to front').shortcut! as SingleActivator;
-    expect(front.trigger, LogicalKeyboardKey.bracketRight);
-    expect(front.meta, isTrue);
-    expect(front.shift, isTrue);
+  testWidgets('groups carry mockup headers and no History group', (
+    tester,
+  ) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+
+    for (final header in ['EDIT', 'ARRANGE', 'CANVAS', 'HELP']) {
+      expect(find.text(header), findsOneWidget, reason: header);
+    }
+    expect(find.text('HISTORY'), findsNothing);
+    final copy = find.ancestor(
+      of: find.text('Copy'),
+      matching: find.byType(MenuItemButton),
+    );
+    expect(tester.getSize(copy).height, 30, reason: 'mockup rows are h30');
+  });
+
+  testWidgets('has no Undo / Redo items — the bottom island owns them', (
+    tester,
+  ) async {
+    final controller = SketchController(initialElements: [_rect('a')]);
+    addTearDown(controller.dispose);
+    controller.add(_rect('b'));
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+
+    expect(controller.canUndo, isTrue);
+    expect(find.text('Undo'), findsNothing);
+    expect(find.text('Redo'), findsNothing);
+  });
+
+  testWidgets('Clear canvas clears, and the snackbar offers Undo', (
+    tester,
+  ) async {
+    final controller = SketchController(
+      initialElements: [_rect('a'), _rect('b', x: 20)],
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+    await tester.tap(find.text('Clear canvas'));
+    await tester.pumpAndSettle();
+
+    expect(controller.elements, isEmpty);
+    expect(find.text('Cleared 2 elements'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pump();
+
+    expect(controller.elements, hasLength(2));
+  });
+
+  testWidgets('Clear canvas is danger-coloured and disabled when empty', (
+    tester,
+  ) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+
+    expect(_item(tester, 'Clear canvas').onPressed, isNull);
+
+    controller.add(_rect('a'));
+    await tester.pump();
+    expect(_item(tester, 'Clear canvas').onPressed, isNotNull);
+
+    final text = tester.widget<Text>(find.text('Clear canvas'));
+    final style = DefaultTextStyle.of(
+      tester.element(find.text('Clear canvas')),
+    );
+    expect(
+      (text.style?.color ?? style.style.color),
+      FcTokens.light.danger,
+      reason: 'the label is painted in the danger token',
+    );
   });
 
   testWidgets('greys out what a selectionless canvas cannot do', (
@@ -91,7 +172,6 @@ void main() {
 
     expect(_item(tester, 'Copy').onPressed, isNull);
     expect(_item(tester, 'Group').onPressed, isNull);
-    expect(_item(tester, 'Undo').onPressed, isNull);
     // Always available: they are how a selection gets made in the first
     // place, and how a scene arrives.
     expect(_item(tester, 'Select all').onPressed, isNotNull);

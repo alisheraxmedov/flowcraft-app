@@ -34,9 +34,10 @@ class CanvasShortcutGroup {
 
   /// Whether the top-bar Edit menu should offer this group.
   ///
-  /// False for the two groups a menu would only make worse: tools already
-  /// have the tool rail, and "nudge by one pixel" is not something anyone
-  /// reaches for through three clicks.
+  /// False for the groups a menu would only make worse: tools already
+  /// have the tool island, History lives in the bottom island's Undo/Redo,
+  /// and "nudge by one pixel" is not something anyone reaches for through
+  /// three clicks.
   final bool inMenu;
 }
 
@@ -146,7 +147,7 @@ class CanvasShortcutTable {
           const ClearSelectionIntent(),
         ),
       ]),
-      CanvasShortcutGroup('History', <CanvasShortcut>[
+      CanvasShortcutGroup('History', inMenu: false, <CanvasShortcut>[
         CanvasShortcut(
           'Undo',
           cmd(LogicalKeyboardKey.keyZ),

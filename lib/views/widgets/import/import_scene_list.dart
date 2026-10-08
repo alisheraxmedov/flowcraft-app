@@ -5,6 +5,7 @@ import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/core/utils/relative_time.dart';
 import 'package:flowcraft/services/importable_scene.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 
 /// The `.json` files found in the export folder, newest first.
 ///
@@ -92,8 +93,8 @@ class _SceneTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.data_object_rounded,
+              FcIconGlyph(
+                FcIcons.fileJson,
                 size: 16,
                 color: colorScheme.onSurfaceVariant,
               ),

@@ -5,16 +5,18 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import 'package:flowcraft/core/serialization/sketch_serializer.dart';
 import 'package:flowcraft/core/theme/app_radius.dart';
-import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/services/canvas_exporter.dart';
 import 'package:flowcraft/services/svg_exporter.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/views/widgets/export_feedback.dart';
+import 'package:flowcraft/views/widgets/fc_menu.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 import 'package:flowcraft/views/widgets/import_scene_dialog.dart';
 import 'package:flowcraft/views/widgets/paste_scene_dialog.dart';
 
-/// Top-bar "Export" control: a menu offering PNG, SVG, JSON, clipboard — and,
+/// Top-right "Export" control: a menu offering PNG, SVG, JSON, clipboard — and,
 /// under a divider, the two ways back in (a file, or pasted JSON).
 ///
 /// Import shares the export button rather than taking a second slot in the
@@ -135,45 +137,53 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
       builder: (context, _) {
         final hasContent = widget.controller.elements.isNotEmpty;
         return MenuAnchor(
-          alignmentOffset: const Offset(0, AppSpacing.toolbarGap),
+          style: fcMenuStyle(context),
+          alignmentOffset: const Offset(0, 6),
           menuChildren: [
-            MenuItemButton(
-              leadingIcon: const Icon(Icons.image_outlined, size: 18),
+            FcMenuItem(
+              icon: FcIcons.image,
+              height: 34,
               onPressed: hasContent ? () => _run(_writePng) : null,
-              child: const Text('Export as PNG'),
+              label: 'Export as PNG',
             ),
-            MenuItemButton(
-              leadingIcon: const Icon(Icons.polyline_outlined, size: 18),
+            FcMenuItem(
+              icon: FcIcons.fileCode,
+              height: 34,
               onPressed: hasContent ? () => _run(_writeSvg) : null,
-              child: const Text('Export as SVG'),
+              label: 'Export as SVG',
             ),
-            MenuItemButton(
-              leadingIcon: const Icon(Icons.data_object_rounded, size: 18),
+            FcMenuItem(
+              icon: FcIcons.fileJson,
+              height: 34,
               onPressed: hasContent ? () => _run(_writeJson) : null,
-              child: const Text('Export as JSON'),
+              label: 'Export as JSON',
             ),
-            MenuItemButton(
-              leadingIcon: const Icon(Icons.copy_all_rounded, size: 18),
+            FcMenuItem(
+              icon: FcIcons.copy,
+              height: 34,
               onPressed: _copyJson,
-              child: const Text('Copy JSON to clipboard'),
+              label: 'Copy JSON to clipboard',
             ),
             // The way back in. It lives under the export routes rather than
             // in a menu of its own because it is the same JSON travelling
-            // the other direction — and because "Export as JSON" promising a
+            // the other direction -- and because "Export as JSON" promising a
             // re-importable file with no import in the app was the gap.
-            const Divider(height: 1),
-            MenuItemButton(
-              leadingIcon: const Icon(Icons.file_open_outlined, size: 18),
+            const FcMenuDivider(),
+            FcMenuItem(
+              icon: FcIcons.download,
+              height: 34,
               onPressed: () =>
                   ImportSceneDialog.show(context, widget.controller),
-              child: const Text('Import from file…'),
+              label: 'Import from file…',
             ),
-            MenuItemButton(
-              leadingIcon: const Icon(Icons.content_paste_rounded, size: 18),
+            FcMenuItem(
+              icon: FcIcons.clipboard,
+              height: 34,
               onPressed: () =>
                   PasteSceneDialog.show(context, widget.controller),
-              child: const Text('Paste JSON, Mermaid, DBML…'),
+              label: 'Paste JSON, Mermaid, DBML…',
             ),
+            const _SavesToNote(),
           ],
           builder: (context, menu, _) => _ExportPill(
             busy: _busy,
@@ -183,6 +193,32 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Where exports land -- the folder is fixed (no native save dialog; see
+/// CLAUDE.md), so the menu says so. Rule above it, 12px muted.
+class _SavesToNote extends StatelessWidget {
+  const _SavesToNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fc;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: t.glassBorder)),
+      ),
+      child: Text(
+        'Saves to ~/Documents/FlowCraft',
+        style: TextStyle(
+          fontFamily: AppTypography.geistFamily,
+          fontSize: 12,
+          color: t.muted,
+        ),
+      ),
     );
   }
 }
@@ -198,40 +234,50 @@ class _ExportPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.primary,
-      borderRadius: AppRadius.xsRadius,
-      child: InkWell(
-        borderRadius: AppRadius.xsRadius,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox.square(
-                dimension: 16,
-                child: busy
-                    ? CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colorScheme.onPrimary,
-                      )
-                    : Icon(
-                        Icons.ios_share_rounded,
-                        size: 16,
-                        color: colorScheme.onPrimary,
-                      ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                busy ? 'Exporting…' : 'Export',
-                style: AppTypography.bodySm.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onPrimary,
+    final t = context.fc;
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          // The only accent-filled control in the chrome; no hover change.
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: t.accent,
+              borderRadius: BorderRadius.circular(AppRadius.button),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(
+                  dimension: 16,
+                  child: busy
+                      ? CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: t.onAccent,
+                        )
+                      : FcIconGlyph(
+                          FcIcons.upload,
+                          size: 16,
+                          color: t.onAccent,
+                        ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 7),
+                Text(
+                  busy ? 'Exporting…' : 'Export',
+                  style: AppTypography.bodySm.copyWith(
+                    fontWeight: FontWeight.w600,
+                    height: 1,
+                    color: t.onAccent,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

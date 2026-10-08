@@ -2,12 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import 'package:flowcraft/core/theme/app_radius.dart';
-import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/services/canvas_exporter.dart';
 import 'package:flowcraft/services/diagram_spec.dart';
 import 'package:flowcraft/services/image_source.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/fc_dialog.dart';
 
 /// Longest displayed side of a freshly inserted image, in canvas pixels.
 /// A 4000 px photo would otherwise land as a wall the user must shrink.
@@ -101,9 +100,8 @@ class _InsertImageDialogState extends State<InsertImageDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
-      title: Text('Insert image', style: AppTypography.headlineMd),
+    return FcDialog(
+      title: 'Insert image',
       content: SizedBox(
         width: 420,
         child: TextField(
@@ -119,7 +117,6 @@ class _InsertImageDialogState extends State<InsertImageDialog> {
             helperMaxLines: 2,
             errorText: _error,
             errorMaxLines: 3,
-            border: const OutlineInputBorder(borderRadius: AppRadius.smRadius),
           ),
         ),
       ),
