@@ -55,17 +55,23 @@ const int maxDiagramTextLength = 4096;
 /// accepted `"#-1"` and `"#FFF"` became a nearly transparent black.
 final RegExp _hexColor = RegExp(r'^#?[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$');
 
-List<SketchElement> parseDiagramElements(List<dynamic> raw) {
+/// Parses a draw payload. [bindableIds] are the ids of elements an arrow's
+/// `fromId`/`toId` may attach to; the default (none) refuses any binding,
+/// which is what the legacy REST `/draw` wants.
+List<SketchElement> parseDiagramElements(
+  List<dynamic> raw, {
+  Set<String> bindableIds = const {},
+}) {
   if (raw.length > maxDiagramElements) {
     throw DiagramSpecException(
       'Too many elements: ${raw.length}. At most $maxDiagramElements can be '
       'drawn per call — split the diagram across several calls.',
     );
   }
-  return [for (final entry in raw) _parseOne(entry)];
+  return [for (final entry in raw) _parseOne(entry, bindableIds)];
 }
 
-SketchElement _parseOne(dynamic entry) {
+SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
   if (entry is! Map) {
     throw DiagramSpecException('Element must be an object, got: $entry');
   }
@@ -87,6 +93,7 @@ SketchElement _parseOne(dynamic entry) {
     );
   }
   final fontSize = _fontSize(map);
+  if (type != 'arrow') _refuseBindingKeys(map, 'a "$type"');
 
   switch (type) {
     case 'rectangle':
@@ -137,10 +144,23 @@ SketchElement _parseOne(dynamic entry) {
         style: style,
       );
     case 'arrow':
+      final fromId = _bindingId(map, 'fromId', bindableIds);
+      final toId = _bindingId(map, 'toId', bindableIds);
+      _refuseSelfLoop(fromId, toId);
+      final end = _offset(map, 'toX', 'toY');
+      // A bound end's coordinates are only a placeholder — the controller
+      // snaps the tip onto the shape's outline — so a missing one borrows the
+      // other end instead of landing on (0, 0).
+      final start = fromId != null && map['fromX'] == null
+          ? end
+          : _offset(map, 'fromX', 'fromY');
       return SketchArrow.create(
-        start: _offset(map, 'fromX', 'fromY'),
-        end: _offset(map, 'toX', 'toY'),
+        start: start,
+        end: toId != null && map['toX'] == null ? start : end,
         style: style,
+      ).copyWith(
+        startBinding: fromId == null ? null : SketchBinding(elementId: fromId),
+        endBinding: toId == null ? null : SketchBinding(elementId: toId),
       );
     case 'line':
       return SketchLine.create(
@@ -150,6 +170,45 @@ SketchElement _parseOne(dynamic entry) {
       );
     default:
       throw DiagramSpecException('Unknown element type: "$type"');
+  }
+}
+
+/// `fromId`/`toId` only mean something on an arrow; anywhere else they are a
+/// mistake worth naming rather than silently dropping.
+void _refuseBindingKeys(Map<String, dynamic> map, String what) {
+  for (final key in const ['fromId', 'toId']) {
+    if (map[key] != null) {
+      throw DiagramSpecException('"$key" only applies to arrows, not $what.');
+    }
+  }
+}
+
+/// Reads an arrow's `fromId`/`toId`: `null` when absent or `""` (no binding),
+/// otherwise an id that must be in [bindableIds].
+String? _bindingId(
+  Map<String, dynamic> map,
+  String key,
+  Set<String> bindableIds,
+) {
+  final id = _string(map, key);
+  if (id == null || id.isEmpty) return null;
+  if (!bindableIds.contains(id)) {
+    throw DiagramSpecException(
+      '"$key" refers to "$id", which is not a shape on the canvas an arrow '
+      'can attach to (rectangle, ellipse, diamond, triangle or sticky that '
+      'already exists). Get ids from flowcraft_read, or use flowcraft_diagram '
+      'to draw shapes and their arrows together.',
+    );
+  }
+  return id;
+}
+
+void _refuseSelfLoop(String? fromId, String? toId) {
+  if (fromId != null && fromId == toId) {
+    throw DiagramSpecException(
+      '"fromId" and "toId" are the same shape ("$fromId"); an arrow must '
+      'connect two different shapes.',
+    );
   }
 }
 
@@ -286,7 +345,11 @@ Map<String, Object?> describeDiagramElement(SketchElement el) {
     case SketchLine():
       return _describeLinear(el, 'line', el.start, el.end);
     case SketchArrow():
-      return _describeLinear(el, 'arrow', el.start, el.end);
+      return {
+        ..._describeLinear(el, 'arrow', el.start, el.end),
+        'fromId': ?el.startBinding?.elementId,
+        'toId': ?el.endBinding?.elementId,
+      };
     case SketchFreedraw():
       // Freedraw geometry is a point list the draw vocabulary has no field
       // for, so only its bounding box and stroke are reported. That is not
@@ -381,10 +444,16 @@ String _hex(Color c) => '#${c.toARGB32().toRadixString(16).padLeft(8, '0')}';
 /// an arrow share no geometry, and silently discarding the mismatched fields
 /// would be worse than an error the agent can act on. An agent that wants a
 /// different shape deletes this one and draws a new one.
+///
+/// For an arrow, `fromId`/`toId` (de)attach an end: an id binds it, `""`
+/// detaches it, and absent leaves it — except that moving the end with
+/// `fromX`/`fromY` (`toX`/`toY`) and no id detaches it, since an explicit
+/// coordinate would otherwise be overwritten by the next re-anchor.
 SketchElement applyDiagramPatch(
   SketchElement existing,
-  Map<String, dynamic> patch,
-) {
+  Map<String, dynamic> patch, {
+  Set<String> bindableIds = const {},
+}) {
   final requestedType = _string(patch, 'type');
   final currentType = _wireType(existing);
   if (requestedType != null && requestedType != currentType) {
@@ -392,6 +461,10 @@ SketchElement applyDiagramPatch(
       "Cannot change an element's type (id ${existing.id}): it is a "
       '$currentType. Delete it and draw a new $requestedType instead.',
     );
+  }
+
+  if (existing is! SketchArrow) {
+    _refuseBindingKeys(patch, 'a $currentType (id ${existing.id})');
   }
 
   switch (existing) {
@@ -469,6 +542,23 @@ SketchElement applyDiagramPatch(
         style: _patchedStyle(existing.style, patch, allowFill: false),
       );
     case SketchArrow():
+      final start = _patchedBinding(
+        patch,
+        'fromId',
+        'fromX',
+        'fromY',
+        existing.startBinding,
+        bindableIds,
+      );
+      final end = _patchedBinding(
+        patch,
+        'toId',
+        'toX',
+        'toY',
+        existing.endBinding,
+        bindableIds,
+      );
+      _refuseSelfLoop(start?.elementId, end?.elementId);
       return existing.copyWith(
         start: Offset(
           _number(patch, 'fromX', existing.start.dx),
@@ -479,6 +569,8 @@ SketchElement applyDiagramPatch(
           _number(patch, 'toY', existing.end.dy),
         ),
         style: _patchedStyle(existing.style, patch, allowFill: false),
+        startBinding: start,
+        endBinding: end,
       );
     case SketchFreedraw():
       // Freedraw geometry is a raw point list, which the draw/update
@@ -509,6 +601,24 @@ SketchElement applyDiagramPatch(
         style: _patchedStyle(existing.style, patch, allowFill: false),
       );
   }
+}
+
+/// One arrow end's binding after [patch]: the id key wins (bind or `""`
+/// detach), else a coordinate key detaches, else [current] is kept.
+SketchBinding? _patchedBinding(
+  Map<String, dynamic> patch,
+  String idKey,
+  String xKey,
+  String yKey,
+  SketchBinding? current,
+  Set<String> bindableIds,
+) {
+  if (patch[idKey] != null) {
+    final id = _bindingId(patch, idKey, bindableIds);
+    return id == null ? null : SketchBinding(elementId: id);
+  }
+  if (patch[xKey] != null || patch[yKey] != null) return null;
+  return current;
 }
 
 /// The wire `type` string [SketchElement.fromJson] switches on, for [el].

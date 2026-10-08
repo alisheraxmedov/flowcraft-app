@@ -684,4 +684,126 @@ void main() {
       );
     });
   });
+
+  group('arrow bindings', () {
+    final ids = {'a', 'b'};
+    Map<String, dynamic> arrow(Map<String, dynamic> extra) => {
+      'type': 'arrow',
+      ...extra,
+    };
+    SketchArrow parse(Map<String, dynamic> m) =>
+        parseDiagramElements([m], bindableIds: ids).single as SketchArrow;
+    Matcher refuses(String part) => throwsA(
+      isA<DiagramSpecException>().having(
+        (e) => e.message,
+        'message',
+        contains(part),
+      ),
+    );
+
+    test('fromId/toId parse to bindings', () {
+      final a = parse(arrow({'fromId': 'a', 'toId': 'b'}));
+      expect(a.startBinding?.elementId, 'a');
+      expect(a.endBinding?.elementId, 'b');
+    });
+
+    test('a bound end without coordinates borrows the other end', () {
+      final a = parse(arrow({'fromId': 'a', 'toX': 50, 'toY': 60}));
+      expect(a.start, const Offset(50, 60));
+    });
+
+    test('empty string means no binding', () {
+      final a = parse(arrow({'fromId': '', 'toId': ''}));
+      expect(a.startBinding, isNull);
+      expect(a.endBinding, isNull);
+    });
+
+    test('unknown or unbindable id is rejected', () {
+      expect(
+        () => parse(arrow({'toId': 'zzz'})),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      // Default bindableIds refuses everything (legacy REST path).
+      expect(
+        () => parseDiagramElements([
+          arrow({'fromId': 'a'}),
+        ]),
+        refuses('not a shape'),
+      );
+    });
+
+    test('fromId == toId is rejected', () {
+      expect(
+        () => parse(arrow({'fromId': 'a', 'toId': 'a'})),
+        refuses('same shape'),
+      );
+    });
+
+    test('fromId on a non-arrow is rejected', () {
+      expect(
+        () => parseDiagramElements([
+          {'type': 'line', 'fromId': 'a'},
+        ], bindableIds: ids),
+        refuses('only applies to arrows'),
+      );
+    });
+
+    group('applyDiagramPatch', () {
+      final bound =
+          SketchArrow.create(
+            start: const Offset(1, 2),
+            end: const Offset(3, 4),
+          ).copyWith(
+            startBinding: const SketchBinding(elementId: 'a'),
+            endBinding: const SketchBinding(elementId: 'b'),
+          );
+      SketchArrow patch(SketchArrow el, Map<String, dynamic> p) =>
+          applyDiagramPatch(el, p, bindableIds: ids) as SketchArrow;
+
+      test('fromId binds, "" detaches', () {
+        final unbound = SketchArrow.create(
+          start: Offset.zero,
+          end: const Offset(5, 5),
+        );
+        expect(patch(unbound, {'fromId': 'a'}).startBinding?.elementId, 'a');
+        expect(patch(bound, {'fromId': ''}).startBinding, isNull);
+        expect(patch(bound, {'fromId': ''}).endBinding?.elementId, 'b');
+      });
+
+      test('fromX alone clears the start binding only', () {
+        final r = patch(bound, {'fromX': 9});
+        expect(r.startBinding, isNull);
+        expect(r.endBinding?.elementId, 'b');
+      });
+
+      test('untouched fields keep both bindings', () {
+        final r = patch(bound, {'strokeColor': '#FF0000'});
+        expect(r.startBinding?.elementId, 'a');
+        expect(r.endBinding?.elementId, 'b');
+      });
+
+      test('unknown id and self loop are rejected', () {
+        expect(
+          () => patch(bound, {'toId': 'nope'}),
+          throwsA(isA<DiagramSpecException>()),
+        );
+        expect(() => patch(bound, {'toId': 'a'}), refuses('same shape'));
+      });
+    });
+
+    test('describe emits fromId/toId only when bound', () {
+      final plain = SketchArrow.create(
+        start: Offset.zero,
+        end: const Offset(1, 1),
+      );
+      expect(describeDiagramElement(plain).containsKey('fromId'), isFalse);
+      expect(describeDiagramElement(plain).containsKey('toId'), isFalse);
+      final half = plain.copyWith(
+        startBinding: const SketchBinding(elementId: 'a'),
+      );
+      final d = describeDiagramElement(half);
+      expect(d['fromId'], 'a');
+      expect(d.containsKey('toId'), isFalse);
+    });
+  });
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 
+import 'package:flowcraft/core/domain/arrow_binding.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
@@ -78,7 +79,8 @@ const List<McpTool> flowcraftMcpTools = [
         'change; everything else — position, size, colour, text — is left as '
         'it was, and every other element on the canvas is untouched. Use the '
         'same field names as flowcraft_draw (x/y/width/height for boxes, '
-        'fromX/fromY/toX/toY for lines and arrows, text, fontSize, '
+        'fromX/fromY/toX/toY for lines and arrows, fromId/toId to attach or '
+        'detach an arrow end, text, fontSize, '
         'strokeColor, fillColor). You cannot change an element\'s type this '
         'way — delete it and draw a new one instead.',
     inputSchema: _updateSchema,
@@ -182,6 +184,23 @@ const Map<String, Object?> _elementProperties = {
   'fromY': {'type': 'number', 'description': 'Start Y (arrow/line).'},
   'toX': {'type': 'number', 'description': 'End X (arrow/line).'},
   'toY': {'type': 'number', 'description': 'End Y (arrow/line).'},
+  'fromId': {
+    'type': 'string',
+    'description':
+        'Arrows only: id of an existing rectangle/ellipse/diamond/triangle/'
+        'sticky to attach the start to (ids come from flowcraft_read, a '
+        'flowcraft_draw reply, or flowcraft_diagram\'s key map). The tip '
+        'snaps to the shape\'s outline and follows it when the shape moves. '
+        'Overrides fromX/fromY; "" detaches. Shapes in the same '
+        'flowcraft_draw call cannot be referenced - use flowcraft_diagram '
+        'for graphs.',
+  },
+  'toId': {
+    'type': 'string',
+    'description':
+        'Arrows only: id of an existing shape to attach the end to; same '
+        'rules as fromId. Overrides toX/toY; "" detaches.',
+  },
   'text': {
     'type': 'string',
     'maxLength': maxDiagramTextLength,
@@ -358,17 +377,32 @@ McpToolResult _runDraw(
   // bridge's behaviour — an unrecognized mode must never wipe the canvas.
   final mode = arguments['mode'] == 'replace' ? 'replace' : 'add';
 
-  final elements = parseDiagramElements(raw);
+  // Replace wipes the canvas, so nothing on it can be bound to.
+  final elements = parseDiagramElements(
+    raw,
+    bindableIds: mode == 'replace' ? const {} : _bindableIds(controller),
+  );
   if (mode == 'replace') {
     controller.replaceAll(elements);
   } else {
     controller.addAll(elements);
   }
+  controller.requestFrame(
+    CanvasExporter.contentBounds(elements),
+    onlyIfHidden: true,
+  );
   return McpToolResult(
     'Drew ${elements.length} element(s) on FlowCraft (mode: $mode). '
-    'Canvas now has ${controller.elements.length} element(s) total.',
+    'Canvas now has ${controller.elements.length} element(s) total. '
+    'Element ids, in order: ${elements.map((e) => e.id).join(', ')}.',
   );
 }
+
+/// Ids of the elements an arrow may currently attach to.
+Set<String> _bindableIds(SketchController controller) => {
+  for (final e in controller.elements)
+    if (ArrowBinding.isBindable(e)) e.id,
+};
 
 McpToolResult _runDiagram(
   SketchController controller,
@@ -399,6 +433,7 @@ McpToolResult _runDiagram(
     controller.addAll(built.elements);
   }
   final bounds = CanvasExporter.contentBounds(built.elements);
+  controller.requestFrame(bounds, onlyIfHidden: true);
   return McpToolResult(
     jsonEncode({
       'nodes': built.nodeIds,
@@ -444,6 +479,7 @@ McpToolResult _runUpdate(
   }
 
   final byId = {for (final e in controller.elements) e.id: e};
+  final bindable = _bindableIds(controller);
   final patched = <SketchElement>[];
   final missing = <String>[];
   for (final entry in raw) {
@@ -468,7 +504,7 @@ McpToolResult _runUpdate(
       continue;
     }
     try {
-      patched.add(applyDiagramPatch(current, map));
+      patched.add(applyDiagramPatch(current, map, bindableIds: bindable));
     } on DiagramSpecException catch (e) {
       // Name the offending id so the model corrects that entry, not the
       // whole batch. `_callTool` would otherwise report a bare message.

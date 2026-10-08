@@ -601,6 +601,142 @@ void main() {
       expect(controller.elements.single, isA<SketchEllipse>());
     });
 
+    group('arrow bindings and reframe over MCP', () {
+      Future<Map<String, dynamic>> call(
+        String name,
+        Map<String, dynamic> args,
+      ) => rpc(
+        'tools/call',
+        params: {'name': name, 'arguments': args},
+      ).then((b) => b['result'] as Map<String, dynamic>);
+
+      SketchRectangle addBox() {
+        final box = SketchRectangle.create(
+          rect: const Rect.fromLTWH(200, 0, 100, 100),
+        );
+        controller.add(box);
+        return box;
+      }
+
+      test('toId binds the end and the tip lands on the edge', () async {
+        final box = addBox();
+        final result = await call('flowcraft_draw', {
+          'elements': [
+            {'type': 'arrow', 'fromX': 0, 'fromY': 50, 'toId': box.id},
+          ],
+        });
+
+        expect(result['isError'], isFalse);
+        final arrow = controller.elements.whereType<SketchArrow>().single;
+        expect(arrow.endBinding?.elementId, box.id);
+        expect(arrow.end.dx, closeTo(200, 0.5));
+        expect(arrow.end.dx, isNot(250));
+        // Reply lists the new id.
+        final text = ((result['content'] as List).single as Map)['text'];
+        expect(text, contains('Element ids, in order: ${arrow.id}'));
+      });
+
+      test('update that moves the box re-routes the bound arrow', () async {
+        final box = addBox();
+        await call('flowcraft_draw', {
+          'elements': [
+            {'type': 'arrow', 'fromX': 0, 'fromY': 50, 'toId': box.id},
+          ],
+        });
+        await call('flowcraft_update', {
+          'elements': [
+            {'id': box.id, 'x': 400},
+          ],
+        });
+
+        final arrow = controller.elements.whereType<SketchArrow>().single;
+        expect(arrow.end.dx, closeTo(400, 0.5));
+      });
+
+      test('unknown toId is a tool error', () async {
+        final result = await call('flowcraft_draw', {
+          'elements': [
+            {'type': 'arrow', 'toId': 'nope'},
+          ],
+        });
+        expect(result['isError'], isTrue);
+        expect(controller.elements, isEmpty);
+      });
+
+      test('read shows fromId/toId', () async {
+        final box = addBox();
+        await call('flowcraft_draw', {
+          'elements': [
+            {'type': 'arrow', 'fromX': 0, 'fromY': 50, 'toId': box.id},
+          ],
+        });
+        final read = await call('flowcraft_read', <String, dynamic>{});
+        final json =
+            jsonDecode(((read['content'] as List).single as Map)['text'])
+                as Map<String, dynamic>;
+        final arrow = (json['elements'] as List).cast<Map>().firstWhere(
+          (e) => e['type'] == 'arrow',
+        );
+        expect(arrow['toId'], box.id);
+        expect(arrow.containsKey('fromId'), isFalse);
+      });
+
+      test('draw and diagram request a frame, update does not', () async {
+        final box = addBox();
+        final gen0 = controller.frameRequestGen;
+        await call('flowcraft_draw', {
+          'elements': [
+            {'type': 'rectangle', 'x': 0, 'y': 0},
+          ],
+        });
+        expect(controller.frameRequestGen, gen0 + 1);
+        expect(controller.frameRequest?.onlyIfHidden, isTrue);
+
+        await call('flowcraft_diagram', {
+          'nodes': [
+            {'id': 'a'},
+            {'id': 'b'},
+          ],
+          'edges': [
+            {'from': 'a', 'to': 'b'},
+          ],
+        });
+        expect(controller.frameRequestGen, gen0 + 2);
+
+        await call('flowcraft_update', {
+          'elements': [
+            {'id': box.id, 'x': 5},
+          ],
+        });
+        expect(controller.frameRequestGen, gen0 + 2);
+      });
+
+      test('diagram arrow tips end on node edges, not centres', () async {
+        await call('flowcraft_diagram', {
+          'nodes': [
+            {'id': 'a'},
+            {'id': 'b'},
+          ],
+          'edges': [
+            {'from': 'a', 'to': 'b'},
+          ],
+        });
+        final arrow = controller.elements.whereType<SketchArrow>().single;
+        final boxes = {
+          for (final e in controller.elements.whereType<SketchRectangle>())
+            e.id: e.rect,
+        };
+        final from = boxes[arrow.startBinding!.elementId]!;
+        final to = boxes[arrow.endBinding!.elementId]!;
+        expect(from.center, isNot(arrow.start));
+        expect(to.center, isNot(arrow.end));
+        expect(from.inflate(1).contains(arrow.start), isTrue);
+        expect(to.inflate(1).contains(arrow.end), isTrue);
+        expect(from.deflate(1).contains(arrow.start), isFalse);
+        expect(to.deflate(1).contains(arrow.end), isFalse);
+      });
+    });
+
     group('tools/call flowcraft_diagram', () {
       Future<Map<String, dynamic>> diagram(Map<String, dynamic> args) => rpc(
         'tools/call',

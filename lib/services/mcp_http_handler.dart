@@ -177,7 +177,9 @@ class McpHttpHandler {
       'Draws diagrams live on the FlowCraft desktop whiteboard app. Call '
       'flowcraft_status to check connectivity, then flowcraft_draw with '
       'shapes (rectangles for classes/modules, arrows for relations) to '
-      'render the diagram you have analyzed. To correct a diagram, call '
+      'render the diagram you have analyzed; for graphs of nodes and edges use '
+      'flowcraft_diagram, which lays them out and binds the arrows (arrows '
+      'can also attach to existing shapes via fromId/toId). To correct a diagram, call '
       'flowcraft_read to get each element and its id, then flowcraft_update '
       'or flowcraft_delete to change or remove specific elements by id — no '
       'need to clear the board and redraw everything.';
