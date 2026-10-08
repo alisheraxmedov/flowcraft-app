@@ -44,17 +44,30 @@ class GraphLayout {
     // reversed, for ranking only.
     final dag = List.generate(n, (_) => <int>[]);
     final state = List.filled(n, 0); // 0 new, 1 on stack, 2 done
-    void visit(int u) {
-      state[u] = 1;
-      for (final v in out[u]) {
+    // Iterative (explicit stack): a chain of 10k nodes would otherwise
+    // recurse 10k deep.
+    final next = List.filled(n, 0); // next out-edge to try, per node
+    void visit(int root) {
+      final stack = [root];
+      state[root] = 1;
+      while (stack.isNotEmpty) {
+        final u = stack.last;
+        if (next[u] == out[u].length) {
+          state[u] = 2;
+          stack.removeLast();
+          continue;
+        }
+        final v = out[u][next[u]++];
         if (state[v] == 1) {
           dag[v].add(u);
         } else {
           dag[u].add(v);
-          if (state[v] == 0) visit(v);
+          if (state[v] == 0) {
+            state[v] = 1;
+            stack.add(v);
+          }
         }
       }
-      state[u] = 2;
     }
 
     for (var i = 0; i < n; i++) {

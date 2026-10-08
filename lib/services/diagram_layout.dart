@@ -303,6 +303,11 @@ void _cardinality(
 }
 
 /// A frame around its members' laid-out bounds, inflated by [_framePadding].
+///
+/// The name's length is checked by the frame parse this routes through.
+// ponytail: frames don't constrain ordering, so a non-member laid out between
+// members falls inside the padded union; order members contiguously within
+// ranks to fix.
 SketchFrame _buildFrame(
   dynamic frame,
   Set<String> nodeKeys,

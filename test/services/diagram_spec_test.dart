@@ -1169,4 +1169,60 @@ void main() {
       expect((out[2] as SketchRectangle).text, 'one');
     });
   });
+
+  group('review fixes', () {
+    final long = 'x' * (maxDiagramTextLength + 1);
+
+    test('frame name over the text cap rejected', () {
+      expect(
+        () => parseDiagramElements([
+          {'type': 'frame', 'name': long, 'width': 10, 'height': 10},
+        ]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      final frame =
+          parseDiagramElements([
+                {'type': 'frame', 'name': 'ok', 'width': 10, 'height': 10},
+              ]).single
+              as SketchFrame;
+      expect(
+        () => applyDiagramPatch(frame, {'name': long}),
+        throwsA(isA<DiagramSpecException>()),
+      );
+    });
+
+    test('read → update round trip keeps the attribute anchor', () {
+      final a = SketchEntity.create(
+        rect: const Rect.fromLTWH(0, 0, 200, 0),
+        name: 'users',
+        attributes: const [EntityAttribute(name: 'id')],
+      );
+      final b = SketchEntity.create(
+        rect: const Rect.fromLTWH(300, 0, 200, 0),
+        name: 'orders',
+        attributes: const [EntityAttribute(name: 'user_id')],
+      );
+      final arrow =
+          SketchArrow.create(
+            start: const Offset(200, 10),
+            end: const Offset(300, 10),
+          ).copyWith(
+            startBinding: SketchBinding(
+              elementId: a.id,
+              attribute: 'id',
+              focus: 0.3,
+              gap: 7,
+            ),
+          );
+      final back =
+          applyDiagramPatch(
+                arrow,
+                describeDiagramElement(arrow).cast<String, dynamic>(),
+                bindableIds: {a.id, b.id},
+                entities: {a.id: a, b.id: b},
+              )
+              as SketchArrow;
+      expect(back.startBinding, arrow.startBinding);
+    });
+  });
 }

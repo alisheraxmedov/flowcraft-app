@@ -1561,7 +1561,7 @@ class SketchFrame extends SketchElement {
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      name: json['name'] as String? ?? '',
+      name: _capped(json['name'] as String? ?? ''),
       angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
     );
@@ -1647,7 +1647,7 @@ class SketchIcon extends SketchElement {
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      name: json['name'] as String,
+      name: _capped(json['name'] as String),
       angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
     );
@@ -1774,6 +1774,29 @@ class SketchImage extends SketchElement {
   }
 }
 
+/// Longest `text` one element may carry, in UTF-16 code units.
+///
+/// The request body is capped at 8 MiB, but nothing else stood between one
+/// `{"type":"text","text":"<7 MB>"}` element and the canvas — where it
+/// would be laid out by the painter every frame, autosaved to disk and
+/// rasterised by the PNG exporter. A label or a sticky note runs to a
+/// sentence or a paragraph; 4,096 characters is a page. Lives here so a
+/// loaded file is held to the same cap as the MCP path.
+const int maxDiagramTextLength = 4096;
+
+/// Most rows one entity may carry; a table wider than this is a schema dump
+/// the canvas can't usefully show, and each row is laid out every frame.
+const int maxEntityAttributes = 200;
+
+/// [s] unchanged, or a [FormatException] when over [maxDiagramTextLength]
+/// — thrown from `fromJson` so the serializer drops and counts the element.
+String _capped(String s) {
+  if (s.length > maxDiagramTextLength) {
+    throw FormatException('text over the $maxDiagramTextLength cap');
+  }
+  return s;
+}
+
 /// One row of a [SketchEntity].
 class EntityAttribute {
   const EntityAttribute({
@@ -1797,8 +1820,8 @@ class EntityAttribute {
 
   factory EntityAttribute.fromJson(Map<String, dynamic> json) {
     return EntityAttribute(
-      name: json['name'] as String,
-      type: json['type'] as String? ?? '',
+      name: _capped(json['name'] as String),
+      type: _capped(json['type'] as String? ?? ''),
       primaryKey: json['pk'] as bool? ?? false,
       foreignKey: json['fk'] as bool? ?? false,
     );
@@ -1934,14 +1957,21 @@ class SketchEntity extends SketchElement {
     if (groupId != null) 'groupId': groupId,
   };
 
+  static List<dynamic> _cappedRows(List<dynamic>? rows) {
+    if (rows != null && rows.length > maxEntityAttributes) {
+      throw const FormatException('too many entity attributes');
+    }
+    return rows ?? const [];
+  }
+
   factory SketchEntity.fromJson(Map<String, dynamic> json) {
     return SketchEntity(
       id: json['id'] as String,
       style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
       rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
-      name: json['name'] as String? ?? '',
+      name: _capped(json['name'] as String? ?? ''),
       attributes: [
-        for (final a in json['attributes'] as List<dynamic>? ?? const [])
+        for (final a in _cappedRows(json['attributes'] as List<dynamic>?))
           EntityAttribute.fromJson((a as Map).cast<String, dynamic>()),
       ],
       fontSize: _fontSizeFromJson(json, fallback: defaultFontSize),

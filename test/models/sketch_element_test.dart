@@ -883,6 +883,24 @@ void main() {
       );
     });
 
+    test(
+      'entity with too many attributes in a file is dropped and counted',
+      () {
+        final json = SketchEntity.create(
+          rect: const Rect.fromLTWH(0, 0, 200, 0),
+          name: 'big',
+        ).toJson();
+        json['attributes'] = [
+          for (var i = 0; i < maxEntityAttributes + 1; i++) {'name': 'c$i'},
+        ];
+        expect(() => SketchElement.fromJson(json), throwsFormatException);
+        json['attributes'] = [
+          {'name': 'x' * (maxDiagramTextLength + 1)},
+        ];
+        expect(() => SketchElement.fromJson(json), throwsFormatException);
+      },
+    );
+
     test('entity round-trips attributes; fittedToAttributes sets height', () {
       final e = SketchEntity.create(
         id: 'e',

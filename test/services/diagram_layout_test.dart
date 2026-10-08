@@ -237,6 +237,22 @@ void main() {
       expect(frame.rect, a.bounds.expandToInclude(b.bounds).inflate(24));
     });
 
+    test('frame name over the text cap rejected', () {
+      expect(
+        () => buildDiagram(
+          nodes: nodes,
+          edges: edges,
+          frames: [
+            {
+              'name': 'x' * (maxDiagramTextLength + 1),
+              'members': ['a'],
+            },
+          ],
+        ),
+        throwsA(isA<DiagramSpecException>()),
+      );
+    });
+
     test('unknown frame member rejected', () {
       expect(
         () => buildDiagram(

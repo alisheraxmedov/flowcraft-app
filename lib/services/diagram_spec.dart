@@ -6,6 +6,11 @@ import 'package:flowcraft/models/icon_catalog.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 
+// The caps now live in the model (a loaded file obeys them too); re-exported
+// so MCP-side callers keep importing them from here.
+export 'package:flowcraft/models/sketch_element.dart'
+    show maxDiagramTextLength, maxEntityAttributes;
+
 /// Translates the simplified JSON diagram shapes accepted by the MCP
 /// bridge's `/draw` endpoint into real [SketchElement]s, using each
 /// element's `.create()` factory so unspecified fields fall back to the
@@ -42,15 +47,6 @@ const double maxDiagramCoordinate = 1000000;
 /// Largest font size the text layout can be asked for. Well past legible;
 /// short of the values that turn one glyph into a full-screen raster.
 const double maxDiagramFontSize = 512;
-
-/// Longest `text` one element may carry, in UTF-16 code units.
-///
-/// The request body is capped at 8 MiB, but nothing else stood between one
-/// `{"type":"text","text":"<7 MB>"}` element and the canvas — where it
-/// would be laid out by the painter every frame, autosaved to disk and
-/// rasterised by the PNG exporter. A label or a sticky note runs to a
-/// sentence or a paragraph; 4,096 characters is a page.
-const int maxDiagramTextLength = 4096;
 
 /// Hex colour as the schema documents it: `RRGGBB` or `AARRGGBB`, with an
 /// optional leading `#`. Anything else — a sign, three-digit shorthand, a
@@ -179,9 +175,11 @@ SketchElement _parseOne(
         style: style,
       );
     case 'frame':
+      final frameName = _string(map, 'name') ?? '';
+      _checkTextLength(frameName);
       return SketchFrame.create(
         rect: _rect(map),
-        name: _string(map, 'name') ?? '',
+        name: frameName,
         style: style,
       );
     case 'icon':
@@ -422,10 +420,6 @@ Color? _color(dynamic hex) {
   if (value.length == 6) value = 'FF$value';
   return Color(int.parse(value, radix: 16));
 }
-
-/// Most rows one entity may carry; a table wider than this is a schema dump
-/// the canvas can't usefully show, and each row is laid out every frame.
-const int maxEntityAttributes = 200;
 
 /// Reads a boolean field, or `null` when absent.
 bool? _bool(Map<String, dynamic> map, String key) {
@@ -842,10 +836,12 @@ SketchElement applyDiagramPatch(
 
   switch (existing) {
     case SketchFrame():
+      final frameName = _string(patch, 'name') ?? existing.name;
+      _checkTextLength(frameName);
       return existing.copyWith(
         rect: _patchedRect(existing.rect, patch),
         style: _patchedStyle(existing.style, patch, allowFill: true),
-        name: _string(patch, 'name') ?? existing.name,
+        name: frameName,
       );
     case SketchIcon():
       final name = _string(patch, 'name') ?? existing.name;
@@ -1078,6 +1074,13 @@ SketchBinding? _patchedBinding(
   SketchBinding? binding;
   if (patch[idKey] != null) {
     final id = _bindingId(patch, idKey, bindableIds);
+    // `describe` re-emits the id (and row); re-sending what is already bound
+    // must not rebuild the binding and lose its focus/gap/row.
+    if (id != null &&
+        id == current?.elementId &&
+        (patch[attrKey] == null || patch[attrKey] == current?.attribute)) {
+      return current;
+    }
     binding = id == null
         ? null
         : SketchBinding(

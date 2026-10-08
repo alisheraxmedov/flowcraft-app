@@ -95,4 +95,13 @@ void main() {
       }
     }
   });
+
+  test('a 10000-node chain lays out without stack overflow', () {
+    final ids = [for (var i = 0; i < 10000; i++) 'n$i'];
+    final p = _layout(ids, [
+      for (var i = 0; i < 9999; i++) (ids[i], ids[i + 1]),
+    ]);
+    expect(p.length, 10000);
+    expect(p['n0']!.dy, lessThan(p['n9999']!.dy));
+  });
 }
