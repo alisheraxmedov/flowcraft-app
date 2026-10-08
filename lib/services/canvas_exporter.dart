@@ -122,7 +122,7 @@ class CanvasExporter {
   /// Axis-aligned union of every element's bounds, or [Rect.zero] when
   /// there is nothing to measure. Non-finite bounds are skipped so one
   /// degenerate element can't poison the whole frame.
-  static Rect contentBounds(List<SketchElement> elements) {
+  static Rect contentBounds(Iterable<SketchElement> elements) {
     Rect? union;
     for (final element in elements) {
       final bounds = element.bounds;

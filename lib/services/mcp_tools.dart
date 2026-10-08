@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 import 'app_version.dart';
+import 'canvas_exporter.dart';
+import 'diagram_layout.dart';
 import 'diagram_spec.dart';
 
 /// The tools the app's built-in MCP server exposes, in `tools/list` order.
@@ -47,9 +50,25 @@ const List<McpTool> flowcraftMcpTools = [
         'arrows for relations. Coordinates are canvas-space pixels; leave '
         'enough spacing between boxes (e.g. 260x120 rectangles, 80px gaps) '
         'so text does not overlap. Call flowcraft_status first if unsure '
-        'whether the app is reachable.',
+        'whether the app is reachable. For flowcharts, dependency graphs and '
+        'anything else that is nodes plus edges, use flowcraft_diagram '
+        'instead — it positions the boxes for you.',
     inputSchema: _drawSchema,
     run: _runDraw,
+  ),
+  McpTool(
+    name: 'flowcraft_diagram',
+    description:
+        'Draws a graph on the FlowCraft canvas and lays it out '
+        'automatically: give it nodes (id, label, optional shape/colours) '
+        'and edges (from/to node ids) — no coordinates. Boxes are ranked, '
+        'ordered to limit crossings and spaced evenly; arrows are bound to '
+        'their boxes so they follow if a box is moved. Returns a map from '
+        'your node ids to the element ids, usable with flowcraft_update and '
+        'flowcraft_delete. Prefer this over flowcraft_draw for flowcharts, '
+        'dependency graphs, state machines and architecture diagrams.',
+    inputSchema: _diagramSchema,
+    run: _runDiagram,
   ),
   McpTool(
     name: 'flowcraft_update',
@@ -234,6 +253,72 @@ const Map<String, Object?> _updateSchema = {
   'required': ['elements'],
 };
 
+const Map<String, Object?> _diagramSchema = {
+  'type': 'object',
+  'properties': {
+    'nodes': {
+      'type': 'array',
+      'description': 'The boxes of the graph.',
+      'items': {
+        'type': 'object',
+        'properties': {
+          'id': {
+            'type': 'string',
+            'description': 'Your own unique key; edges refer to it.',
+          },
+          'label': {
+            'type': 'string',
+            'description': 'Text inside the box (defaults to the id).',
+          },
+          'shape': {
+            'type': 'string',
+            'enum': ['rectangle', 'ellipse', 'diamond', 'triangle'],
+            'description': 'Box shape. Default rectangle.',
+          },
+          'fillColor': {
+            'type': 'string',
+            'description': 'Hex fill, RRGGBB or AARRGGBB.',
+          },
+          'strokeColor': {
+            'type': 'string',
+            'description': 'Hex outline, RRGGBB or AARRGGBB.',
+          },
+        },
+        'required': ['id'],
+      },
+    },
+    'edges': {
+      'type': 'array',
+      'description': 'Arrows between nodes, from -> to. No edge labels.',
+      'items': {
+        'type': 'object',
+        'properties': {
+          'from': {'type': 'string', 'description': 'Source node id.'},
+          'to': {'type': 'string', 'description': 'Target node id.'},
+          'strokeColor': {
+            'type': 'string',
+            'description': 'Hex arrow colour, RRGGBB or AARRGGBB.',
+          },
+        },
+        'required': ['from', 'to'],
+      },
+    },
+    'direction': {
+      'type': 'string',
+      'enum': ['TB', 'LR', 'BT', 'RL'],
+      'description': 'Flow direction. Default TB (top to bottom).',
+    },
+    'mode': {
+      'type': 'string',
+      'enum': ['add', 'replace'],
+      'description':
+          '"add" (default) places the graph to the right of existing '
+          'content; "replace" clears the canvas first.',
+    },
+  },
+  'required': ['nodes'],
+};
+
 const Map<String, Object?> _deleteSchema = {
   'type': 'object',
   'properties': {
@@ -282,6 +367,53 @@ McpToolResult _runDraw(
   return McpToolResult(
     'Drew ${elements.length} element(s) on FlowCraft (mode: $mode). '
     'Canvas now has ${controller.elements.length} element(s) total.',
+  );
+}
+
+McpToolResult _runDiagram(
+  SketchController controller,
+  Map<String, Object?> arguments,
+) {
+  final nodes = arguments['nodes'];
+  final edges = arguments['edges'] ?? const [];
+  if (nodes is! List || edges is! List) {
+    throw DiagramSpecException('"nodes" and "edges" must be lists.');
+  }
+  final replace = arguments['mode'] == 'replace';
+  final existing = CanvasExporter.contentBounds(controller.elements);
+  // Add mode parks the new graph beside what is already there instead of
+  // overlapping it.
+  final origin = replace || controller.elements.isEmpty
+      ? Offset.zero
+      : Offset(existing.right + 96, existing.top);
+
+  final built = buildDiagram(
+    nodes: nodes,
+    edges: edges,
+    direction: arguments['direction'] as String? ?? 'TB',
+    origin: origin,
+  );
+  if (replace) {
+    controller.replaceAll(built.elements);
+  } else {
+    controller.addAll(built.elements);
+  }
+  final bounds = CanvasExporter.contentBounds(built.elements);
+  return McpToolResult(
+    jsonEncode({
+      'nodes': built.nodeIds,
+      'edges': [
+        for (final e in built.elements)
+          if (e is SketchArrow) e.id,
+      ],
+      'count': built.elements.length,
+      'bounds': {
+        'x': bounds.left,
+        'y': bounds.top,
+        'width': bounds.width,
+        'height': bounds.height,
+      },
+    }),
   );
 }
 

@@ -442,6 +442,7 @@ void main() {
         'flowcraft_status',
         'flowcraft_read',
         'flowcraft_draw',
+        'flowcraft_diagram',
         'flowcraft_update',
         'flowcraft_delete',
         'flowcraft_clear',
@@ -598,6 +599,79 @@ void main() {
       );
 
       expect(controller.elements.single, isA<SketchEllipse>());
+    });
+
+    group('tools/call flowcraft_diagram', () {
+      Future<Map<String, dynamic>> diagram(Map<String, dynamic> args) => rpc(
+        'tools/call',
+        params: {'name': 'flowcraft_diagram', 'arguments': args},
+      ).then((b) => b['result'] as Map<String, dynamic>);
+
+      Map<String, dynamic> payload(Map<String, dynamic> result) =>
+          jsonDecode(
+                ((result['content'] as List).single as Map)['text'] as String,
+              )
+              as Map<String, dynamic>;
+
+      final abc = {
+        'nodes': [
+          {'id': 'a', 'label': 'A'},
+          {'id': 'b', 'label': 'B'},
+        ],
+        'edges': [
+          {'from': 'a', 'to': 'b'},
+        ],
+      };
+
+      test('adds nodes and bound arrows and returns the key map', () async {
+        final result = await diagram(abc);
+
+        expect(result['isError'], isFalse);
+        final json = payload(result);
+        final nodes = (json['nodes'] as Map).cast<String, String>();
+        expect(json['count'], 3);
+        expect(controller.elements, hasLength(3));
+        final arrow = controller.elements.whereType<SketchArrow>().single;
+        expect(arrow.startBinding?.elementId, nodes['a']);
+        expect(arrow.endBinding?.elementId, nodes['b']);
+        expect(json['edges'], [arrow.id]);
+      });
+
+      test('mode=replace clears existing elements first', () async {
+        controller.add(
+          SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 10, 10)),
+        );
+
+        await diagram({...abc, 'mode': 'replace'});
+
+        expect(controller.elements, hasLength(3));
+      });
+
+      test('add mode places the diagram right of existing content', () async {
+        controller.add(
+          SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 500, 100)),
+        );
+
+        final json = payload(await diagram(abc));
+
+        expect((json['bounds'] as Map)['x'], greaterThanOrEqualTo(500 + 96));
+      });
+
+      test('an invalid edge is a tool error and leaves the canvas', () async {
+        controller.add(
+          SketchRectangle.create(rect: const Rect.fromLTWH(0, 0, 10, 10)),
+        );
+
+        final result = await diagram({
+          ...abc,
+          'edges': [
+            {'from': 'a', 'to': 'nope'},
+          ],
+        });
+
+        expect(result['isError'], isTrue);
+        expect(controller.elements, hasLength(1));
+      });
     });
 
     test('tools/call flowcraft_clear empties the canvas', () async {
