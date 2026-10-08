@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +9,22 @@ import 'package:flutter_test/flutter_test.dart';
 
 SketchRectangle _rect(String id) {
   return SketchRectangle.create(id: id, rect: const Rect.fromLTWH(0, 0, 4, 4));
+}
+
+/// Holds `link` open so a test can edit the canvas while it is in flight.
+class _GatedLinkRepository extends ProjectRepository {
+  _GatedLinkRepository(String path, this.entered, this.release)
+    : super(directoryPath: path);
+
+  final Completer<void> entered;
+  final Completer<void> release;
+
+  @override
+  Future<FlowProjectScene?> link(String id, String path) async {
+    entered.complete();
+    await release.future;
+    return super.link(id, path);
+  }
 }
 
 void main() {
@@ -389,6 +406,42 @@ void main() {
 
       expect(canvas().elements.map((e) => e.id), ['x', 'y']);
       expect(canvas().canUndo, isFalse);
+      await model().flush();
+      expect((await repository.load(id)).elements.map((e) => e.id), ['x', 'y']);
+      expect(File(linkedPath).readAsStringSync(), committed);
+    });
+
+    test('edit during link-adopt does not overwrite the adopted scene or the '
+        'linked file', () async {
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      container.dispose();
+      repository = _GatedLinkRepository(
+        repository.directoryPath,
+        entered,
+        release,
+      );
+      container = ProviderContainer(
+        overrides: [projectRepositoryProvider.overrideWithValue(repository)],
+      );
+      await model().ready;
+      final id = state().activeId!;
+      canvas().add(_rect('mine'));
+      final committed = ProjectSerializer.encodeScene(
+        FlowProjectScene(
+          project: FlowProject.create(name: 'Theirs'),
+          elements: [_rect('x'), _rect('y')],
+        ),
+      );
+      File(linkedPath).writeAsStringSync(committed);
+
+      final linking = model().linkProject(id, linkedPath);
+      await entered.future;
+      canvas().add(_rect('late')); // edited while `link` is in flight
+      release.complete();
+      expect(await linking, isNull);
+
+      expect(canvas().elements.map((e) => e.id), ['x', 'y']);
       await model().flush();
       expect((await repository.load(id)).elements.map((e) => e.id), ['x', 'y']);
       expect(File(linkedPath).readAsStringSync(), committed);

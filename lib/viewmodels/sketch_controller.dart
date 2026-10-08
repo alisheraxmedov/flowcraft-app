@@ -1184,15 +1184,22 @@ class SketchController extends ChangeNotifier {
   /// A group among [sources] is copied as a *new* group for the same reason:
   /// reusing the source group id would fuse the copies to the originals, so
   /// dragging one would drag the other.
+  ///
+  /// Arrow bindings are rewritten to the copies' new ids, so a copied arrow
+  /// stays attached to the copied shapes rather than snapping back onto the
+  /// originals at the next reconcile. A binding whose target is not among
+  /// [sources] is cleared; the copy keeps its current endpoints.
   List<SketchElement> _reidentify(List<SketchElement> sources, Offset offset) {
     final taken = <String>{for (final el in _elements) el.id};
     final groups = <String, String>{};
+    final newIds = <String, String>{};
     final copies = <SketchElement>[];
     for (final source in sources) {
       var id = IdGenerator.generate('sketch');
       while (!taken.add(id)) {
         id = IdGenerator.generate('sketch');
       }
+      newIds[source.id] = id;
       var copy = source.withId(id);
       final group = source.groupId;
       if (group != null) {
@@ -1202,7 +1209,27 @@ class SketchController extends ChangeNotifier {
       }
       copies.add(offset == Offset.zero ? copy : copy.translate(offset));
     }
-    return copies;
+    SketchBinding? remap(SketchBinding? b) {
+      final to = b == null ? null : newIds[b.elementId];
+      return to == null
+          ? null
+          : SketchBinding(
+              elementId: to,
+              focus: b!.focus,
+              gap: b.gap,
+              attribute: b.attribute,
+            );
+    }
+
+    return [
+      for (final c in copies)
+        c is SketchArrow && (c.startBinding != null || c.endBinding != null)
+            ? c.copyWith(
+                startBinding: remap(c.startBinding),
+                endBinding: remap(c.endBinding),
+              )
+            : c,
+    ];
   }
 
   /// Commits a reordered element list as one history entry, or does nothing
@@ -1278,15 +1305,25 @@ class SketchController extends ChangeNotifier {
   /// mutation ends in — so no caller can forget it; it edits in place and
   /// never touches history, so the surrounding user action stays one entry.
   void _reconcileBindings() {
-    Map<String, SketchElement>? byId;
+    // Only the shapes bound arrows point at go into the map, so a drag over
+    // a big scene with one arrow doesn't index every element per move.
+    Set<String>? targets;
+    for (final el in _elements) {
+      if (el is! SketchArrow) continue;
+      final sb = el.startBinding;
+      final eb = el.endBinding;
+      if (sb != null) (targets ??= {}).add(sb.elementId);
+      if (eb != null) (targets ??= {}).add(eb.elementId);
+    }
+    if (targets == null) return;
+    final byId = {
+      for (final e in _elements)
+        if (targets.contains(e.id)) e.id: e,
+    };
     var changed = false;
     for (var i = 0; i < _elements.length; i++) {
       final el = _elements[i];
-      if (el is! SketchArrow ||
-          (el.startBinding == null && el.endBinding == null)) {
-        continue;
-      }
-      byId ??= {for (final e in _elements) e.id: e};
+      if (el is! SketchArrow) continue;
       final resolved = ArrowBinding.resolve(el, byId);
       if (!identical(resolved, el)) {
         _elements[i] = resolved;

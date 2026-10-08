@@ -343,6 +343,91 @@ void main() {
       expect(controller.elements.single, isA<SketchRectangle>());
     });
 
+    test('import with colliding ids keeps arrows bound to the imported '
+        'shapes', () async {
+      final scene = jsonEncode({
+        'version': SketchSerializer.schemaVersion,
+        'elements': [
+          for (final (id, x) in [('a', 0), ('b', 300)])
+            SketchRectangle.create(
+              id: id,
+              rect: Rect.fromLTWH(x.toDouble(), 0, 100, 100),
+            ).toJson(),
+          SketchArrow.create(
+                id: 'arr',
+                start: const Offset(100, 50),
+                end: const Offset(300, 50),
+              )
+              .copyWith(
+                startBinding: const SketchBinding(elementId: 'a'),
+                endBinding: const SketchBinding(elementId: 'b'),
+              )
+              .toJson(),
+        ],
+      });
+      controller.addAll([
+        SketchRectangle.create(id: 'a', rect: const Rect.fromLTWH(0, 0, 9, 9)),
+      ]);
+      final r = await call('flowcraft_import', {'text': scene});
+      expect(r['isError'], isFalse, reason: textOf(r));
+      final ids = (jsonOf(r)['ids'] as List).cast<String>().toSet();
+      final arrow = controller.elements.whereType<SketchArrow>().single;
+      expect({
+        arrow.startBinding!.elementId,
+        arrow.endBinding!.elementId,
+      }, ids.difference({arrow.id}));
+    });
+
+    test(
+      'json import over the element cap fails and leaves the canvas',
+      () async {
+        final scene = jsonEncode({
+          'version': SketchSerializer.schemaVersion,
+          'elements': [
+            for (var i = 0; i <= maxDiagramElements; i++)
+              SketchRectangle.create(
+                id: 'r$i',
+                rect: const Rect.fromLTWH(0, 0, 1, 1),
+              ).toJson(),
+          ],
+        });
+        controller.add(
+          SketchRectangle.create(
+            id: 'keep',
+            rect: const Rect.fromLTWH(0, 0, 9, 9),
+          ),
+        );
+        final r = await call('flowcraft_import', {
+          'text': scene,
+          'mode': 'replace',
+        });
+        expect(r['isError'], isTrue);
+        expect(textOf(r), contains('Too many'));
+        expect(controller.elements.single.id, 'keep');
+      },
+    );
+
+    test(
+      'json import with duplicate ids in replace mode yields unique ids',
+      () async {
+        final one = SketchRectangle.create(
+          id: 'dup',
+          rect: const Rect.fromLTWH(0, 0, 9, 9),
+        ).toJson();
+        final r = await call('flowcraft_import', {
+          'text': jsonEncode({
+            'version': SketchSerializer.schemaVersion,
+            'elements': [one, one],
+          }),
+          'mode': 'replace',
+        });
+        expect(r['isError'], isFalse, reason: textOf(r));
+        expect(controller.elements, hasLength(2));
+        expect(controller.elements.map((e) => e.id).toSet(), hasLength(2));
+        expect(controller.elements.first.id, 'dup');
+      },
+    );
+
     test('a FlowCraft json scene round-trips through add mode', () async {
       await call('flowcraft_draw', {
         'elements': [
@@ -452,14 +537,16 @@ void main() {
 
     test('refuses an existing file unless overwrite is set', () async {
       final path = '${tempDir.path}/out.svg';
-      File(path).writeAsStringSync('old');
+      // A previous FlowCraft export — only such a file may be overwritten.
+      const old = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+      File(path).writeAsStringSync(old);
       final refused = await call('flowcraft_export', {
         'format': 'svg',
         'path': path,
       });
       expect(refused['isError'], isTrue);
       expect(textOf(refused), contains('overwrite'));
-      expect(File(path).readAsStringSync(), 'old');
+      expect(File(path).readAsStringSync(), old);
       final ok = await call('flowcraft_export', {
         'format': 'svg',
         'path': path,

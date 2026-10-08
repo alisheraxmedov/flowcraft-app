@@ -197,7 +197,10 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
       // The file already held a scene and now *is* this project's scene, so
       // an open project must show it — via `loadScene`, like any switch.
       if (adopted != null && state.activeId == id) {
-        await _autosave.unbind();
+        // `detach`, not `unbind`: edits made on the old canvas while `link`
+        // was awaited would otherwise be flushed over the adopted scene and
+        // mirrored over the user's file.
+        await _autosave.detach();
         _replaceCanvas(adopted.elements, droppedOnLoad: adopted.droppedCount);
         _autosave.bind(id);
       }

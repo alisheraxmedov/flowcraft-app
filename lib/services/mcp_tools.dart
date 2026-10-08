@@ -7,6 +7,7 @@ import 'dart:ui';
 import 'package:flowcraft/core/domain/arrow_binding.dart';
 import 'package:flowcraft/core/domain/frame_membership.dart';
 import 'package:flowcraft/core/serialization/sketch_serializer.dart';
+import 'package:flowcraft/core/utils/id_generator.dart';
 import 'package:flowcraft/models/flow_project.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
@@ -1339,6 +1340,12 @@ Future<McpToolResult> _runImport(
     parsed = load.elements;
     dropped = load.droppedCount;
   }
+  if (parsed.length > maxDiagramElements) {
+    return McpToolResult.failed(
+      'Too many elements: ${parsed.length}. At most $maxDiagramElements can '
+      'be imported at once.',
+    );
+  }
   if (parsed.isEmpty) {
     return McpToolResult.failed(
       dropped == 0
@@ -1346,23 +1353,22 @@ Future<McpToolResult> _runImport(
           : 'None of its $dropped element(s) could be imported.',
     );
   }
-  var incoming = parsed;
+  var incoming = _uniqueIds(parsed);
   if (!replace && controller.elements.isNotEmpty) {
     // Below the existing content, left-aligned with it.
     final existing = CanvasExporter.contentBounds(controller.elements);
-    final fresh = CanvasExporter.contentBounds(parsed);
+    final fresh = CanvasExporter.contentBounds(incoming);
     final shift = Offset(
       existing.left - fresh.left,
       existing.bottom + 96 - fresh.top,
     );
-    incoming = [for (final e in parsed) e.translate(shift)];
+    incoming = [for (final e in incoming) e.translate(shift)];
   }
   if (replace) {
     controller.replaceAll(incoming);
   } else {
     // A FlowCraft scene exported from this board carries ids already in use.
-    // ponytail: pasteElements re-ids but leaves arrow bindings pointing at
-    // the old ids, so such arrows lose their binding; remap if it matters.
+    // pasteElements re-ids the batch and remaps arrow bindings with it.
     final taken = {for (final e in controller.elements) e.id};
     if (incoming.any((e) => taken.contains(e.id))) {
       controller.pasteElements(incoming, offset: Offset.zero);
@@ -1382,6 +1388,17 @@ Future<McpToolResult> _runImport(
       'dropped': dropped,
     }),
   );
+}
+
+/// [els] with later duplicates of an id re-minted (the first keeps it), since
+/// a hand-edited or merged file can repeat ids and `replaceAll` takes them
+/// as-is. Bindings keep naming the first holder of an id.
+List<SketchElement> _uniqueIds(List<SketchElement> els) {
+  final seen = <String>{};
+  return [
+    for (final e in els)
+      seen.add(e.id) ? e : e.withId(IdGenerator.generate('sketch')),
+  ];
 }
 
 Future<McpToolResult> _runExport(

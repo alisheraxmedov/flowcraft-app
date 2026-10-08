@@ -558,6 +558,67 @@ void main() {
     });
   });
 
+  group('copying bound arrows', () {
+    SketchArrow boundArrow({String? endId = 'b'}) =>
+        SketchArrow.create(
+          id: 'arr',
+          start: const Offset(100, 50),
+          end: const Offset(300, 50),
+        ).copyWith(
+          startBinding: const SketchBinding(elementId: 'a'),
+          endBinding: endId == null ? null : SketchBinding(elementId: endId),
+        );
+
+    SketchController scene() => SketchController()
+      ..addAll([
+        _rect(id: 'a', rect: const Rect.fromLTWH(0, 0, 100, 100)),
+        _rect(id: 'b', rect: const Rect.fromLTWH(300, 0, 100, 100)),
+        boundArrow(),
+      ]);
+
+    void expectRebound(SketchController c) {
+      final copies = c.elements.skip(3).toList();
+      final arrow = copies.whereType<SketchArrow>().single;
+      final ids = copies.whereType<SketchRectangle>().map((e) => e.id).toSet();
+      expect({arrow.startBinding!.elementId, arrow.endBinding!.elementId}, ids);
+      // The reconcile ran after the paste: still on the copies, not snapped
+      // back to the originals.
+      final shapeA = copies.firstWhere(
+        (e) => e.id == arrow.startBinding!.elementId,
+      );
+      expect(arrow.start.dx, closeTo(shapeA.bounds.right, 1));
+      expect(arrow.start.dy, closeTo(shapeA.bounds.center.dy, 1));
+    }
+
+    test(
+      'paste of shapes + bound arrow rebinds the copy to the copied shapes',
+      () {
+        final c = scene();
+        c.pasteElements(c.elements.toList(), offset: const Offset(0, 300));
+        expectRebound(c);
+      },
+    );
+
+    test('duplicate likewise', () {
+      final c = scene()..selectMany({'a', 'b', 'arr'});
+      c.duplicateSelected();
+      expectRebound(c);
+    });
+
+    test('copy of an arrow without its target clears the binding and keeps '
+        'endpoints', () {
+      final c = scene()..select('arr');
+      c.duplicateSelected();
+      final copy = c.elements.last as SketchArrow;
+      expect(copy.startBinding, isNull);
+      expect(copy.endBinding, isNull);
+      expect(copy.start.dx, closeTo(116, 0.01));
+      expect(copy.start.dy, closeTo(66, 0.01));
+      expect(copy.end.dx, closeTo(316, 0.01));
+      expect(copy.end.dy, closeTo(66, 0.01));
+    });
+  });
+
   group('pasteElements', () {
     test('mints fresh ids, selects the copies, one history entry', () {
       final c = SketchController()..add(_rect(id: 'a'));
