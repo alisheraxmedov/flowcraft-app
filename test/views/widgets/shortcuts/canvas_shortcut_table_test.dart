@@ -175,4 +175,18 @@ void main() {
       expect(rows.firstWhere((r) => r.label == 'Delete').keys, 'Del / ⌫');
     });
   });
+
+  test('Insert image entry present, no duplicate activators', () {
+    for (final platform in [TargetPlatform.macOS, TargetPlatform.linux]) {
+      final all = CanvasShortcutTable.groups(
+        platform,
+      ).expand((g) => g.shortcuts);
+      expect(
+        all.where((s) => s.intent is InsertImageIntent).map((s) => s.label),
+        ['Insert image from file…'],
+      );
+      final prints = [for (final s in all) _fingerprint(s.activator)];
+      expect(prints.toSet(), hasLength(prints.length));
+    }
+  });
 }

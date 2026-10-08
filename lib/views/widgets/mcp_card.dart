@@ -6,6 +6,7 @@ import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/services/app_version.dart';
+import 'package:flowcraft/viewmodels/canvas_preferences.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
 import 'package:flowcraft/views/widgets/export_feedback.dart';
 import 'package:flowcraft/views/widgets/mcp_setup_dialog.dart';
@@ -126,6 +127,27 @@ class McpCard extends ConsumerWidget {
                 value: status.isOn,
                 onChanged: (_) =>
                     ref.read(mcpViewModelProvider.notifier).toggle(),
+                activeThumbColor: colorScheme.tertiary,
+                activeTrackColor: colorScheme.tertiaryContainer,
+                inactiveThumbColor: colorScheme.onSurfaceVariant,
+                inactiveTrackColor: colorScheme.surfaceContainerHighest,
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Animate agent drawing',
+                  style: AppTypography.bodyBase.copyWith(
+                    fontSize: 13,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Switch(
+                value: ref.watch(animateAgentDrawingProvider),
+                onChanged: ref.read(animateAgentDrawingProvider.notifier).set,
                 activeThumbColor: colorScheme.tertiary,
                 activeTrackColor: colorScheme.tertiaryContainer,
                 inactiveThumbColor: colorScheme.onSurfaceVariant,

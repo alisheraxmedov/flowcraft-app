@@ -36,6 +36,7 @@ class SketchLayer extends StatefulWidget {
     this.marqueeColor,
     this.scaleStrokeWithZoom = true,
     this.onConsumedChange,
+    this.animateReveal = true,
   });
 
   final SketchController controller;
@@ -57,16 +58,69 @@ class SketchLayer extends StatefulWidget {
   /// during an in-progress sketch interaction.
   final ValueChanged<bool>? onConsumedChange;
 
+  /// Whether `controller.requestReveal` plays the draw-on animation. Off
+  /// shows the elements immediately.
+  final bool animateReveal;
+
   @override
   State<SketchLayer> createState() => _SketchLayerState();
 }
 
-class _SketchLayerState extends State<SketchLayer> {
+class _SketchLayerState extends State<SketchLayer>
+    with SingleTickerProviderStateMixin {
   final SketchRenderCache _cache = SketchRenderCache();
   final SketchInteractionState _interaction = SketchInteractionState();
 
+  /// Drives the reveal; view-only, so it never touches `paintGen` or history.
+  late final AnimationController _reveal = AnimationController(vsync: this);
+
+  /// Ids being revealed; null once the animation has settled.
+  List<String>? _revealIds;
+
+  /// Starts at the current generation so a reveal requested before mount is
+  /// not replayed.
+  late int _seenRevealGen;
+
+  @override
+  void initState() {
+    super.initState();
+    _seenRevealGen = widget.controller.revealGen;
+    widget.controller.addListener(_onController);
+    _reveal.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() => _revealIds = null);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(SketchLayer old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller) {
+      old.controller.removeListener(_onController);
+      widget.controller.addListener(_onController);
+      _seenRevealGen = widget.controller.revealGen;
+    }
+  }
+
+  void _onController() {
+    final c = widget.controller;
+    if (c.revealGen == _seenRevealGen) return;
+    _seenRevealGen = c.revealGen;
+    final ids = c.revealRequest.toList();
+    if (!widget.animateReveal || ids.isEmpty) return;
+    _revealIds = ids;
+    _reveal
+      ..duration = Duration(
+        milliseconds: (350 + 30 * (ids.length - 1)).clamp(350, 2500),
+      )
+      ..forward(from: 0);
+  }
+
   @override
   void dispose() {
+    widget.controller.removeListener(_onController);
+    _reveal.dispose();
     _interaction.dispose();
     // The cache owns native text layouts, not just paths.
     _cache.dispose();
@@ -88,8 +142,11 @@ class _SketchLayerState extends State<SketchLayer> {
         children: [
           RepaintBoundary(
             child: ListenableBuilder(
-              listenable: widget.controller,
+              // The reveal ticks rebuild the painter (its `t` is a field);
+              // `paintGen` is untouched, so autosave and export never see it.
+              listenable: Listenable.merge([widget.controller, _reveal]),
               builder: (context, _) {
+                final ids = _revealIds;
                 return CustomPaint(
                   painter: SketchPainter(
                     elements: widget.controller.elements,
@@ -100,6 +157,7 @@ class _SketchLayerState extends State<SketchLayer> {
                     selectionColor: selectionColor,
                     editingElementId: widget.controller.editingElementId,
                     scaleStrokeWithZoom: widget.scaleStrokeWithZoom,
+                    reveal: ids == null ? null : (ids: ids, t: _reveal.value),
                   ),
                 );
               },

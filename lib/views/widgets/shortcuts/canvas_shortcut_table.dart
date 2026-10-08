@@ -116,6 +116,11 @@ class CanvasShortcutTable {
           const PasteSceneIntent(),
         ),
         CanvasShortcut(
+          'Insert image from file…',
+          cmd(LogicalKeyboardKey.keyI, shift: true),
+          const InsertImageIntent(),
+        ),
+        CanvasShortcut(
           'Duplicate',
           cmd(LogicalKeyboardKey.keyD),
           const DuplicateSelectionIntent(),

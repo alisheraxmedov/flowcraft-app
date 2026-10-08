@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/viewmodels/canvas_preferences.dart';
 
 /// Stands in for the real view model so these tests never bind a socket at
 /// all: [McpViewModel.build] starts a real control server, which would make
@@ -211,18 +212,47 @@ void main() {
   testWidgets('the switch drives the view model', (tester) async {
     await pumpCard(tester, running);
 
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    expect(tester.widget<Switch>(find.byType(Switch).first).value, isTrue);
 
-    await tester.tap(find.byType(Switch));
+    await tester.tap(find.byType(Switch).first);
     await tester.pump();
 
     expect(find.text('Status: Offline'), findsOneWidget);
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    expect(tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
   });
 
   testWidgets('the switch sits off while a start has failed', (tester) async {
     await pumpCard(tester, failed);
 
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    expect(tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
+  });
+
+  testWidgets('Animate agent drawing switch toggles the provider', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        mcpViewModelProvider.overrideWith(
+          () => _FakeMcpViewModel(const McpServerStatus.off()),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.dark(),
+          home: const Scaffold(body: Center(child: McpCard())),
+        ),
+      ),
+    );
+    expect(find.text('Animate agent drawing'), findsOneWidget);
+    expect(container.read(animateAgentDrawingProvider), isTrue);
+
+    await tester.tap(find.byType(Switch).last);
+    await tester.pump();
+
+    expect(container.read(animateAgentDrawingProvider), isFalse);
   });
 }

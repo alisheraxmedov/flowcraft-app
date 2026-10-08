@@ -107,3 +107,8 @@ class DistributeSelectionIntent extends Intent {
 
   final Axis axis;
 }
+
+/// Opens the insert-image dialog (a typed file path: no plugin, no picker).
+class InsertImageIntent extends Intent {
+  const InsertImageIntent();
+}

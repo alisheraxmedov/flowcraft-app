@@ -1,8 +1,15 @@
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/foundation.dart' show immutable;
 
 import 'package:flowcraft/core/serialization/sketch_serializer.dart';
+import 'package:flowcraft/models/sketch_element.dart';
+import 'package:flowcraft/services/canvas_exporter.dart';
+import 'package:flowcraft/services/diagram_layout.dart';
+import 'package:flowcraft/services/diagram_spec.dart';
+import 'package:flowcraft/services/text_import/dbml.dart';
+import 'package:flowcraft/services/text_import/detect.dart';
+import 'package:flowcraft/services/text_import/excalidraw.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 
 /// How an imported scene meets the one already on the canvas.
@@ -91,6 +98,86 @@ class SceneImporter {
     return SceneImportResult.success(
       imported: imported,
       dropped: load.droppedCount,
+    );
+  }
+
+  /// [import] for pasted text of any supported format: FlowCraft JSON keeps
+  /// its existing path; Mermaid / DBML are laid out by `buildDiagram`;
+  /// Excalidraw elements are placed as drawn. Like [import] it never throws,
+  /// and a syntax error comes back with its `line N:` prefix.
+  ///
+  /// [SceneImportMode.add] parks the result right of existing content (the
+  /// same spot `flowcraft_diagram` uses); replace swaps the canvas. Either
+  /// way the camera frames it and the elements animate in.
+  static SceneImportResult importText(
+    SketchController controller,
+    String text, {
+    required SceneImportMode mode,
+  }) {
+    final format = detectTextFormat(text);
+    // Unknown text takes the JSON path too, so a mangled payload keeps the
+    // familiar "not valid JSON" answer instead of a new one.
+    if (format == TextFormat.json || format == TextFormat.unknown) {
+      return import(controller, text, mode: mode);
+    }
+    final replace = mode == SceneImportMode.replace;
+    final existing = controller.elements;
+    final origin = replace || existing.isEmpty
+        ? Offset.zero
+        : CanvasExporter.contentBounds(existing).topRight.translate(96, 0);
+
+    List<SketchElement> elements;
+    var dropped = 0;
+    try {
+      switch (format) {
+        case TextFormat.mermaid || TextFormat.dbml:
+          final v = format == TextFormat.mermaid
+              ? parseMermaid(text)
+              : parseDbml(text);
+          elements = buildDiagram(
+            nodes: v['nodes'] as List,
+            edges: v['edges'] as List,
+            direction: v['direction'] as String? ?? 'TB',
+            frames: v['frames'] as List? ?? const [],
+            origin: origin,
+          ).elements;
+        case TextFormat.excalidraw:
+          final parsed = parseExcalidraw(text);
+          dropped = parsed.dropped;
+          final bounds = parsed.elements.isEmpty
+              ? Rect.zero
+              : CanvasExporter.contentBounds(parsed.elements);
+          // Not `pasteElements`: it re-mints ids, which would orphan the
+          // arrow bindings the parser just wired up.
+          elements = [
+            for (final e in parsed.elements)
+              e.translate(origin - bounds.topLeft),
+          ];
+        default:
+          return import(controller, text, mode: mode);
+      }
+    } on DiagramSpecException catch (e) {
+      return SceneImportResult.failure(e.message);
+    } catch (_) {
+      return const SceneImportResult.failure('That text could not be read.');
+    }
+    if (elements.isEmpty) {
+      return const SceneImportResult.failure('That text holds no elements.');
+    }
+
+    if (replace) {
+      controller.replaceAll(elements);
+    } else {
+      controller.addAll(elements);
+    }
+    final ids = [for (final e in elements) e.id];
+    controller
+      ..selectMany(ids)
+      ..requestFrame(CanvasExporter.contentBounds(elements))
+      ..requestReveal(ids);
+    return SceneImportResult.success(
+      imported: elements.length,
+      dropped: dropped,
     );
   }
 

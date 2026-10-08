@@ -8,6 +8,7 @@ import 'package:flowcraft/core/canvas/whiteboard_canvas.dart';
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/viewmodels/canvas_preferences.dart';
 import 'package:flowcraft/viewmodels/projects_view_model.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/viewmodels/theme_view_model.dart';
@@ -74,6 +75,7 @@ class _WhiteboardViewState extends ConsumerState<WhiteboardView> {
             Positioned.fill(
               child: WhiteboardCanvas(
                 sketchController: sketch,
+                animateReveal: ref.watch(animateAgentDrawingProvider),
                 gridType: _showGrid ? GridType.dots : GridType.none,
                 backgroundColor: colorScheme.surface,
                 gridColor: colorScheme.outline,

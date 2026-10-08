@@ -213,4 +213,85 @@ void main() {
       expect(result.error, contains('None of the 1 elements'));
     });
   });
+
+  group('importText', () {
+    test('mermaid text adds laid-out nodes and arrows', () {
+      final r = SceneImporter.importText(
+        controller,
+        'graph TD\n  a[Start] --> b{Ok?}\n  b --> c(End)',
+        mode: SceneImportMode.add,
+      );
+
+      expect(r.succeeded, isTrue);
+      expect(controller.elements.whereType<SketchArrow>(), hasLength(2));
+      expect(controller.elements, hasLength(1 + r.imported));
+      expect(controller.revealGen, 1);
+      // Parked right of the existing 10 px rectangle.
+      final added = controller.elements.skip(1).whereType<SketchRectangle>();
+      expect(added.every((e) => e.rect.left >= 10), isTrue);
+    });
+
+    test('dbml adds entities', () {
+      final r = SceneImporter.importText(
+        controller,
+        'Table users {\n  id int [pk]\n}\nTable posts {\n  id int [pk]\n'
+        '  user_id int [ref: > users.id]\n}',
+        mode: SceneImportMode.add,
+      );
+
+      expect(r.succeeded, isTrue);
+      expect(controller.elements.whereType<SketchEntity>(), hasLength(2));
+    });
+
+    test('excalidraw adds elements and reports dropped', () {
+      final r = SceneImporter.importText(
+        controller,
+        jsonEncode({
+          'type': 'excalidraw',
+          'version': 2,
+          'elements': [
+            {
+              'id': 'r1',
+              'type': 'rectangle',
+              'x': 500,
+              'y': 500,
+              'width': 100,
+              'height': 50,
+            },
+            {'id': 'x', 'type': 'embeddable', 'x': 0, 'y': 0},
+          ],
+        }),
+        mode: SceneImportMode.add,
+      );
+
+      expect(r.succeeded, isTrue);
+      expect(r.imported, 1);
+      expect(r.dropped, 1);
+      expect(controller.elements, hasLength(2));
+    });
+
+    test('json path unchanged', () {
+      final r = SceneImporter.importText(
+        controller,
+        _scene([_rect('p')]),
+        mode: SceneImportMode.add,
+      );
+
+      expect(r.imported, 1);
+      expect(controller.elements, hasLength(2));
+      expect(controller.revealGen, 0);
+    });
+
+    test('bad mermaid line reports line number', () {
+      final r = SceneImporter.importText(
+        controller,
+        'graph TD\n  a --> b\n  ???\n',
+        mode: SceneImportMode.add,
+      );
+
+      expect(r.succeeded, isFalse);
+      expect(r.error, contains('line 3'));
+      expect(controller.elements, hasLength(1));
+    });
+  });
 }

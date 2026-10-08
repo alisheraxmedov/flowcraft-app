@@ -8,7 +8,7 @@ import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/views/widgets/import/import_actions.dart';
 import 'package:flowcraft/views/widgets/import/import_feedback.dart';
 
-/// "Paste JSON" — the import route for a scene that never reached a file.
+/// "Paste JSON, Excalidraw, Mermaid or DBML" — the import route for a scene that never reached a file.
 ///
 /// Worth having next to the file picker because the *export* menu's third
 /// entry puts a scene on the clipboard: without this, the payload FlowCraft
@@ -42,7 +42,7 @@ class _PasteSceneDialogState extends State<PasteSceneDialog> {
 
   void _import(SceneImportMode mode) {
     final messenger = ScaffoldMessenger.of(context);
-    final result = SceneImporter.import(
+    final result = SceneImporter.importText(
       widget.controller,
       _json.text,
       mode: mode,
@@ -61,7 +61,7 @@ class _PasteSceneDialogState extends State<PasteSceneDialog> {
 
     return AlertDialog(
       scrollable: true,
-      title: const Text('Paste a scene'),
+      title: const Text('Paste JSON, Excalidraw, Mermaid or DBML'),
       content: SizedBox(
         width: 560,
         child: TextField(
@@ -75,7 +75,8 @@ class _PasteSceneDialogState extends State<PasteSceneDialog> {
           style: AppTypography.labelMono.copyWith(color: colorScheme.onSurface),
           decoration: const InputDecoration(
             isDense: true,
-            hintText: '{"version": 1, "elements": [ … ]}',
+            hintText:
+                '{"version": 1, "elements": [ … ]}  ·  graph TD; a --> b  ·  Table users { … }',
             contentPadding: EdgeInsets.all(AppSpacing.toolbarGap),
             border: OutlineInputBorder(borderRadius: AppRadius.smRadius),
           ),

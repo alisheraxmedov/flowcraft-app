@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flowcraft/services/canvas_exporter.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/insert_image_dialog.dart';
 import 'package:flowcraft/views/widgets/shortcuts/canvas_clipboard.dart';
 import 'package:flowcraft/views/widgets/shortcuts/canvas_intents.dart';
 import 'package:flowcraft/views/widgets/shortcuts/canvas_shortcut_manager.dart';
@@ -94,6 +95,9 @@ class _CanvasShortcutsState extends State<CanvasShortcuts> {
       ),
       PasteSceneIntent: _run<PasteSceneIntent>(
         (_) => CanvasClipboard.paste(_ctrl, _messenger),
+      ),
+      InsertImageIntent: _run<InsertImageIntent>(
+        (_) => InsertImageDialog.show(context, _ctrl),
       ),
       DuplicateSelectionIntent: _run<DuplicateSelectionIntent>(
         (_) => _ctrl.duplicateSelected(),

@@ -1,4 +1,5 @@
 import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/views/widgets/insert_image_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -171,5 +172,17 @@ void main() {
     controller.add(_rect('a'));
     await tester.pump();
     expect(_item(tester, 'Zoom to fit').onPressed, isNotNull);
+  });
+
+  testWidgets('Insert image from file… opens the dialog', (tester) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+    await tester.tap(find.text('Insert image from file…'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InsertImageDialog), findsOneWidget);
   });
 }

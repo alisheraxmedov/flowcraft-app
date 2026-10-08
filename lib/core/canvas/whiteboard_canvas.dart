@@ -47,6 +47,7 @@ class WhiteboardCanvas extends StatefulWidget {
     this.minZoom = 0.1,
     this.maxZoom = 4.0,
     this.initialZoom = 1.0,
+    this.animateReveal = true,
   });
 
   final SketchController sketchController;
@@ -58,6 +59,9 @@ class WhiteboardCanvas extends StatefulWidget {
   final double minZoom;
   final double maxZoom;
   final double initialZoom;
+
+  /// Whether agent-drawn elements animate in; see `SketchLayer.animateReveal`.
+  final bool animateReveal;
 
   /// Zoom change per scroll unit when Ctrl/Cmd is held: 100 px of wheel
   /// travel is a 20 % step. Multiplicative, like the pinch gesture
@@ -291,6 +295,7 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
                 SketchLayer(
                   controller: widget.sketchController,
                   viewportProvider: () => _viewport,
+                  animateReveal: widget.animateReveal,
                   selectionColor: Theme.of(context).colorScheme.primary,
                   marqueeColor: Theme.of(context).colorScheme.primary,
                 ),
