@@ -24,6 +24,8 @@ class ToolShortcuts {
     SketchTool.arrow: LogicalKeyboardKey.keyA,
     SketchTool.freedraw: LogicalKeyboardKey.keyP,
     SketchTool.text: LogicalKeyboardKey.keyT,
+    SketchTool.frame: LogicalKeyboardKey.keyF,
+    SketchTool.icon: LogicalKeyboardKey.keyI,
     SketchTool.eraser: LogicalKeyboardKey.keyE,
   };
 
@@ -47,6 +49,8 @@ class ToolShortcuts {
     SketchTool.arrow: 'Arrow',
     SketchTool.freedraw: 'Draw',
     SketchTool.text: 'Text',
+    SketchTool.frame: 'Frame',
+    SketchTool.icon: 'Icon',
     SketchTool.eraser: 'Eraser',
   };
 }

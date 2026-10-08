@@ -107,6 +107,10 @@ class ToolGlyph extends StatelessWidget {
         return Icons.draw_outlined;
       case SketchTool.text:
         return Icons.text_fields_rounded;
+      case SketchTool.frame:
+        return Icons.crop_free_rounded; // Placeholder glyph.
+      case SketchTool.icon:
+        return Icons.interests_outlined; // Placeholder glyph.
       case SketchTool.eraser:
         // Material's own glyph set has no eraser. The Symbols font is 32 MB
         // in the pub cache, but Flutter's icon tree-shaker keeps only the

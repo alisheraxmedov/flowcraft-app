@@ -366,6 +366,9 @@ Map<String, Object?> describeDiagramElement(SketchElement el) {
         'height': b.height,
         'strokeColor': _hex(el.style.strokeColor),
       };
+    case SketchFrame() || SketchIcon() || SketchImage() || SketchEntity():
+      // Placeholder: bounds + stroke only; the vocabulary lands in phase 2.
+      return _describeBounded(el, _wireType(el), null, 0);
   }
 }
 
@@ -468,6 +471,11 @@ SketchElement applyDiagramPatch(
   }
 
   switch (existing) {
+    case SketchFrame() || SketchIcon() || SketchImage() || SketchEntity():
+      // Placeholder: patch vocabulary for these types lands in phase 2.
+      throw DiagramSpecException(
+        'A $currentType (id ${existing.id}) cannot be updated yet.',
+      );
     case SketchRectangle():
       return existing.copyWith(
         rect: _patchedRect(existing.rect, patch),
@@ -632,6 +640,10 @@ String _wireType(SketchElement el) => switch (el) {
   SketchArrow() => 'arrow',
   SketchText() => 'text',
   SketchFreedraw() => 'freedraw',
+  SketchFrame() => 'frame',
+  SketchIcon() => 'icon',
+  SketchImage() => 'image',
+  SketchEntity() => 'entity',
 };
 
 /// [current] with any of `x`/`y`/`width`/`height` present in [patch] applied,

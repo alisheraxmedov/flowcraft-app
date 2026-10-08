@@ -35,8 +35,15 @@ class TextMetrics {
   /// The face [layout] actually uses for [fontFamily]. Anything that lays
   /// canvas text out *next to* the painter (the inline editor) should
   /// resolve through this, or its glyphs reflow against the painted ones.
-  static String resolveFontFamily(String? fontFamily) =>
-      fontFamily ?? defaultFontFamily;
+  ///
+  /// `'sans'` and `'mono'` are the element-level names (what files and MCP
+  /// carry); any other string is already a family name and passes through,
+  /// which keeps older files that stored "Inter" / "JetBrains Mono" intact.
+  static String resolveFontFamily(String? fontFamily) => switch (fontFamily) {
+    null || 'sans' => defaultFontFamily,
+    'mono' => AppTypography.monoFamily,
+    final other => other,
+  };
 
   /// Lays out [text] the way the painter draws it. The caller owns the
   /// returned painter.
@@ -48,6 +55,7 @@ class TextMetrics {
     required String text,
     required double fontSize,
     String? fontFamily,
+    FontWeight? fontWeight,
     Color color = const Color(0xFF000000),
     double maxWidth = double.infinity,
     TextAlign textAlign = TextAlign.start,
@@ -58,6 +66,7 @@ class TextMetrics {
         style: TextStyle(
           color: color,
           fontSize: fontSize,
+          fontWeight: fontWeight,
           fontFamily: resolveFontFamily(fontFamily),
         ),
       ),
@@ -67,14 +76,17 @@ class TextMetrics {
   }
 
   /// Laid-out size of [text], cached by (text, fontSize, fontFamily,
-  /// maxWidth).
+  /// fontWeight, textAlign, maxWidth).
   static Size measure({
     required String text,
     required double fontSize,
     String? fontFamily,
+    FontWeight? fontWeight,
+    TextAlign textAlign = TextAlign.start,
     double maxWidth = double.infinity,
   }) {
-    final key = '$fontSize|${fontFamily ?? ''}|$maxWidth|$text';
+    final key =
+        '$fontSize|${fontFamily ?? ''}|${fontWeight?.value}|${textAlign.index}|$maxWidth|$text';
     final hit = _sizes[key];
     if (hit != null) return hit;
 
@@ -82,6 +94,8 @@ class TextMetrics {
       text: text,
       fontSize: fontSize,
       fontFamily: fontFamily,
+      fontWeight: fontWeight,
+      textAlign: textAlign,
       maxWidth: maxWidth,
     );
     final size = painter.size;

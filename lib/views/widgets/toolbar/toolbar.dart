@@ -412,6 +412,8 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       case SketchTool.diamond:
       case SketchTool.triangle:
       case SketchTool.sticky:
+      case SketchTool.frame:
+      case SketchTool.icon:
         return 1;
       case SketchTool.line:
       case SketchTool.arrow:

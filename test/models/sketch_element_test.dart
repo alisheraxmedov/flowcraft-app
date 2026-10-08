@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -816,6 +817,191 @@ void main() {
     test('can be cleared', () {
       final bound = arrow().copyWith(startBinding: binding);
       expect(bound.copyWith(startBinding: null).startBinding, isNull);
+    });
+  });
+
+  group('phase 2 element types', () {
+    Map<String, dynamic> roundTrip(SketchElement e) =>
+        jsonDecode(jsonEncode(e.toJson())) as Map<String, dynamic>;
+
+    test('frame round-trips with name', () {
+      final f = SketchFrame.create(
+        id: 'f',
+        rect: const Rect.fromLTWH(1, 2, 300, 200),
+        name: 'Backend',
+      );
+      final back = SketchElement.fromJson(roundTrip(f)) as SketchFrame;
+      expect(back.rect, f.rect);
+      expect(back.name, 'Backend');
+      expect(SketchFrame.fromJson(roundTrip(f)..remove('name')).name, '');
+    });
+
+    test('icon round-trips with name', () {
+      final i = SketchIcon.create(
+        id: 'i',
+        rect: const Rect.fromLTWH(0, 0, 64, 64),
+        name: 'database',
+      );
+      final back = SketchElement.fromJson(roundTrip(i)) as SketchIcon;
+      expect(back.name, 'database');
+      expect(back.rect, i.rect);
+    });
+
+    test('image bytes round-trip through base64', () {
+      final bytes = Uint8List.fromList([137, 80, 78, 71, 1, 2, 3, 255]);
+      final img = SketchImage.create(
+        id: 'm',
+        rect: const Rect.fromLTWH(0, 0, 10, 10),
+        mimeType: 'image/png',
+        bytes: bytes,
+      );
+      final json = roundTrip(img);
+      expect(json['data'], base64Encode(bytes));
+      final back = SketchElement.fromJson(json) as SketchImage;
+      expect(back.bytes, bytes);
+      expect(back.mimeType, 'image/png');
+    });
+
+    test('image refuses a bad mime type and an oversize payload', () {
+      final json = roundTrip(
+        SketchImage.create(
+          rect: const Rect.fromLTWH(0, 0, 1, 1),
+          mimeType: 'image/png',
+          bytes: Uint8List.fromList([1]),
+        ),
+      );
+      expect(
+        () => SketchImage.fromJson({...json, 'mimeType': 'text/html'}),
+        throwsFormatException,
+      );
+      expect(
+        () => SketchImage.fromJson({
+          ...json,
+          'data': base64Encode(Uint8List(maxImageBytes + 1)),
+        }),
+        throwsFormatException,
+      );
+    });
+
+    test('entity round-trips attributes; fittedToAttributes sets height', () {
+      final e = SketchEntity.create(
+        id: 'e',
+        rect: const Rect.fromLTWH(10, 20, 220, 5),
+        name: 'users',
+        attributes: const [
+          EntityAttribute(name: 'id', type: 'int', primaryKey: true),
+          EntityAttribute(name: 'org_id', type: 'int', foreignKey: true),
+          EntityAttribute(name: 'email'),
+        ],
+      );
+      // header (1 row) + 3 rows, each fontSize 14 * 1.7.
+      expect(e.rect.height, closeTo(4 * 14 * 1.7, 1e-9));
+      expect(e.fittedToAttributes(), same(e));
+      final back = SketchElement.fromJson(roundTrip(e)) as SketchEntity;
+      expect(back.attributes, e.attributes);
+      expect(back.name, 'users');
+      expect(back.fontSize, 14);
+      expect(back.rowCenterY('org_id'), e.rect.top + 14 * 1.7 * 2.5);
+      expect(back.rowCenterY('nope'), isNull);
+      final grown = e.copyWith(
+        attributes: [
+          ...e.attributes,
+          const EntityAttribute(name: 'x'),
+        ],
+      );
+      expect(
+        grown.fittedToAttributes().rect.height,
+        closeTo(5 * 14 * 1.7, 1e-9),
+      );
+    });
+
+    test('arrow elbow, heads and binding attribute round-trip', () {
+      final a =
+          SketchArrow.create(
+            id: 'a',
+            start: const Offset(0, 0),
+            end: const Offset(100, 40),
+            elbowed: true,
+            startHead: ArrowheadStyle.zeroOrMany,
+            endHead: ArrowheadStyle.one,
+          ).copyWith(
+            startBinding: const SketchBinding(elementId: 'e1', attribute: 'id'),
+          );
+      final back = SketchElement.fromJson(roundTrip(a)) as SketchArrow;
+      expect(back.elbowed, isTrue);
+      expect(back.startHead, ArrowheadStyle.zeroOrMany);
+      expect(back.endHead, ArrowheadStyle.one);
+      expect(back.startBinding, a.startBinding);
+      expect(back.startBinding!.attribute, 'id');
+      expect(back.points.length, 4);
+    });
+
+    test('v1 JSON without any new key loads with defaults', () {
+      final arrow = roundTrip(
+        SketchArrow.create(
+          start: const Offset(0, 0),
+          end: const Offset(10, 10),
+        ),
+      );
+      for (final k in ['elbowed', 'startHead', 'endHead']) {
+        expect(arrow.containsKey(k), isFalse, reason: 'default omitted: $k');
+      }
+      final a = SketchElement.fromJson(arrow) as SketchArrow;
+      expect(a.elbowed, isFalse);
+      expect(a.startHead, ArrowheadStyle.none);
+      expect(a.endHead, ArrowheadStyle.arrow);
+      expect(a.points, [a.start, a.end]);
+
+      final rect = SketchRectangle.create(
+        rect: const Rect.fromLTWH(0, 0, 5, 5),
+      );
+      final rj = roundTrip(rect);
+      expect(rj.containsKey('fontFamily'), isFalse);
+      expect(rj.containsKey('bold'), isFalse);
+      final r = SketchElement.fromJson(rj) as SketchRectangle;
+      expect(r.fontFamily, isNull);
+      expect(r.bold, isFalse);
+
+      final t =
+          SketchElement.fromJson(
+                roundTrip(SketchText.create(position: Offset.zero, text: 'x')),
+              )
+              as SketchText;
+      expect(t.bold, isFalse);
+      expect(t.align, TextAlign.start);
+    });
+
+    test('text style fields round-trip on text and shapes', () {
+      final t = SketchText.create(
+        position: Offset.zero,
+        text: 'hi',
+        fontFamily: 'mono',
+        bold: true,
+        align: TextAlign.center,
+      );
+      final back = SketchElement.fromJson(roundTrip(t)) as SketchText;
+      expect(back.fontFamily, 'mono');
+      expect(back.bold, isTrue);
+      expect(back.align, TextAlign.center);
+
+      final r = SketchRectangle.create(
+        rect: const Rect.fromLTWH(0, 0, 5, 5),
+      ).copyWith(fontFamily: 'sans', bold: true);
+      final rb = SketchElement.fromJson(roundTrip(r)) as SketchRectangle;
+      expect(rb.fontFamily, 'sans');
+      expect(rb.bold, isTrue);
+      expect(rb.copyWith(fontFamily: null).fontFamily, isNull);
+    });
+
+    test('elbowed arrow bounds cover every bend', () {
+      final a = SketchArrow.create(
+        start: const Offset(0, 0),
+        end: const Offset(100, 40),
+        elbowed: true,
+      );
+      for (final p in a.points) {
+        expect(a.bounds.inflate(0.01).contains(p), isTrue);
+      }
     });
   });
 }

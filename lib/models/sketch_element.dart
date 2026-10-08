@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flowcraft/core/domain/elbow_router.dart';
 import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/core/domain/text_metrics.dart';
 import 'package:flowcraft/core/utils/id_generator.dart';
@@ -101,6 +104,14 @@ sealed class SketchElement {
         return SketchFreedraw.fromJson(json);
       case 'text':
         return SketchText.fromJson(json);
+      case 'frame':
+        return SketchFrame.fromJson(json);
+      case 'icon':
+        return SketchIcon.fromJson(json);
+      case 'image':
+        return SketchImage.fromJson(json);
+      case 'entity':
+        return SketchEntity.fromJson(json);
       default:
         throw StateError('Unknown sketch element type: $type');
     }
@@ -121,6 +132,8 @@ sealed class _SketchBoundedShape extends SketchElement {
     required this.rect,
     this.text,
     this.fontSize = 16.0,
+    this.fontFamily,
+    this.bold = false,
     super.angle,
     super.groupId,
   });
@@ -128,6 +141,11 @@ sealed class _SketchBoundedShape extends SketchElement {
   final Rect rect;
   final String? text;
   final double fontSize;
+
+  /// `'sans'`, `'mono'` or `null` for the canvas default; see
+  /// `TextMetrics.resolveFontFamily`.
+  final String? fontFamily;
+  final bool bold;
 
   @override
   Rect get unrotatedBounds => rect;
@@ -140,6 +158,8 @@ class SketchRectangle extends _SketchBoundedShape {
     required super.rect,
     super.text,
     super.fontSize,
+    super.fontFamily,
+    super.bold,
     this.cornerRadius = 0.0,
     super.angle,
     super.groupId,
@@ -161,6 +181,8 @@ class SketchRectangle extends _SketchBoundedShape {
     double? angle,
     Object? text = _unset,
     double? fontSize,
+    Object? fontFamily = _unset,
+    bool? bold,
     Object? groupId = _unset,
   }) {
     return SketchRectangle(
@@ -171,6 +193,10 @@ class SketchRectangle extends _SketchBoundedShape {
       angle: angle ?? this.angle,
       text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
+      bold: bold ?? this.bold,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
@@ -216,6 +242,8 @@ class SketchRectangle extends _SketchBoundedShape {
     'angle': angle,
     if (text != null) 'text': text,
     'fontSize': fontSize,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    if (bold) 'bold': true,
     if (groupId != null) 'groupId': groupId,
   };
 
@@ -228,6 +256,8 @@ class SketchRectangle extends _SketchBoundedShape {
       angle: _angleFromJson(json),
       text: json['text'] as String?,
       fontSize: _fontSizeFromJson(json, fallback: 16.0),
+      fontFamily: json['fontFamily'] as String?,
+      bold: json['bold'] as bool? ?? false,
       groupId: json['groupId'] as String?,
     );
   }
@@ -240,6 +270,8 @@ class SketchEllipse extends _SketchBoundedShape {
     required super.rect,
     super.text,
     super.fontSize,
+    super.fontFamily,
+    super.bold,
     super.angle,
     super.groupId,
   });
@@ -251,6 +283,8 @@ class SketchEllipse extends _SketchBoundedShape {
     double? angle,
     Object? text = _unset,
     double? fontSize,
+    Object? fontFamily = _unset,
+    bool? bold,
     Object? groupId = _unset,
   }) {
     return SketchEllipse(
@@ -260,6 +294,10 @@ class SketchEllipse extends _SketchBoundedShape {
       angle: angle ?? this.angle,
       text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
+      bold: bold ?? this.bold,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
@@ -302,6 +340,8 @@ class SketchEllipse extends _SketchBoundedShape {
     'angle': angle,
     if (text != null) 'text': text,
     'fontSize': fontSize,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    if (bold) 'bold': true,
     if (groupId != null) 'groupId': groupId,
   };
 
@@ -313,6 +353,8 @@ class SketchEllipse extends _SketchBoundedShape {
       angle: _angleFromJson(json),
       text: json['text'] as String?,
       fontSize: _fontSizeFromJson(json, fallback: 16.0),
+      fontFamily: json['fontFamily'] as String?,
+      bold: json['bold'] as bool? ?? false,
       groupId: json['groupId'] as String?,
     );
   }
@@ -325,6 +367,8 @@ class SketchDiamond extends _SketchBoundedShape {
     required super.rect,
     super.text,
     super.fontSize,
+    super.fontFamily,
+    super.bold,
     super.angle,
     super.groupId,
   });
@@ -336,6 +380,8 @@ class SketchDiamond extends _SketchBoundedShape {
     double? angle,
     Object? text = _unset,
     double? fontSize,
+    Object? fontFamily = _unset,
+    bool? bold,
     Object? groupId = _unset,
   }) {
     return SketchDiamond(
@@ -345,6 +391,10 @@ class SketchDiamond extends _SketchBoundedShape {
       angle: angle ?? this.angle,
       text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
+      bold: bold ?? this.bold,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
@@ -387,6 +437,8 @@ class SketchDiamond extends _SketchBoundedShape {
     'angle': angle,
     if (text != null) 'text': text,
     'fontSize': fontSize,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    if (bold) 'bold': true,
     if (groupId != null) 'groupId': groupId,
   };
 
@@ -398,6 +450,8 @@ class SketchDiamond extends _SketchBoundedShape {
       angle: _angleFromJson(json),
       text: json['text'] as String?,
       fontSize: _fontSizeFromJson(json, fallback: 16.0),
+      fontFamily: json['fontFamily'] as String?,
+      bold: json['bold'] as bool? ?? false,
       groupId: json['groupId'] as String?,
     );
   }
@@ -410,6 +464,8 @@ class SketchTriangle extends _SketchBoundedShape {
     required super.rect,
     super.text,
     super.fontSize,
+    super.fontFamily,
+    super.bold,
     super.angle,
     super.groupId,
   });
@@ -421,6 +477,8 @@ class SketchTriangle extends _SketchBoundedShape {
     double? angle,
     Object? text = _unset,
     double? fontSize,
+    Object? fontFamily = _unset,
+    bool? bold,
     Object? groupId = _unset,
   }) {
     return SketchTriangle(
@@ -430,6 +488,10 @@ class SketchTriangle extends _SketchBoundedShape {
       angle: angle ?? this.angle,
       text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
+      bold: bold ?? this.bold,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
   }
@@ -472,6 +534,8 @@ class SketchTriangle extends _SketchBoundedShape {
     'angle': angle,
     if (text != null) 'text': text,
     'fontSize': fontSize,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    if (bold) 'bold': true,
     if (groupId != null) 'groupId': groupId,
   };
 
@@ -483,6 +547,8 @@ class SketchTriangle extends _SketchBoundedShape {
       angle: _angleFromJson(json),
       text: json['text'] as String?,
       fontSize: _fontSizeFromJson(json, fallback: 16.0),
+      fontFamily: json['fontFamily'] as String?,
+      bold: json['bold'] as bool? ?? false,
       groupId: json['groupId'] as String?,
     );
   }
@@ -495,6 +561,8 @@ class SketchSticky extends _SketchBoundedShape {
     required super.rect,
     super.text,
     super.fontSize = defaultFontSize,
+    super.fontFamily,
+    super.bold,
     super.angle,
     super.groupId,
     this.cornerRadius = defaultCornerRadius,
@@ -632,6 +700,8 @@ class SketchSticky extends _SketchBoundedShape {
     return _labelSizes[this] ??= TextMetrics.measure(
       text: label,
       fontSize: fontSize,
+      fontFamily: fontFamily,
+      fontWeight: bold ? FontWeight.w700 : null,
       maxWidth: StickyBubbleGeometry.textBoxOf(rect).width,
     );
   }
@@ -665,6 +735,8 @@ class SketchSticky extends _SketchBoundedShape {
     double? cornerRadius,
     Object? text = _unset,
     double? fontSize,
+    Object? fontFamily = _unset,
+    bool? bold,
     Object? groupId = _unset,
     bool? collapsed,
   }) {
@@ -676,6 +748,10 @@ class SketchSticky extends _SketchBoundedShape {
       cornerRadius: cornerRadius ?? this.cornerRadius,
       text: identical(text, _unset) ? this.text : text as String?,
       fontSize: fontSize ?? this.fontSize,
+      fontFamily: identical(fontFamily, _unset)
+          ? this.fontFamily
+          : fontFamily as String?,
+      bold: bold ?? this.bold,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
       collapsed: collapsed ?? this.collapsed,
     );
@@ -723,6 +799,8 @@ class SketchSticky extends _SketchBoundedShape {
     'cornerRadius': cornerRadius,
     if (text != null) 'text': text,
     'fontSize': fontSize,
+    if (fontFamily != null) 'fontFamily': fontFamily,
+    if (bold) 'bold': true,
     if (groupId != null) 'groupId': groupId,
     // Written only when set, and defaulted on read, which is what keeps
     // this a schema-version-1 payload in both directions: a scene with no
@@ -740,6 +818,8 @@ class SketchSticky extends _SketchBoundedShape {
       cornerRadius: _cornerRadiusFromJson(json, fallback: defaultCornerRadius),
       text: json['text'] as String?,
       fontSize: _fontSizeFromJson(json, fallback: defaultFontSize),
+      fontFamily: json['fontFamily'] as String?,
+      bold: json['bold'] as bool? ?? false,
       groupId: json['groupId'] as String?,
       collapsed: json['collapsed'] as bool? ?? false,
     );
@@ -856,6 +936,17 @@ class SketchLine extends _SketchLinear {
   }
 }
 
+/// What an arrow end looks like. [arrow] is the classic filled triangle;
+/// the rest are entity-relationship cardinality glyphs (crow's foot).
+enum ArrowheadStyle { none, arrow, one, many, zeroOrOne, zeroOrMany, oneOrMany }
+
+ArrowheadStyle _headFromJson(Object? raw, ArrowheadStyle fallback) {
+  for (final style in ArrowheadStyle.values) {
+    if (style.name == raw) return style;
+  }
+  return fallback;
+}
+
 class SketchArrow extends _SketchLinear {
   const SketchArrow({
     required super.id,
@@ -867,16 +958,33 @@ class SketchArrow extends _SketchLinear {
     super.groupId,
     this.startBinding,
     this.endBinding,
+    this.elbowed = false,
+    this.startHead = ArrowheadStyle.none,
+    this.endHead = ArrowheadStyle.arrow,
   });
 
   final double arrowSize;
 
-  /// Shape this arrow's tail is attached to — reserved, always `null` for
-  /// now. See [SketchBinding] for why it exists before the feature does.
+  /// Shape this arrow's tail is attached to, or `null` when it floats.
   final SketchBinding? startBinding;
 
-  /// Shape this arrow's head is attached to — reserved, see [startBinding].
+  /// Shape this arrow's head is attached to, or `null` when it floats.
   final SketchBinding? endBinding;
+
+  /// Whether the shaft routes with right angles (see [ElbowRouter]) instead
+  /// of running straight from [start] to [end].
+  final bool elbowed;
+
+  /// Glyph at [start]; none by default.
+  final ArrowheadStyle startHead;
+
+  /// Glyph at [end]; the classic triangle by default.
+  final ArrowheadStyle endHead;
+
+  /// The shaft as a polyline: two points when straight, the derived
+  /// right-angle route when [elbowed].
+  List<Offset> get points =>
+      elbowed ? ElbowRouter.route(start, end) : [start, end];
 
   /// Half-angle of the head's wings, in radians — the `0.5` in
   /// `ArrowHead.path`, which is what the painter draws with.
@@ -887,25 +995,47 @@ class SketchArrow extends _SketchLinear {
   /// `SketchPainter._drawArrowHead`; the two must agree or [bounds] lies.
   double get headLength => math.max(arrowSize, style.strokeWidth * 6.0);
 
-  /// The segment's box grown to take in the head.
+  /// The shaft's box grown to take in the heads.
   ///
-  /// The head is a triangle with its tip at [end] and two wings
-  /// [headLength] back along the shaft, swung ±[_headHalfAngle] off it —
-  /// so on an axis-aligned arrow the wings stick out sideways by
-  /// `headLength * sin(0.5)` on both sides of a box that was, until now,
-  /// zero pixels tall. Export padding only just covered that, and the
-  /// selection box never did.
+  /// A head is a glyph with its tip at the endpoint and two wings
+  /// [headLength] back along the last segment, swung ±[_headHalfAngle] off
+  /// it (every [ArrowheadStyle] glyph stays inside that envelope) — so on an
+  /// axis-aligned arrow the wings stick out sideways by
+  /// `headLength * sin(0.5)` on both sides of a box that is otherwise zero
+  /// pixels tall. Elbowed arrows include every bend.
   @override
   Rect get unrotatedBounds {
+    final pts = points;
     var box = _segmentBounds;
-    final shaft = end - start;
+    for (final p in pts) {
+      box = box.expandToInclude(Rect.fromPoints(p, p));
+    }
+    if (endHead != ArrowheadStyle.none) {
+      box = _withWings(box, pts[pts.length - 2], pts.last);
+    }
+    if (startHead != ArrowheadStyle.none) {
+      box = _withWings(box, pts[1], pts.first);
+    }
+    // Cardinality glyphs reach 1.3 head-lengths back and 0.4 to the side
+    // (see `ArrowHead.pathFor`), beyond what the wing points cover.
+    final glyph =
+        (startHead != ArrowheadStyle.none &&
+            startHead != ArrowheadStyle.arrow) ||
+        (endHead != ArrowheadStyle.none && endHead != ArrowheadStyle.arrow);
+    return glyph ? box.inflate(headLength * 0.65) : box;
+  }
+
+  /// [box] grown to hold the two wing tips of a head at [tip], whose shaft
+  /// arrives from [from].
+  Rect _withWings(Rect box, Offset from, Offset tip) {
+    final shaft = tip - from;
     if (shaft == Offset.zero) return box;
     final direction = math.atan2(shaft.dy, shaft.dx);
     final size = headLength;
     for (final side in const <double>[-_headHalfAngle, _headHalfAngle]) {
       final wing = Offset(
-        end.dx - size * math.cos(direction + side),
-        end.dy - size * math.sin(direction + side),
+        tip.dx - size * math.cos(direction + side),
+        tip.dy - size * math.sin(direction + side),
       );
       box = box.expandToInclude(Rect.fromPoints(wing, wing));
     }
@@ -922,6 +1052,9 @@ class SketchArrow extends _SketchLinear {
     Object? groupId = _unset,
     Object? startBinding = _unset,
     Object? endBinding = _unset,
+    bool? elbowed,
+    ArrowheadStyle? startHead,
+    ArrowheadStyle? endHead,
   }) {
     return SketchArrow(
       id: id ?? this.id,
@@ -937,6 +1070,9 @@ class SketchArrow extends _SketchLinear {
       endBinding: identical(endBinding, _unset)
           ? this.endBinding
           : endBinding as SketchBinding?,
+      elbowed: elbowed ?? this.elbowed,
+      startHead: startHead ?? this.startHead,
+      endHead: endHead ?? this.endHead,
     );
   }
 
@@ -959,6 +1095,9 @@ class SketchArrow extends _SketchLinear {
     required Offset end,
     SketchStyle style = const SketchStyle(),
     double arrowSize = 10.0,
+    bool elbowed = false,
+    ArrowheadStyle startHead = ArrowheadStyle.none,
+    ArrowheadStyle endHead = ArrowheadStyle.arrow,
   }) {
     return SketchArrow(
       id: id ?? IdGenerator.generate('sketch'),
@@ -966,6 +1105,9 @@ class SketchArrow extends _SketchLinear {
       start: start,
       end: end,
       arrowSize: arrowSize,
+      elbowed: elbowed,
+      startHead: startHead,
+      endHead: endHead,
     );
   }
 
@@ -981,6 +1123,11 @@ class SketchArrow extends _SketchLinear {
     if (groupId != null) 'groupId': groupId,
     if (startBinding != null) 'startBinding': startBinding!.toJson(),
     if (endBinding != null) 'endBinding': endBinding!.toJson(),
+    // Written only when non-default, so an old-style arrow serialises
+    // exactly as it did before these fields existed.
+    if (elbowed) 'elbowed': true,
+    if (startHead != ArrowheadStyle.none) 'startHead': startHead.name,
+    if (endHead != ArrowheadStyle.arrow) 'endHead': endHead.name,
   };
 
   factory SketchArrow.fromJson(Map<String, dynamic> json) {
@@ -999,6 +1146,9 @@ class SketchArrow extends _SketchLinear {
       groupId: json['groupId'] as String?,
       startBinding: _bindingFromJson(json['startBinding']),
       endBinding: _bindingFromJson(json['endBinding']),
+      elbowed: json['elbowed'] as bool? ?? false,
+      startHead: _headFromJson(json['startHead'], ArrowheadStyle.none),
+      endHead: _headFromJson(json['endHead'], ArrowheadStyle.arrow),
     );
   }
 }
@@ -1019,6 +1169,7 @@ class SketchBinding {
     required this.elementId,
     this.focus = 0.0,
     this.gap = 0.0,
+    this.attribute,
   });
 
   /// Element the endpoint is attached to.
@@ -1031,10 +1182,15 @@ class SketchBinding {
   /// Canvas-space distance the endpoint keeps from the bound element's edge.
   final double gap;
 
+  /// Entity row (attribute name) the endpoint anchors to, for a bound
+  /// [SketchEntity]; `null` anchors to the shape as a whole.
+  final String? attribute;
+
   Map<String, dynamic> toJson() => {
     'elementId': elementId,
     'focus': focus,
     'gap': gap,
+    if (attribute != null) 'attribute': attribute,
   };
 
   factory SketchBinding.fromJson(Map<String, dynamic> json) {
@@ -1042,6 +1198,7 @@ class SketchBinding {
       elementId: json['elementId'] as String,
       focus: (json['focus'] as num?)?.toDouble() ?? 0.0,
       gap: (json['gap'] as num?)?.toDouble() ?? 0.0,
+      attribute: json['attribute'] as String?,
     );
   }
 
@@ -1051,11 +1208,12 @@ class SketchBinding {
     return other is SketchBinding &&
         other.elementId == elementId &&
         other.focus == focus &&
-        other.gap == gap;
+        other.gap == gap &&
+        other.attribute == attribute;
   }
 
   @override
-  int get hashCode => Object.hash(elementId, focus, gap);
+  int get hashCode => Object.hash(elementId, focus, gap, attribute);
 }
 
 SketchBinding? _bindingFromJson(Object? raw) =>
@@ -1171,6 +1329,8 @@ class SketchText extends SketchElement {
     required this.text,
     this.fontSize = 16.0,
     this.fontFamily,
+    this.bold = false,
+    this.align = TextAlign.start,
     super.angle,
     super.groupId,
   });
@@ -1179,6 +1339,11 @@ class SketchText extends SketchElement {
   final String text;
   final double fontSize;
   final String? fontFamily;
+  final bool bold;
+
+  /// Horizontal alignment of the lines within the text's own box; only
+  /// visible on multi-line text, since the box is as wide as its widest line.
+  final TextAlign align;
 
   /// Measured boxes, one per text instance — see [unrotatedBounds].
   ///
@@ -1208,6 +1373,8 @@ class SketchText extends SketchElement {
       text: text,
       fontSize: fontSize,
       fontFamily: fontFamily,
+      fontWeight: bold ? FontWeight.w700 : null,
+      textAlign: align,
     );
     return Rect.fromLTWH(position.dx, position.dy, size.width, size.height);
   }
@@ -1218,6 +1385,8 @@ class SketchText extends SketchElement {
     String? text,
     double? fontSize,
     Object? fontFamily = _unset,
+    bool? bold,
+    TextAlign? align,
     SketchStyle? style,
     double? angle,
     Object? groupId = _unset,
@@ -1233,6 +1402,8 @@ class SketchText extends SketchElement {
       fontFamily: identical(fontFamily, _unset)
           ? this.fontFamily
           : fontFamily as String?,
+      bold: bold ?? this.bold,
+      align: align ?? this.align,
       angle: angle ?? this.angle,
       groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
     );
@@ -1256,6 +1427,8 @@ class SketchText extends SketchElement {
     required String text,
     double fontSize = 16.0,
     String? fontFamily,
+    bool bold = false,
+    TextAlign align = TextAlign.start,
     SketchStyle style = const SketchStyle(),
   }) {
     return SketchText(
@@ -1265,6 +1438,8 @@ class SketchText extends SketchElement {
       text: text,
       fontSize: fontSize,
       fontFamily: fontFamily,
+      bold: bold,
+      align: align,
     );
   }
 
@@ -1277,6 +1452,8 @@ class SketchText extends SketchElement {
     'text': text,
     'fontSize': fontSize,
     if (fontFamily != null) 'fontFamily': fontFamily,
+    if (bold) 'bold': true,
+    if (align != TextAlign.start) 'align': align.name,
     'angle': angle,
     if (groupId != null) 'groupId': groupId,
   };
@@ -1289,6 +1466,485 @@ class SketchText extends SketchElement {
       text: json['text'] as String,
       fontSize: _fontSizeFromJson(json, fallback: 16.0),
       fontFamily: json['fontFamily'] as String?,
+      bold: json['bold'] as bool? ?? false,
+      align: _alignFromJson(json['align']),
+      angle: _angleFromJson(json),
+      groupId: json['groupId'] as String?,
+    );
+  }
+}
+
+// ─── Frame / icon / image / entity ─────────────────────────────────────────
+//
+// These extend [SketchElement] directly rather than `_SketchBoundedShape`:
+// that base exists for shapes carrying a centred text label (`text`,
+// `fontSize`, font family), which none of these has — a frame's name sits
+// above its border, an icon and an image have no text at all, and an
+// entity lays out its own header and rows.
+
+/// A labelled region that visually groups what lies inside it.
+///
+/// Membership is computed by containment (`FrameMembership`), never stored.
+class SketchFrame extends SketchElement {
+  const SketchFrame({
+    required super.id,
+    required super.style,
+    required this.rect,
+    this.name = '',
+    super.angle,
+    super.groupId,
+  });
+
+  final Rect rect;
+  final String name;
+
+  @override
+  Rect get unrotatedBounds => rect;
+
+  SketchFrame copyWith({
+    String? id,
+    Rect? rect,
+    String? name,
+    SketchStyle? style,
+    double? angle,
+    Object? groupId = _unset,
+  }) {
+    return SketchFrame(
+      id: id ?? this.id,
+      style: style ?? this.style,
+      rect: rect ?? this.rect,
+      name: name ?? this.name,
+      angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+    );
+  }
+
+  @override
+  SketchFrame copyWithStyle(SketchStyle newStyle) => copyWith(style: newStyle);
+
+  @override
+  SketchFrame translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchFrame withId(String id) => copyWith(id: id);
+
+  @override
+  SketchFrame withGroupId(String? groupId) => copyWith(groupId: groupId);
+
+  factory SketchFrame.create({
+    String? id,
+    required Rect rect,
+    String name = '',
+    SketchStyle style = const SketchStyle(),
+  }) {
+    return SketchFrame(
+      id: id ?? IdGenerator.generate('sketch'),
+      style: _seeded(style),
+      rect: rect,
+      name: name,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': 'frame',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'angle': angle,
+    if (name.isNotEmpty) 'name': name,
+    if (groupId != null) 'groupId': groupId,
+  };
+
+  factory SketchFrame.fromJson(Map<String, dynamic> json) {
+    return SketchFrame(
+      id: json['id'] as String,
+      style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
+      rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
+      name: json['name'] as String? ?? '',
+      angle: _angleFromJson(json),
+      groupId: json['groupId'] as String?,
+    );
+  }
+}
+
+/// A named glyph from `iconCatalog`, drawn at the size of its [rect].
+class SketchIcon extends SketchElement {
+  const SketchIcon({
+    required super.id,
+    required super.style,
+    required this.rect,
+    required this.name,
+    super.angle,
+    super.groupId,
+  });
+
+  final Rect rect;
+
+  /// Key into `iconCatalog`; an unknown name renders as a help glyph.
+  final String name;
+
+  @override
+  Rect get unrotatedBounds => rect;
+
+  SketchIcon copyWith({
+    String? id,
+    Rect? rect,
+    String? name,
+    SketchStyle? style,
+    double? angle,
+    Object? groupId = _unset,
+  }) {
+    return SketchIcon(
+      id: id ?? this.id,
+      style: style ?? this.style,
+      rect: rect ?? this.rect,
+      name: name ?? this.name,
+      angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+    );
+  }
+
+  @override
+  SketchIcon copyWithStyle(SketchStyle newStyle) => copyWith(style: newStyle);
+
+  @override
+  SketchIcon translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchIcon withId(String id) => copyWith(id: id);
+
+  @override
+  SketchIcon withGroupId(String? groupId) => copyWith(groupId: groupId);
+
+  factory SketchIcon.create({
+    String? id,
+    required Rect rect,
+    required String name,
+    SketchStyle style = const SketchStyle(),
+  }) {
+    return SketchIcon(
+      id: id ?? IdGenerator.generate('sketch'),
+      style: _seeded(style),
+      rect: rect,
+      name: name,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': 'icon',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'name': name,
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
+
+  factory SketchIcon.fromJson(Map<String, dynamic> json) {
+    return SketchIcon(
+      id: json['id'] as String,
+      style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
+      rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
+      name: json['name'] as String,
+      angle: _angleFromJson(json),
+      groupId: json['groupId'] as String?,
+    );
+  }
+}
+
+/// Largest single embedded image, and the most image bytes one scene may
+/// carry. Enforced when an image is parsed, so a hostile or runaway file
+/// cannot balloon memory or the autosave payload.
+const int maxImageBytes = 4 * 1024 * 1024;
+const int maxSceneImageBytes = 16 * 1024 * 1024;
+
+/// MIME types an embedded image may declare.
+const Set<String> imageMimeTypes = {
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+};
+
+/// A raster image stored inline (base64 under `data`) so a scene file stays
+/// self-contained.
+class SketchImage extends SketchElement {
+  const SketchImage({
+    required super.id,
+    required super.style,
+    required this.rect,
+    required this.mimeType,
+    required this.bytes,
+    super.angle,
+    super.groupId,
+  });
+
+  final Rect rect;
+  final String mimeType;
+  final Uint8List bytes;
+
+  @override
+  Rect get unrotatedBounds => rect;
+
+  SketchImage copyWith({
+    String? id,
+    Rect? rect,
+    String? mimeType,
+    Uint8List? bytes,
+    SketchStyle? style,
+    double? angle,
+    Object? groupId = _unset,
+  }) {
+    return SketchImage(
+      id: id ?? this.id,
+      style: style ?? this.style,
+      rect: rect ?? this.rect,
+      mimeType: mimeType ?? this.mimeType,
+      bytes: bytes ?? this.bytes,
+      angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+    );
+  }
+
+  @override
+  SketchImage copyWithStyle(SketchStyle newStyle) => copyWith(style: newStyle);
+
+  @override
+  SketchImage translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchImage withId(String id) => copyWith(id: id);
+
+  @override
+  SketchImage withGroupId(String? groupId) => copyWith(groupId: groupId);
+
+  factory SketchImage.create({
+    String? id,
+    required Rect rect,
+    required String mimeType,
+    required Uint8List bytes,
+    SketchStyle style = const SketchStyle(),
+  }) {
+    return SketchImage(
+      id: id ?? IdGenerator.generate('sketch'),
+      style: _seeded(style),
+      rect: rect,
+      mimeType: mimeType,
+      bytes: bytes,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': 'image',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'mimeType': mimeType,
+    'data': base64Encode(bytes),
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
+
+  factory SketchImage.fromJson(Map<String, dynamic> json) {
+    final mime = json['mimeType'] as String;
+    if (!imageMimeTypes.contains(mime)) {
+      throw FormatException('unsupported image type: $mime');
+    }
+    final data = json['data'] as String;
+    // Cheap pre-check before decoding: base64 inflates by 4/3.
+    if (data.length > maxImageBytes * 4 ~/ 3 + 4) {
+      throw const FormatException('image larger than the 4 MiB limit');
+    }
+    final bytes = base64Decode(data);
+    if (bytes.isEmpty || bytes.length > maxImageBytes) {
+      throw const FormatException('image is empty or over the 4 MiB limit');
+    }
+    return SketchImage(
+      id: json['id'] as String,
+      style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
+      rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
+      mimeType: mime,
+      bytes: bytes,
+      angle: _angleFromJson(json),
+      groupId: json['groupId'] as String?,
+    );
+  }
+}
+
+/// One row of a [SketchEntity].
+class EntityAttribute {
+  const EntityAttribute({
+    required this.name,
+    this.type = '',
+    this.primaryKey = false,
+    this.foreignKey = false,
+  });
+
+  final String name;
+  final String type;
+  final bool primaryKey;
+  final bool foreignKey;
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    if (type.isNotEmpty) 'type': type,
+    if (primaryKey) 'pk': true,
+    if (foreignKey) 'fk': true,
+  };
+
+  factory EntityAttribute.fromJson(Map<String, dynamic> json) {
+    return EntityAttribute(
+      name: json['name'] as String,
+      type: json['type'] as String? ?? '',
+      primaryKey: json['pk'] as bool? ?? false,
+      foreignKey: json['fk'] as bool? ?? false,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is EntityAttribute &&
+      other.name == name &&
+      other.type == type &&
+      other.primaryKey == primaryKey &&
+      other.foreignKey == foreignKey;
+
+  @override
+  int get hashCode => Object.hash(name, type, primaryKey, foreignKey);
+}
+
+/// An ER-diagram table: a header with the entity's [name] and one row per
+/// attribute. Height is derived from the rows ([fittedToAttributes]); width
+/// is the user's.
+class SketchEntity extends SketchElement {
+  SketchEntity({
+    required super.id,
+    required super.style,
+    required this.rect,
+    this.name = '',
+    List<EntityAttribute> attributes = const [],
+    this.fontSize = defaultFontSize,
+    super.angle,
+    super.groupId,
+  }) : attributes = List<EntityAttribute>.unmodifiable(attributes);
+
+  static const double defaultFontSize = 14.0;
+
+  /// Row pitch as a multiple of [fontSize]; the header takes one row too.
+  static const double rowFactor = 1.7;
+
+  final Rect rect;
+  final String name;
+  final List<EntityAttribute> attributes;
+  final double fontSize;
+
+  double get rowHeight => fontSize * rowFactor;
+  double get headerHeight => rowHeight;
+
+  /// Height the header plus every row needs.
+  double get fittedHeight => headerHeight + attributes.length * rowHeight;
+
+  /// Canvas y of the vertical centre of the row named [attribute], or
+  /// `null` when there is no such row. Arrows bound to an attribute anchor
+  /// here.
+  double? rowCenterY(String attribute) {
+    final i = attributes.indexWhere((a) => a.name == attribute);
+    if (i < 0) return null;
+    return rect.top + headerHeight + (i + 0.5) * rowHeight;
+  }
+
+  /// This entity with its height set to exactly what its rows need (cf.
+  /// `SketchSticky.fittedToText`, but it shrinks too: the height is
+  /// derived, not user-chosen).
+  SketchEntity fittedToAttributes() {
+    final h = fittedHeight;
+    if (h == rect.height) return this;
+    return copyWith(rect: Rect.fromLTWH(rect.left, rect.top, rect.width, h));
+  }
+
+  @override
+  Rect get unrotatedBounds => rect;
+
+  SketchEntity copyWith({
+    String? id,
+    Rect? rect,
+    String? name,
+    List<EntityAttribute>? attributes,
+    double? fontSize,
+    SketchStyle? style,
+    double? angle,
+    Object? groupId = _unset,
+  }) {
+    return SketchEntity(
+      id: id ?? this.id,
+      style: style ?? this.style,
+      rect: rect ?? this.rect,
+      name: name ?? this.name,
+      attributes: attributes ?? this.attributes,
+      fontSize: fontSize ?? this.fontSize,
+      angle: angle ?? this.angle,
+      groupId: identical(groupId, _unset) ? this.groupId : groupId as String?,
+    );
+  }
+
+  @override
+  SketchEntity copyWithStyle(SketchStyle newStyle) => copyWith(style: newStyle);
+
+  @override
+  SketchEntity translate(Offset delta) => copyWith(rect: rect.shift(delta));
+
+  @override
+  SketchEntity withId(String id) => copyWith(id: id);
+
+  @override
+  SketchEntity withGroupId(String? groupId) => copyWith(groupId: groupId);
+
+  /// Entity at [rect]'s top-left and width, with the height its rows need.
+  factory SketchEntity.create({
+    String? id,
+    required Rect rect,
+    String name = '',
+    List<EntityAttribute> attributes = const [],
+    double fontSize = defaultFontSize,
+    SketchStyle style = const SketchStyle(),
+  }) {
+    return SketchEntity(
+      id: id ?? IdGenerator.generate('sketch'),
+      style: _seeded(style),
+      rect: rect,
+      name: name,
+      attributes: attributes,
+      fontSize: fontSize,
+    ).fittedToAttributes();
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': 'entity',
+    'id': id,
+    'style': style.toJson(),
+    'rect': _rectToJson(rect),
+    'name': name,
+    'attributes': [for (final a in attributes) a.toJson()],
+    'fontSize': fontSize,
+    'angle': angle,
+    if (groupId != null) 'groupId': groupId,
+  };
+
+  factory SketchEntity.fromJson(Map<String, dynamic> json) {
+    return SketchEntity(
+      id: json['id'] as String,
+      style: SketchStyle.fromJson(json['style'] as Map<String, dynamic>),
+      rect: _rectFromJson(json['rect'] as Map<String, dynamic>),
+      name: json['name'] as String? ?? '',
+      attributes: [
+        for (final a in json['attributes'] as List<dynamic>? ?? const [])
+          EntityAttribute.fromJson((a as Map).cast<String, dynamic>()),
+      ],
+      fontSize: _fontSizeFromJson(json, fallback: defaultFontSize),
       angle: _angleFromJson(json),
       groupId: json['groupId'] as String?,
     );
@@ -1425,6 +2081,14 @@ double _fontSizeFromJson(
   max: _maxFontSize,
   fallback: fallback,
 );
+
+/// Only left/center/right are valid alignments; anything else is the default.
+TextAlign _alignFromJson(Object? raw) => switch (raw) {
+  'center' => TextAlign.center,
+  'right' => TextAlign.right,
+  'left' => TextAlign.left,
+  _ => TextAlign.start,
+};
 
 double _cornerRadiusFromJson(
   Map<String, dynamic> json, {

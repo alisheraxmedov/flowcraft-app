@@ -371,6 +371,11 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         _setConsumed(true);
         return;
 
+      case SketchTool.frame:
+      case SketchTool.icon:
+        // Placeholder: created by the phase 2 interaction work.
+        return;
+
       case SketchTool.hand:
         // Pan tool delegates to the underlying canvas.
         //

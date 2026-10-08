@@ -186,7 +186,11 @@ class SketchRenderCache {
           seed: seed,
         );
       case SketchText _:
-        return Path();
+      case SketchFrame _:
+      case SketchIcon _:
+      case SketchImage _:
+      case SketchEntity _:
+        return Path(); // Painted in phase 2 rendering.
     }
     // The pattern is in canvas units (pre-zoom), so the dashed result is
     // zoom-invariant and as cacheable as the rough path itself.
@@ -219,7 +223,11 @@ class SketchRenderCache {
       case SketchArrow _:
       case SketchFreedraw _:
       case SketchText _:
-        break;
+      case SketchFrame _:
+      case SketchIcon _:
+      case SketchImage _:
+      case SketchEntity _:
+        break; // Painted in phase 2 rendering.
     }
     return path;
   }

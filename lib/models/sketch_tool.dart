@@ -15,10 +15,13 @@ enum SketchTool {
   freedraw,
   text,
   sticky,
+  frame,
+  icon,
   eraser;
 
   /// Whether this tool primarily uses pointer-down + drag to create a
-  /// bounded shape (rect/ellipse/diamond/triangle/line/arrow/sticky).
+  /// bounded shape (rect/ellipse/diamond/triangle/line/arrow/sticky/frame). [icon] is
+  /// click-to-place, so it is not bounded.
   bool get isBounded =>
       this == SketchTool.rectangle ||
       this == SketchTool.ellipse ||
@@ -26,5 +29,6 @@ enum SketchTool {
       this == SketchTool.triangle ||
       this == SketchTool.line ||
       this == SketchTool.arrow ||
-      this == SketchTool.sticky;
+      this == SketchTool.sticky ||
+      this == SketchTool.frame;
 }

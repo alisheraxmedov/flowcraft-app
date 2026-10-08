@@ -91,6 +91,16 @@ class SketchHitTest {
       case SketchText t:
         final p = _toLocal(point, t);
         return t.unrotatedBounds.inflate(tolerance).contains(p);
+      case SketchFrame _:
+      case SketchIcon _:
+      case SketchImage _:
+      case SketchEntity _:
+        // Placeholder: plain rect hit; frame border-only hit lands in phase 2.
+        return SketchGeometry.pointInRotatedRect(
+          point,
+          element.unrotatedBounds,
+          element.angle,
+        );
     }
   }
 
