@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 
 import 'package:flowcraft/core/theme/app_radius.dart';
-import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/core/utils/relative_time.dart';
 import 'package:flowcraft/models/flow_project.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
+import 'package:flowcraft/views/widgets/toolbar/popover_button.dart';
 
-/// One row in the project sidebar: name, when it was last touched, how much
-/// is on it, plus rename/delete.
+/// One row in the projects popover: 52px, radius 12, name + meta line (+ a
+/// mono linked-file line), and a "…" Project actions menu.
 ///
-/// A [FlowProject] whose file failed to parse renders as a muted, unopenable
-/// row rather than being hidden — a project the user can see and delete is
-/// far less alarming than one that silently disappeared.
-class ProjectTile extends StatelessWidget {
+/// A [FlowProject] whose file failed to parse renders as a danger-tinted,
+/// unopenable row rather than being hidden — a project the user can see and
+/// delete is far less alarming than one that silently disappeared.
+class ProjectTile extends StatefulWidget {
   const ProjectTile({
     super.key,
     required this.project,
@@ -33,123 +35,140 @@ class ProjectTile extends StatelessWidget {
   final VoidCallback onUnlink;
 
   @override
+  State<ProjectTile> createState() => _ProjectTileState();
+}
+
+class _ProjectTileState extends State<ProjectTile> {
+  bool _hover = false;
+  bool _menuOpen = false;
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.fc;
+    final project = widget.project;
     final broken = project.isBroken;
-    final titleColor = broken ? colorScheme.error : colorScheme.onSurface;
+    final active = widget.isActive;
+    final shape = BorderRadius.circular(AppRadius.row);
+    final bg = broken
+        ? t.dangerTint
+        : active
+        ? t.accentTint
+        : (_hover || _menuOpen)
+        ? t.surface2
+        : null;
 
     return Semantics(
-      selected: isActive,
-      child: Material(
-        // Inactive rows take the sidebar's own surface rather than a
-        // transparent literal, so every colour here still comes from the
-        // scheme and follows the dark/light toggle.
-        color: isActive
-            ? colorScheme.surfaceContainerHighest
-            : colorScheme.surfaceContainerLow,
-        borderRadius: AppRadius.smRadius,
-        child: InkWell(
-          borderRadius: AppRadius.smRadius,
-          onTap: broken ? null : onOpen,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.toolbarGap,
-              vertical: AppSpacing.toolbarGap,
-            ),
-            child: Row(
-              children: [
-                _ActiveMarker(isActive: isActive),
-                const SizedBox(width: AppSpacing.toolbarGap),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        project.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.bodySm.copyWith(
-                          fontWeight: isActive
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                          color: titleColor,
-                        ),
-                      ),
-                      Text(
-                        _subtitle(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.caption.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (project.linkedPath != null)
-                        Text(
-                          project.linkedPath!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.caption.copyWith(
-                            color: colorScheme.onSurfaceVariant.withValues(
-                              alpha: 0.7,
-                            ),
+      selected: active,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: Stack(
+          children: [
+            Material(
+              color: bg ?? Colors.transparent,
+              borderRadius: shape,
+              child: InkWell(
+                borderRadius: shape,
+                hoverColor: Colors.transparent,
+                onTap: broken ? null : widget.onOpen,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 52),
+                  child: Padding(
+                    // Right 52 reserves the "…" button on every row so the
+                    // text never reflows when the button appears on hover.
+                    padding: const EdgeInsets.fromLTRB(12, 8, 52, 8),
+                    child: Row(
+                      children: [
+                        // 8px accent dot; inactive rows keep the 8px gap.
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: active ? t.accent : null,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                    ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                project.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.bodySm.copyWith(
+                                  fontSize: 13.5,
+                                  height: 18 / 13.5,
+                                  fontWeight: active
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  color: broken ? t.danger : t.text,
+                                ),
+                              ),
+                              Text(
+                                _subtitle(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.bodySm.copyWith(
+                                  fontSize: 12,
+                                  height: 16 / 12,
+                                  color: broken ? t.danger : t.muted,
+                                ),
+                              ),
+                              if (project.linkedPath != null)
+                                Text(
+                                  project.linkedPath!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.mono11.copyWith(
+                                    color: t.muted,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                _RowMenu(
-                  canRename: !broken,
-                  isLinked: project.linkedPath != null,
-                  onLink: onLink,
-                  onUnlink: onUnlink,
-                  onRename: onRename,
-                  onDelete: onDelete,
-                ),
-              ],
+              ),
             ),
-          ),
+            Positioned(
+              right: 6,
+              top: 10,
+              // Visible on hover / while its menu is open (mockup), but kept
+              // in the tree and tappable so keyboard and tests reach it.
+              child: _RowMenu(
+                visible: _hover || _menuOpen,
+                canRename: !broken,
+                isLinked: project.linkedPath != null,
+                onLink: widget.onLink,
+                onUnlink: widget.onUnlink,
+                onRename: widget.onRename,
+                onDelete: widget.onDelete,
+                onOpenChanged: (open) => setState(() => _menuOpen = open),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   String _subtitle() {
-    if (project.isBroken) return "Can't be read";
-    final count = project.elementCount;
+    if (widget.project.isBroken) return "Can't be read";
+    final count = widget.project.elementCount;
     return '$count element${count == 1 ? '' : 's'} · '
-        '${RelativeTime.format(project.updatedAt)}';
+        '${RelativeTime.format(widget.project.updatedAt)}';
   }
 }
 
-/// Vertical accent bar flagging the open project. A colour-only cue would
-/// be invisible to a colour-blind user, so the active row also carries a
-/// filled background and a heavier title weight.
-class _ActiveMarker extends StatelessWidget {
-  const _ActiveMarker({required this.isActive});
-
-  static const double _width = 3;
-  static const double _height = 28;
-
-  final bool isActive;
-
-  @override
-  Widget build(BuildContext context) {
-    // Reserves its width either way so rows don't shift sideways as the
-    // selection moves; inactive draws nothing rather than painting a
-    // transparent colour.
-    if (!isActive) return const SizedBox(width: _width);
-    return Container(
-      width: _width,
-      height: _height,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
-        borderRadius: AppRadius.xsRadius,
-      ),
-    );
-  }
-}
-
+/// The "…" button and its menu. A [PopoverButton] rather than a
+/// [MenuAnchor]: the row already lives inside the projects popover's
+/// `CompositedTransformFollower`, and a `MenuAnchor` cannot compute its
+/// position through a follower layer (layout assertion).
 class _RowMenu extends StatelessWidget {
   const _RowMenu({
     required this.canRename,
@@ -158,6 +177,8 @@ class _RowMenu extends StatelessWidget {
     required this.onUnlink,
     required this.onRename,
     required this.onDelete,
+    required this.visible,
+    required this.onOpenChanged,
   });
 
   final bool canRename;
@@ -167,43 +188,155 @@ class _RowMenu extends StatelessWidget {
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
+  /// Glyph shown only while the row is hovered or the menu is open.
+  final bool visible;
+  final ValueChanged<bool> onOpenChanged;
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return MenuAnchor(
-      menuChildren: [
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
-          onPressed: canRename ? onRename : null,
-          child: const Text('Rename'),
-        ),
-        if (isLinked)
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.link_off_rounded, size: 18),
-            onPressed: onUnlink,
-            child: const Text('Unlink file'),
-          )
-        else
-          MenuItemButton(
-            leadingIcon: const Icon(Icons.link_rounded, size: 18),
-            onPressed: canRename ? onLink : null,
-            child: const Text('Link to file…'),
+    final t = context.fc;
+    return PopoverButton(
+      tooltip: 'Project actions',
+      activeColor: t.accent,
+      anchor: PopoverAnchor.belowEnd,
+      builder: (context, _) => Opacity(
+        opacity: visible ? 1 : 0,
+        child: FcIconGlyph(FcIcons.ellipsis, size: 16, color: t.text),
+      ),
+      popoverBuilder: (context, close) => _MenuHost(
+        onOpenChanged: onOpenChanged,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 132),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _MenuItem(
+                    icon: FcIcons.pencil,
+                    label: 'Rename',
+                    onTap: canRename ? () => _run(close, onRename) : null,
+                  ),
+                  if (isLinked)
+                    _MenuItem(
+                      icon: FcIcons.unlink,
+                      label: 'Unlink file',
+                      onTap: () => _run(close, onUnlink),
+                    )
+                  else
+                    _MenuItem(
+                      icon: FcIcons.link,
+                      label: 'Link to file…',
+                      onTap: canRename ? () => _run(close, onLink) : null,
+                    ),
+                  _MenuItem(
+                    icon: FcIcons.trash,
+                    label: 'Delete',
+                    danger: true,
+                    onTap: () => _run(close, onDelete),
+                  ),
+                ],
+              ),
+            ),
           ),
-        MenuItemButton(
-          leadingIcon: Icon(
-            Icons.delete_outline_rounded,
-            size: 18,
-            color: colorScheme.error,
-          ),
-          onPressed: onDelete,
-          child: Text('Delete', style: TextStyle(color: colorScheme.error)),
         ),
-      ],
-      builder: (context, menu, _) => IconButton(
-        icon: const Icon(Icons.more_horiz_rounded, size: 18),
-        color: colorScheme.onSurfaceVariant,
-        tooltip: 'Project actions',
-        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+      ),
+    );
+  }
+
+  static void _run(VoidCallback close, VoidCallback action) {
+    close();
+    action();
+  }
+}
+
+/// Reports the menu's open/closed lifetime so the row can stay "hovered"
+/// while its menu (which swallows pointer hover) is up.
+class _MenuHost extends StatefulWidget {
+  const _MenuHost({required this.onOpenChanged, required this.child});
+
+  final ValueChanged<bool> onOpenChanged;
+  final Widget child;
+
+  @override
+  State<_MenuHost> createState() => _MenuHostState();
+}
+
+class _MenuHostState extends State<_MenuHost> {
+  late final ValueChanged<bool> _notify = widget.onOpenChanged;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notify(true));
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notify(false));
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// 32px menu row, radius 8, 13px text, 15px glyph, danger variant.
+class _MenuItem extends StatefulWidget {
+  const _MenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final FcIcon icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool danger;
+
+  @override
+  State<_MenuItem> createState() => _MenuItemState();
+}
+
+class _MenuItemState extends State<_MenuItem> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.fc;
+    final color = widget.danger ? t.danger : t.text;
+    final enabled = widget.onTap != null;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: Opacity(
+          opacity: enabled ? 1 : 0.35,
+          child: Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: _hover && enabled ? t.surface2 : null,
+              borderRadius: BorderRadius.circular(AppRadius.input),
+            ),
+            child: Row(
+              children: [
+                FcIconGlyph(widget.icon, size: 15, color: color),
+                const SizedBox(width: 8),
+                Text(
+                  widget.label,
+                  style: AppTypography.bodySm.copyWith(height: 1, color: color),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

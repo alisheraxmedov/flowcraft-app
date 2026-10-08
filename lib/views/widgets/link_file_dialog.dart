@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:flowcraft/core/theme/app_radius.dart';
-import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/views/widgets/project_dialogs.dart';
 
 /// Asks for the path of the file a project should be mirrored to.
 ///
@@ -50,10 +49,9 @@ class _LinkFileDialogState extends State<LinkFileDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdRadius),
-      title: Text('Link to file', style: AppTypography.headlineMd),
-      content: TextField(
+    return ProjectDialogShell(
+      title: 'Link to file',
+      field: TextField(
         controller: _controller,
         autofocus: true,
         textInputAction: TextInputAction.done,
@@ -63,21 +61,16 @@ class _LinkFileDialogState extends State<LinkFileDialog> {
           helperText:
               'Absolute path ending in .flowcraft or .json. If the file '
               'already exists, this board is replaced by its contents.',
-          helperMaxLines: 2,
+          helperMaxLines: 3,
           errorText: _error,
           errorMaxLines: 3,
-          border: const OutlineInputBorder(borderRadius: AppRadius.smRadius),
         ),
       ),
       actions: [
-        TextButton(
+        ProjectDialogButton.cancel(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _busy ? null : _submit,
-          child: const Text('Link'),
-        ),
+        ProjectDialogButton('Link', onPressed: _busy ? null : _submit),
       ],
     );
   }
