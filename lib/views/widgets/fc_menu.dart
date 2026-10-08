@@ -165,9 +165,13 @@ class FcSubmenu extends StatelessWidget {
       menuChildren: children,
       // The default arrow_right is a Material glyph; chevronDown turned a
       // quarter-turn is the mockup's chevron, pointing right.
-      trailingIcon: RotatedBox(
-        quarterTurns: 3,
-        child: FcIconGlyph(FcIcons.chevronDown, size: 16),
+      // A null submenuIcon falls back to the default, so the chevron goes in
+      // that slot rather than trailingIcon (which sits beside the default).
+      submenuIcon: const WidgetStatePropertyAll<Widget?>(
+        RotatedBox(
+          quarterTurns: 3,
+          child: FcIconGlyph(FcIcons.chevronDown, size: 16),
+        ),
       ),
       child: Text(label),
     );

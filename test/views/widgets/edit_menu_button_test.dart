@@ -298,6 +298,28 @@ void main() {
     }
   });
 
+  testWidgets('Align & distribute row shows a single trailing chevron', (
+    tester,
+  ) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+
+    final row = find.byType(SubmenuButton);
+    expect(row, findsOneWidget);
+    expect(
+      find.descendant(of: row, matching: find.byType(Icon)),
+      findsNothing,
+      reason: 'no Material arrow_right',
+    );
+    expect(
+      find.descendant(of: row, matching: find.byType(FcIconGlyph)),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('edit menu fits in 1280x720 without scrolling, Clear canvas '
       'visible', (tester) async {
     final controller = SketchController(initialElements: [_rect('a')]);
