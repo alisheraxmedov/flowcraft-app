@@ -116,6 +116,16 @@ class AppTheme {
         inactiveTrackColor: t.surface2,
         thumbColor: t.accent,
         trackHeight: 4,
+        // Mockup: a native range input - thin track spanning the whole
+        // control, small thumb, no hover halo and no `divisions` tick dots.
+        trackShape: const _FullWidthTrack(),
+        tickMarkShape: SliderTickMarkShape.noTickMark,
+        overlayShape: SliderComponentShape.noOverlay,
+        thumbShape: const RoundSliderThumbShape(
+          enabledThumbRadius: 7,
+          elevation: 0,
+          pressedElevation: 0,
+        ),
       ),
       switchTheme: SwitchThemeData(
         thumbColor: const WidgetStatePropertyAll(Colors.white),
@@ -151,6 +161,29 @@ class AppTheme {
         ),
       ),
       dividerTheme: DividerThemeData(color: t.glassBorder, space: 1),
+    );
+  }
+}
+
+/// Rounded slider track with none of the stock horizontal inset, so it spans
+/// the control's full width like the mockup's range input.
+class _FullWidthTrack extends RoundedRectSliderTrackShape {
+  const _FullWidthTrack();
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final h = sliderTheme.trackHeight ?? 4;
+    return Rect.fromLTWH(
+      offset.dx,
+      offset.dy + (parentBox.size.height - h) / 2,
+      parentBox.size.width,
+      h,
     );
   }
 }

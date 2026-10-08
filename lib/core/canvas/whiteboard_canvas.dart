@@ -42,7 +42,7 @@ class WhiteboardCanvas extends StatefulWidget {
     this.backgroundColor = AppColors.surface,
     this.gridType = GridType.dots,
     this.gridColor = AppColors.outline,
-    this.gridOpacity = 0.15,
+    this.gridOpacity = 1.0,
     this.gridSpacing = AppSpacing.canvasGrid,
     this.minZoom = 0.1,
     this.maxZoom = 4.0,

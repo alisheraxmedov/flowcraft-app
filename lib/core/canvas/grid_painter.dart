@@ -31,12 +31,15 @@ class GridPainter extends CustomPainter {
     this.gridSpacing = AppSpacing.canvasGrid,
     this.gridColor = AppColors.outline,
     this.gridOpacity = _defaultGridOpacity,
-    this.dotRadius = 1.5,
+    this.dotRadius = _defaultDotRadius,
   });
 
-  /// Default grid-dot opacity applied on top of [gridColor] — ~15%, per
-  /// the Kinetic Blueprint design tokens.
-  static const double _defaultGridOpacity = 0.15;
+  /// The token colour (`FcTokens.dot`) already carries the mockup's alpha, so
+  /// no further fade is applied by default.
+  static const double _defaultGridOpacity = 1.0;
+
+  /// Mockup dot: `radial-gradient(circle, var(--dot) 1.2px, ...)`.
+  static const double _defaultDotRadius = 1.2;
 
   /// The current viewport state (used for zoom and pan offset).
   final FlowViewport viewport;

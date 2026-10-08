@@ -137,25 +137,30 @@ class _McpSetupDialogState extends State<McpSetupDialog> {
                   ),
                 ],
                 const SizedBox(height: 18),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Material(
-                    color: t.accent,
-                    borderRadius: BorderRadius.circular(AppRadius.button),
-                    child: InkWell(
+                // Row, not Align: Align hands its child loose constraints and
+                // the button's centred Container would stretch to full width.
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Material(
+                      color: t.accent,
                       borderRadius: BorderRadius.circular(AppRadius.button),
-                      onTap: () => Navigator.of(context).pop(),
-                      child: Container(
-                        height: 36,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        alignment: Alignment.center,
-                        child: Text(
-                          'Done',
-                          style: _text(13, FontWeight.w600, t.onAccent),
+                      child: InkWell(
+                        key: const ValueKey('mcp_done'),
+                        borderRadius: BorderRadius.circular(AppRadius.button),
+                        onTap: () => Navigator.of(context).pop(),
+                        child: Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Done',
+                            style: _text(13, FontWeight.w600, t.onAccent),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),

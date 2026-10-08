@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flowcraft/core/theme/fc_tokens.dart';
+
 import 'package:flowcraft/core/canvas/grid_painter.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
 
@@ -39,5 +41,17 @@ void main() {
         isTrue,
       );
     });
+  });
+
+  test('dot paint matches the mockup token alpha and 1.2px radius at 1x', () {
+    for (final dot in [FcTokens.light.dot, FcTokens.dark.dot]) {
+      final p = GridPainter(viewport: const FlowViewport(), gridColor: dot);
+      expect(p.dotRadius, 1.2);
+      expect(p.gridOpacity, 1.0);
+      // Painted alpha = token alpha * gridOpacity * zoom clamp (1 at 1x).
+      expect(dot.a * p.gridOpacity, closeTo(dot.a, 1e-9));
+    }
+    expect(FcTokens.light.dot.a, closeTo(0.2, 0.01));
+    expect(FcTokens.dark.dot.a, closeTo(0.1, 0.01));
   });
 }

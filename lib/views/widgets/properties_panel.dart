@@ -11,6 +11,7 @@ import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
+import 'package:flowcraft/views/widgets/glass/fc_switch.dart';
 import 'package:flowcraft/views/widgets/glass/glass_island.dart';
 import 'package:flowcraft/views/widgets/shortcuts/tool_shortcuts.dart';
 import 'package:flowcraft/views/widgets/toolbar/palette_popover.dart';
@@ -995,8 +996,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
               children: [
                 Text('Bold', style: rowStyle),
                 const Spacer(),
-                Switch(
+                FcSwitch(
                   key: const ValueKey('properties_bold'),
+                  label: 'Bold',
                   value: font.$2,
                   onChanged: (v) => _setFont(el, bold: v),
                 ),
@@ -1143,8 +1145,9 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
               children: [
                 Text('Elbow', style: rowStyle),
                 const Spacer(),
-                Switch(
+                FcSwitch(
                   key: const ValueKey('properties_elbow'),
+                  label: 'Elbow',
                   value: el.elbowed,
                   onChanged: (v) => _ctrl.update(el.copyWith(elbowed: v)),
                 ),

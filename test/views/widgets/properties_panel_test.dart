@@ -135,6 +135,26 @@ void main() {
   });
 
   group('PropertiesPanel stroke width', () {
+    panelTest('sliders have no tick marks and span the content width', (
+      tester,
+    ) async {
+      final c = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(c.dispose);
+      c.select('a');
+      await tester.pumpWidget(_host(c));
+      final theme = SliderTheme.of(tester.element(find.byType(Slider).first));
+      expect(theme.tickMarkShape, SliderTickMarkShape.noTickMark);
+      expect(theme.overlayShape, SliderComponentShape.noOverlay);
+      final slider = tester.getRect(find.byType(Slider).first);
+      final box = tester.renderObject<RenderBox>(find.byType(Slider).first);
+      final rect = theme.trackShape!.getPreferredRect(
+        parentBox: box,
+        sliderTheme: theme,
+      );
+      expect(rect.width, slider.width);
+      expect(rect.left, 0);
+    });
+
     panelTest('a half-step width keeps its own label', (tester) async {
       // The slider steps by 0.5; rounding the label to an integer would
       // show 1.5 as "2".

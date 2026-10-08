@@ -9,6 +9,8 @@ import 'package:flowcraft/services/app_version.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
 import 'package:flowcraft/views/widgets/mcp_setup_dialog.dart';
 import 'package:flowcraft/views/widgets/agents_popover.dart';
+import 'package:flowcraft/views/widgets/glass/fc_switch.dart';
+import 'package:flowcraft/views/widgets/glass/glass_island.dart';
 import 'package:flowcraft/viewmodels/canvas_preferences.dart';
 
 /// Stands in for the real view model so these tests never bind a socket at
@@ -307,6 +309,16 @@ void main() {
       expect(find.textContaining('claude mcp add'), findsOneWidget);
       expect(find.textContaining('test-token'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
+    });
+
+    testWidgets('Done is right-aligned and compact', (tester) async {
+      await pumpDialog(tester);
+      final done = tester.getRect(find.byKey(const ValueKey('mcp_done')));
+      final card = tester.getRect(find.byType(GlassIsland));
+      expect(done.height, 36);
+      expect(done.width, lessThan(100));
+      // GlassIsland pads 20 on each side.
+      expect(done.right, closeTo(card.right - 20, 0.5));
     });
 
     testWidgets('tapping a tab swaps the snippet', (tester) async {
