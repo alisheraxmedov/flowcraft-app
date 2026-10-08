@@ -14,6 +14,41 @@ const Map<String, String> imageExtensionMimes = {
   'gif': 'image/gif',
 };
 
+/// Longest side, and most pixels, an image may declare. `maxImageBytes` caps
+/// only the *compressed* size; a few-KB PNG can declare 60000x60000 and
+/// decode to gigabytes (CWE-409), so the declared size is checked first.
+const int maxImageSide = 8192;
+const int maxImagePixels = 32 * 1000 * 1000;
+
+/// The pixel size [bytes] declares, read from the header by the engine
+/// without decoding any pixels. Throws [DiagramSpecException] when [bytes]
+/// is not a recognised image or declares more than [maxImageSide] /
+/// [maxImagePixels] — call this before any `instantiateImageCodec`.
+Future<({int width, int height})> checkedImageSize(Uint8List bytes) async {
+  final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromUint8List(
+    bytes,
+  );
+  try {
+    final ui.ImageDescriptor d;
+    try {
+      d = await ui.ImageDescriptor.encoded(buffer);
+    } catch (_) {
+      throw DiagramSpecException('The image data could not be decoded.');
+    }
+    final (w, h) = (d.width, d.height);
+    d.dispose();
+    if (w > maxImageSide || h > maxImageSide || w * h > maxImagePixels) {
+      throw DiagramSpecException(
+        'Image is ${w}x$h px; the limit is $maxImageSide px per side and '
+        '${maxImagePixels ~/ 1000000} megapixels.',
+      );
+    }
+    return (width: w, height: h);
+  } finally {
+    buffer.dispose();
+  }
+}
+
 /// Reads the file at an image `path` entry; supplied by the io/stub split.
 typedef ImagePathReader =
     Future<(String mimeType, Uint8List bytes)> Function(String path);
@@ -78,17 +113,16 @@ Future<List<dynamic>> resolveImages(
       map['mimeType'] = m[1];
       map['data'] = data;
     }
-    if ((map['width'] == null || map['height'] == null) &&
-        map['data'] is String) {
-      await _fillNaturalSize(map);
-    }
+    // Always validated, even when the caller gave a size: the declared
+    // pixels, not the stated ones, are what a decode would allocate.
+    if (map['data'] is String) await _fillNaturalSize(map);
     out.add(map);
   }
   return out;
 }
 
-/// Sets the missing `width`/`height` of [map] from its decoded pixels. Bad
-/// base64 or an undecodable image is left for the parser to reject with its
+/// Validates [map]'s image and sets its missing `width`/`height` from the
+/// declared pixels. Bad base64 is left for the parser to reject with its
 /// own message.
 Future<void> _fillNaturalSize(Map<String, dynamic> map) async {
   final Uint8List bytes;
@@ -97,26 +131,15 @@ Future<void> _fillNaturalSize(Map<String, dynamic> map) async {
   } on FormatException {
     return;
   }
-  final ui.Codec codec;
-  try {
-    codec = await ui.instantiateImageCodec(bytes);
-  } catch (_) {
-    throw DiagramSpecException('The image data could not be decoded.');
-  }
-  try {
-    final frame = await codec.getNextFrame();
-    final w = frame.image.width.toDouble(), h = frame.image.height.toDouble();
-    frame.image.dispose();
-    final gw = map['width'], gh = map['height'];
-    if (gw is num && gw > 0) {
-      map['height'] = gw * h / w;
-    } else if (gh is num && gh > 0) {
-      map['width'] = gh * w / h;
-    } else {
-      map['width'] = w;
-      map['height'] = h;
-    }
-  } finally {
-    codec.dispose();
+  final size = await checkedImageSize(bytes);
+  final w = size.width.toDouble(), h = size.height.toDouble();
+  final gw = map['width'], gh = map['height'];
+  if (gw is num && gw > 0 && gh == null) {
+    map['height'] = gw * h / w;
+  } else if (gh is num && gh > 0 && gw == null) {
+    map['width'] = gh * w / h;
+  } else if (gw == null && gh == null) {
+    map['width'] = w;
+    map['height'] = h;
   }
 }

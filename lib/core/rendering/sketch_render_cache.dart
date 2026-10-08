@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data' show Uint8List;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart' show ChangeNotifier;
@@ -12,6 +13,8 @@ import 'package:flowcraft/core/domain/sticky_bubble_geometry.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/core/rendering/rough_generator.dart';
+import 'package:flowcraft/services/image_source_core.dart'
+    show checkedImageSize;
 
 /// Per-element cache of everything the painter derives from an element
 /// that is expensive to derive and does not change between frames: the
@@ -59,9 +62,12 @@ class SketchRenderCache extends ChangeNotifier {
   final Map<SketchElement, TextPainter> _text = {};
   final Map<SketchEntity, EntityLabels> _entityText = {};
 
-  /// Decoded bitmaps; a present key with a `null` value is "decoding" (or
-  /// undecodable — a bad file is not retried every frame).
-  final Map<SketchImage, Image?> _images = {};
+  /// Decoded bitmaps keyed by the *bytes* instance, not the element: a
+  /// move/resize/restyle mints a new [SketchImage] sharing the same bytes,
+  /// and must not re-decode (up to 4 MiB) per pointer move. A present key
+  /// with a `null` value is "decoding" (or undecodable/oversized — a bad
+  /// file is not retried every frame).
+  final Map<Uint8List, Image?> _images = Map.identity();
   bool _disposed = false;
 
   /// How many decodes have been started. Exposed for tests asserting an
@@ -210,29 +216,31 @@ class SketchRenderCache extends ChangeNotifier {
   /// The decoded bitmap of [image], or null while it is still decoding (the
   /// painter draws a placeholder and is repainted via [notifyListeners]).
   Image? imageFor(SketchImage image) {
-    if (_images.containsKey(image)) return _images[image];
-    _images[image] = null;
+    final bytes = image.bytes;
+    if (_images.containsKey(bytes)) return _images[bytes];
+    _images[bytes] = null;
     _insertsSinceSweep++;
-    _decode(image);
+    _decode(bytes);
     return null;
   }
 
-  Future<void> _decode(SketchImage element) async {
+  Future<void> _decode(Uint8List bytes) async {
     imageDecodeCount++;
     Image? decoded;
     try {
-      final codec = await instantiateImageCodec(element.bytes);
+      await checkedImageSize(bytes); // Refuse decode bombs before decoding.
+      final codec = await instantiateImageCodec(bytes);
       decoded = (await codec.getNextFrame()).image;
       codec.dispose();
     } catch (_) {
-      return; // Undecodable: stays a placeholder, not retried.
+      return; // Undecodable/oversized: stays a placeholder, not retried.
     }
     // Swept (or the cache closed) while decoding: nobody will paint it.
-    if (_disposed || !_images.containsKey(element)) {
+    if (_disposed || !_images.containsKey(bytes)) {
       decoded.dispose();
       return;
     }
-    _images[element] = decoded;
+    _images[bytes] = decoded;
     notifyListeners();
   }
 
@@ -267,8 +275,13 @@ class SketchRenderCache extends ChangeNotifier {
       if (stale) labels.dispose();
       return stale;
     });
-    _images.removeWhere((e, image) {
-      final stale = !live.contains(e);
+    // An image is shared by every element copy carrying its bytes.
+    final liveBytes = Set<Uint8List>.identity();
+    for (final e in elements) {
+      if (e is SketchImage) liveBytes.add(e.bytes);
+    }
+    _images.removeWhere((bytes, image) {
+      final stale = !liveBytes.contains(bytes);
       if (stale) image?.dispose();
       return stale;
     });

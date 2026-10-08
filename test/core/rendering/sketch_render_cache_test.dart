@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter/painting.dart' show TextPainter, TextSpan;
@@ -74,6 +75,42 @@ void _expectWithin(Rect drawn, Rect allowed, {double slack = 0.0}) {
     lessThanOrEqualTo(box.bottom),
     reason: '$drawn escapes $box on the bottom',
   );
+}
+
+Future<Uint8List> _png([int size = 4]) async {
+  final recorder = PictureRecorder();
+  Canvas(recorder).drawRect(
+    Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+    Paint()..color = const Color(0xFFFF0000),
+  );
+  final src = await recorder.endRecording().toImage(size, size);
+  final data = (await src.toByteData(format: ImageByteFormat.png))!;
+  src.dispose();
+  return data.buffer.asUint8List();
+}
+
+/// Waits for the next decode notification.
+Future<void> _decoded(SketchRenderCache cache) {
+  final c = Completer<void>();
+  cache.addListener(() {
+    if (!c.isCompleted) c.complete();
+  });
+  return c.future;
+}
+
+/// Inserts enough stale entries that the next [SketchRenderCache.sweep]
+/// actually walks the maps.
+void _pad(SketchRenderCache cache) {
+  final pad = SketchText.create(position: Offset.zero, text: 'x');
+  for (var i = 0; i <= SketchRenderCache.sweepSlack; i++) {
+    cache.textPainter(
+      pad.copyWith(text: '$i'),
+      () => TextPainter(
+        text: const TextSpan(text: 'x'),
+        textDirection: TextDirection.ltr,
+      )..layout(),
+    );
+  }
 }
 
 void main() {
@@ -449,6 +486,93 @@ void main() {
       expect(labels.rows[0].tag, isNotNull);
       expect(labels.rows[1].type, isNull);
       cache.dispose();
+    });
+  });
+
+  group('decoded images are keyed by their bytes', () {
+    testWidgets('moving an image reuses the decode (decode count stays 1 '
+        'across translate/copyWith)', (tester) async {
+      await tester.runAsync(() async {
+        final image = SketchImage.create(
+          rect: const Rect.fromLTWH(0, 0, 40, 40),
+          mimeType: 'image/png',
+          bytes: await _png(),
+        );
+        final cache = SketchRenderCache();
+        final ready = _decoded(cache);
+        expect(cache.imageFor(image), isNull);
+        await ready;
+        final decoded = cache.imageFor(image)!;
+
+        final moved = image.translate(const Offset(5, 5));
+        final resized = image.copyWith(rect: const Rect.fromLTWH(0, 0, 9, 9));
+        expect(identical(moved, image), isFalse);
+        expect(identical(cache.imageFor(moved), decoded), isTrue);
+        expect(identical(cache.imageFor(resized), decoded), isTrue);
+        expect(cache.imageDecodeCount, 1);
+        cache.dispose();
+      });
+    });
+
+    testWidgets('image bitmap disposed only when no live element shares its '
+        'bytes', (tester) async {
+      await tester.runAsync(() async {
+        final image = SketchImage.create(
+          rect: const Rect.fromLTWH(0, 0, 40, 40),
+          mimeType: 'image/png',
+          bytes: await _png(),
+        );
+        final cache = SketchRenderCache();
+        final ready = _decoded(cache);
+        cache.imageFor(image);
+        await ready;
+        final decoded = cache.imageFor(image)!;
+        final moved = image.translate(const Offset(5, 5));
+
+        _pad(cache);
+        cache.sweep([moved], generation: 1); // Original gone, copy alive.
+        expect(decoded.debugDisposed, isFalse);
+
+        _pad(cache);
+        cache.sweep(const [], generation: 2);
+        expect(decoded.debugDisposed, isTrue);
+        cache.dispose();
+      });
+    });
+
+    testWidgets('oversized image stays a placeholder without decoding', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        // Real 1x1 PNG with IHDR patched to 60000x60000 (CRC redone).
+        final png = Uint8List.fromList(await _png(1));
+        final bd = ByteData.sublistView(png);
+        bd.setUint32(16, 60000);
+        bd.setUint32(20, 60000);
+        var crc = 0xFFFFFFFF;
+        for (var i = 12; i < 29; i++) {
+          crc ^= png[i];
+          for (var k = 0; k < 8; k++) {
+            crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+          }
+        }
+        bd.setUint32(29, crc ^ 0xFFFFFFFF);
+
+        final image = SketchImage.create(
+          rect: const Rect.fromLTWH(0, 0, 40, 40),
+          mimeType: 'image/png',
+          bytes: png,
+        );
+        final cache = SketchRenderCache();
+        var notified = false;
+        cache.addListener(() => notified = true);
+        expect(cache.imageFor(image), isNull);
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(cache.imageFor(image), isNull);
+        expect(notified, isFalse);
+        expect(cache.imageDecodeCount, 1, reason: 'no retry per paint');
+        cache.dispose();
+      });
     });
   });
 }

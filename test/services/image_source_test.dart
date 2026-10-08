@@ -20,6 +20,37 @@ Future<Uint8List> _png() async {
   return data!.buffer.asUint8List();
 }
 
+/// A real PNG of [w]x[h].
+Future<Uint8List> _realPng([int w = 4, int h = 4]) async {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawRect(
+    ui.Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+    ui.Paint()..color = const ui.Color(0xFFFF0000),
+  );
+  final image = await recorder.endRecording().toImage(w, h);
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  return data!.buffer.asUint8List();
+}
+
+/// A few-hundred-byte PNG whose IHDR claims [w]x[h]: a real PNG with the
+/// width/height patched and the IHDR CRC recomputed.
+Future<Uint8List> _bombPng(int w, int h) async {
+  final png = Uint8List.fromList(await _realPng(1, 1));
+  final bd = ByteData.sublistView(png);
+  bd.setUint32(16, w);
+  bd.setUint32(20, h);
+  var crc = 0xFFFFFFFF;
+  for (var i = 12; i < 29; i++) {
+    crc ^= png[i];
+    for (var k = 0; k < 8; k++) {
+      crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+    }
+  }
+  bd.setUint32(29, crc ^ 0xFFFFFFFF);
+  return png;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory tempDir;
@@ -121,5 +152,36 @@ void main() {
       'type': 'image',
       'dataUrl': 'data:image/svg+xml;base64,AA==',
     });
+  });
+
+  test('oversized dimensions refused before decode', () async {
+    final bomb = await _bombPng(60000, 60000);
+    expect(bomb.length, lessThan(1000));
+    await expectRefused({
+      'type': 'image',
+      'dataUrl': 'data:image/png;base64,${base64Encode(bomb)}',
+    }, 'limit');
+    // Within the side cap but over the pixel cap.
+    final wide = await _bombPng(8000, 8000);
+    await expectRefused({
+      'type': 'image',
+      'dataUrl': 'data:image/png;base64,${base64Encode(wide)}',
+    }, 'megapixels');
+  });
+
+  test('non-image bytes with a .png name refused', () async {
+    final file = File('${tempDir.path}/fake.png')
+      ..writeAsBytesSync(Uint8List.fromList(List.filled(64, 7)));
+    await expectRefused({'type': 'image', 'path': file.path}, 'decoded');
+  });
+
+  test('valid image with explicit width/height still validated', () async {
+    final bomb = await _bombPng(60000, 60000);
+    await expectRefused({
+      'type': 'image',
+      'width': 10,
+      'height': 10,
+      'dataUrl': 'data:image/png;base64,${base64Encode(bomb)}',
+    }, 'limit');
   });
 }

@@ -532,8 +532,7 @@ void main() {
       expect(errors, hasLength(1));
     });
 
-    test('a linked path that became a directory/oversized file falls back to '
-        'the local scene', () async {
+    test('an oversized linked file falls back to the local scene', () async {
       final p = await linkedRepo.create('Doc');
       await linkedRepo.link(p.id, linkedPath);
       await linkedRepo.save(id: p.id, elements: [_rect('mine')]);
