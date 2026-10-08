@@ -10,6 +10,7 @@ import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/color_picker_button.dart';
 import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 import 'package:flowcraft/views/widgets/glass/fc_switch.dart';
 import 'package:flowcraft/views/widgets/glass/glass_island.dart';
@@ -57,6 +58,9 @@ class PropertiesPanel extends StatefulWidget {
 
 class _PropertiesPanelState extends State<PropertiesPanel> {
   SketchController get _ctrl => widget.controller;
+
+  /// The inspector island; colour pickers open beside it.
+  final _islandKey = GlobalKey(debugLabel: 'inspector-island');
 
   /// Resolved live-theme colors for the current build — set at the top of
   /// [build] and read by every section builder below instead of reaching
@@ -468,6 +472,16 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
         _strokeHexFocus,
         mixed.contains(_MixedField.strokeColor),
         hint: '#RRGGBB',
+        pick: ColorPickerButton(
+          anchorKey: _islandKey,
+          tooltip: 'Pick stroke colour',
+          color: style.strokeColor,
+          initial: style.strokeColor,
+          mixed: mixed.contains(_MixedField.strokeColor),
+          onStart: _ctrl.beginDragSession,
+          onChanged: (c) => _applyStyle((s) => s.copyWith(strokeColor: c)),
+          onEnd: _ctrl.endDragSession,
+        ),
         swatches: [
           // The first swatch is the theme's ink (what new elements are drawn
           // in); it paints in the softer swatchInk token.
@@ -491,6 +505,17 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
         _fillHexFocus,
         mixed.contains(_MixedField.fillColor),
         hint: 'none',
+        pick: ColorPickerButton(
+          anchorKey: _islandKey,
+          tooltip: 'Pick fill colour',
+          color: style.fillColor,
+          // No fill yet: start from the stroke colour.
+          initial: style.fillColor ?? style.strokeColor,
+          mixed: mixed.contains(_MixedField.fillColor),
+          onStart: _ctrl.beginDragSession,
+          onChanged: (c) => _applyStyle((s) => s.withFillColor(c)),
+          onEnd: _ctrl.endDragSession,
+        ),
         swatches: [
           for (final c in defaultFillPalette)
             Swatch(
@@ -607,6 +632,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     return SizedBox(
       width: 264,
       child: GlassIsland(
+        key: _islandKey,
         strong: true,
         padding: const EdgeInsets.all(14),
         // Scrolls once the window is shorter than the content, but shrinks
@@ -688,6 +714,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     FocusNode focus,
     bool mixed, {
     required String hint,
+    required Widget pick,
     required List<Widget> swatches,
   }) {
     final isFill = label == 'Fill';
@@ -697,9 +724,11 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
         SizedBox(
           height: 32,
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _label(fc, label),
+              const Spacer(),
+              pick,
+              const SizedBox(width: 4),
               SizedBox(
                 width: 78,
                 height: 28,
