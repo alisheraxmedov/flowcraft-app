@@ -117,7 +117,7 @@ class ProjectRepository {
       if (!await file.exists()) return local;
       final newerThan = local.project.updatedAt.add(const Duration(seconds: 2));
       if (!(await file.stat()).modified.isAfter(newerThan)) return local;
-      final remote = ProjectSerializer.decodeScene(await file.readAsString());
+      final remote = ProjectSerializer.decodeScene(await _readCapped(file));
       return FlowProjectScene(
         project: local.project.copyWith(elementCount: remote.elements.length),
         elements: remote.elements,
@@ -233,10 +233,7 @@ class ProjectRepository {
       );
     }
     try {
-      if ((await file.stat()).size > maxSceneImportBytes) {
-        throw const FormatException('too large');
-      }
-      final map = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final map = jsonDecode(await _readCapped(file)) as Map<String, dynamic>;
       // Our own wrapper nests the scene; a plain export is the scene itself.
       // Anything else (`{}`, some other tool's JSON) is not ours to adopt.
       final scene = map['project'] is Map && map['scene'] is Map
@@ -252,6 +249,20 @@ class ProjectRepository {
     } catch (_) {
       throw ExportPathException('$target exists and is not a FlowCraft scene');
     }
+  }
+
+  /// Reads [file] as text only if it is a regular file (no symlink, FIFO or
+  /// directory) within [maxSceneImportBytes]; throws otherwise. The stored
+  /// link path is untrusted once on disk, and reading a FIFO would hang.
+  Future<String> _readCapped(File file) async {
+    if (await FileSystemEntity.type(file.path, followLinks: false) !=
+        FileSystemEntityType.file) {
+      throw FormatException('${file.path} is not a regular file');
+    }
+    if ((await file.stat()).size > maxSceneImportBytes) {
+      throw const FormatException('too large');
+    }
+    return file.readAsString();
   }
 
   /// Stops mirroring; the linked file is left on disk untouched.

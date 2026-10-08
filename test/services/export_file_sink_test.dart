@@ -81,9 +81,53 @@ void main() {
   });
 
   test('overwrite works', () async {
-    File('${root.path}/a.svg').writeAsStringSync('old');
+    File('${root.path}/a.svg').writeAsStringSync('<svg xmlns="x"/>');
     await write('${root.path}/a.svg', overwrite: true);
     expect(File('${root.path}/a.svg').readAsBytesSync(), [1, 2, 3]);
+  });
+
+  test(
+    'overwrite refuses an existing non-FlowCraft json (package.json-like)',
+    () async {
+      final f = File('${root.path}/package.json')
+        ..writeAsStringSync('{"name":"app","version":"1.0.0"}');
+      await expectLater(
+        write(f.path, overwrite: true),
+        refused('not a FlowCraft'),
+      );
+      expect(f.readAsStringSync(), contains('"app"'));
+    },
+  );
+
+  test('overwrite replaces an existing FlowCraft scene json', () async {
+    final f = File('${root.path}/s.json')
+      ..writeAsStringSync('{"version":1,"elements":[]}');
+    await write(f.path, overwrite: true);
+    expect(f.readAsBytesSync(), [1, 2, 3]);
+  });
+
+  test('overwrite replaces an existing png', () async {
+    final f = File('${root.path}/a.png')
+      ..writeAsBytesSync([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0]);
+    await write(f.path, overwrite: true);
+    expect(f.readAsBytesSync(), [1, 2, 3]);
+  });
+
+  test('overwrite refuses a text file named .png', () async {
+    final f = File('${root.path}/notes.png')..writeAsStringSync('secret');
+    await expectLater(
+      write(f.path, overwrite: true),
+      refused('not a FlowCraft'),
+    );
+    expect(f.readAsStringSync(), 'secret');
+  });
+
+  test('overwrite refuses a non-svg .svg', () async {
+    final f = File('${root.path}/x.svg')..writeAsStringSync('<html></html>');
+    await expectLater(
+      write(f.path, overwrite: true),
+      refused('not a FlowCraft'),
+    );
   });
 
   test('~ expands', () async {

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -70,6 +71,11 @@ class ExportFileSink {
   /// existing file needs [overwrite]. The write is temp + rename beside the
   /// target so a crash never leaves a half-written file.
   ///
+  /// An existing file is replaced only if it already looks like FlowCraft
+  /// output of the same kind (see [_looksLikeOurs]); without that, an
+  /// injected agent could clobber `package.json` or `.claude/settings.json`
+  /// just by naming it. This also covers project-link mirroring.
+  ///
   /// The extension is the caller's check (it knows the format).
   /// ponytail: exists-check to rename is not atomic, so a file created in
   /// that window is replaced even with overwrite false; use a hard-link
@@ -130,6 +136,12 @@ class ExportFileSink {
         'file already exists; set overwrite: true to replace it',
       );
     }
+    if (type != FileSystemEntityType.notFound && !await _looksLikeOurs(file)) {
+      throw ExportPathException(
+        '$target exists and is not a FlowCraft '
+        '${target.split('.').last.toLowerCase()} file; refusing to overwrite',
+      );
+    }
 
     final temp = File(
       '$target.${pid}_${math.Random.secure().nextInt(1 << 32)}.tmp',
@@ -142,6 +154,39 @@ class ExportFileSink {
       rethrow;
     }
     return target;
+  }
+
+  /// Whether the existing [file] is plausibly something FlowCraft wrote,
+  /// judged by extension: PNG magic, an `<svg` root, or a scene/project JSON.
+  /// Reads a bounded amount; anything unreadable or oversized is "not ours".
+  static Future<bool> _looksLikeOurs(File file) async {
+    try {
+      final ext = file.path.split('.').last.toLowerCase();
+      if (ext == 'png' || ext == 'svg') {
+        final head = <int>[];
+        await for (final c in file.openRead(0, 65536)) {
+          head.addAll(c);
+        }
+        if (ext == 'png') {
+          const magic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+          return head.length >= 8 &&
+              [for (var i = 0; i < 8; i++) head[i] == magic[i]].every((b) => b);
+        }
+        // Optional BOM, then any run of XML prolog / DOCTYPE / comments.
+        return RegExp(
+          r'^\uFEFF?\s*(?:<\?xml.*?\?>\s*|<!--.*?-->\s*|<!DOCTYPE[^>]*>\s*)*<svg\b',
+          dotAll: true,
+        ).hasMatch(utf8.decode(head, allowMalformed: true));
+      }
+      if ((await file.length()) > maxSceneImportBytes) return false;
+      final map = jsonDecode(await file.readAsString());
+      if (map is! Map) return false;
+      // A bare scene, or the project wrapper that nests one.
+      return (map['version'] is num && map['elements'] is List) ||
+          (map['project'] is Map && map['scene'] is Map);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// [fileName] inside [directory], or the first `-N` variant of it that

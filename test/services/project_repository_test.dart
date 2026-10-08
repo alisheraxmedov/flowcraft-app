@@ -532,6 +532,23 @@ void main() {
       expect(errors, hasLength(1));
     });
 
+    test('a linked path that became a directory/oversized file falls back to '
+        'the local scene', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.link(p.id, linkedPath);
+      await linkedRepo.save(id: p.id, elements: [_rect('mine')]);
+      final future = DateTime.now().add(const Duration(minutes: 5));
+
+      File(linkedPath).deleteSync();
+
+      File(linkedPath).openSync(mode: FileMode.write)
+        ..truncateSync(maxSceneImportBytes + 1)
+        ..closeSync();
+      File(linkedPath).setLastModifiedSync(future);
+      expect((await linkedRepo.load(p.id)).elements.single.id, 'mine');
+      expect(errors, hasLength(1));
+    });
+
     test('linking to an existing scene file loads it and leaves the file '
         'untouched (bytes equal)', () async {
       final p = await linkedRepo.create('Doc');

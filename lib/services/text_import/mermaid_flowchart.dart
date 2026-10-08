@@ -183,6 +183,15 @@ Map<String, dynamic> parseMermaidFlowchart(String text) {
         }
         touch(id, label: label, shape: shape);
         group.add(id);
+        // The cap otherwise runs only after parsing; `a & b & … --> c & d & …`
+        // is a cross product, so check before building it, not after.
+        if (group.length > maxDiagramElements ||
+            nodes.length + edges.length > maxDiagramElements) {
+          throw importError(
+            no,
+            'too many elements (at most $maxDiagramElements nodes and edges)',
+          );
+        }
         pos = _classSuffix.matchAsPrefix(line, pos)?.end ?? pos;
         while (pos < line.length && line[pos] == ' ') {
           pos++;
@@ -194,6 +203,13 @@ Map<String, dynamic> parseMermaidFlowchart(String text) {
         break;
       }
       if (prev != null) {
+        if (nodes.length + edges.length + prev.length * group.length >
+            maxDiagramElements) {
+          throw importError(
+            no,
+            'too many elements (at most $maxDiagramElements nodes and edges)',
+          );
+        }
         for (final a in prev) {
           for (final b in group) {
             // ponytail: self-loops dropped, layout rejects them; add loop

@@ -165,4 +165,20 @@ linkStyle 0 stroke:#f00
       throwsA(isA<DiagramSpecException>()),
     );
   });
+
+  test('huge & cross product fails fast with a line number', () {
+    String group(String p) => List.generate(200, (i) => '$p$i').join(' & ');
+    final sw = Stopwatch()..start();
+    expect(
+      () => parseMermaidFlowchart('graph TD\n${group('a')} --> ${group('b')}'),
+      throwsA(
+        isA<DiagramSpecException>().having(
+          (e) => e.message,
+          'message',
+          startsWith('line 2:'),
+        ),
+      ),
+    );
+    expect(sw.elapsedMilliseconds, lessThan(2000));
+  });
 }
