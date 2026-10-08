@@ -170,7 +170,17 @@ class SketchController extends ChangeNotifier {
     final list = elements.toList(growable: false);
     if (list.isEmpty) return;
     _pushHistory();
-    _elements.addAll(list);
+    // Frames go behind everything (after existing frames) — the rule
+    // addFrame uses — so an imported/drawn frame never covers shapes.
+    var at = _elements.indexWhere((e) => e is! SketchFrame);
+    if (at < 0) at = _elements.length;
+    for (final e in list) {
+      if (e is SketchFrame) {
+        _elements.insert(at++, e);
+      } else {
+        _elements.add(e);
+      }
+    }
     _invalidateCache();
     _bumpPaint();
   }
@@ -334,7 +344,19 @@ class SketchController extends ChangeNotifier {
     if (el is SketchFrame) updated = el.copyWith(rect: newRect);
     if (el is SketchIcon) updated = el.copyWith(rect: newRect);
     if (el is SketchImage) updated = el.copyWith(rect: newRect);
-    if (el is SketchEntity) updated = el.copyWith(rect: newRect);
+    // Height is derived from the rows, so only x/y/width are the caller's.
+    if (el is SketchEntity) {
+      updated = el
+          .copyWith(
+            rect: Rect.fromLTWH(
+              newRect.left,
+              newRect.top,
+              newRect.width,
+              el.rect.height,
+            ),
+          )
+          .fittedToAttributes();
+    }
     if (updated == null) return;
     _commitDragHistory();
     _elements[idx] = updated;

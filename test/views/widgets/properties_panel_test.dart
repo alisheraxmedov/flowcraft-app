@@ -310,4 +310,92 @@ void main() {
       expect(e.rect.height, e.fittedHeight);
     });
   });
+
+  group('PropertiesPanel commits to the edited element', () {
+    SketchEntity entity(String id) => SketchEntity.create(
+      id: id,
+      rect: const Rect.fromLTWH(0, 0, 200, 100),
+      name: id,
+    );
+
+    testWidgets('typing in entity A then selecting B commits to A, not B', (
+      tester,
+    ) async {
+      final c = SketchController(initialElements: [entity('a'), entity('b')]);
+      addTearDown(c.dispose);
+      c.select('a');
+      await tester.pumpWidget(_host(c));
+      await tester.enterText(
+        find.byKey(const ValueKey('properties_attributes')),
+        'id int',
+      );
+      c.select('b');
+      await tester.pump();
+
+      final a = c.elements.firstWhere((e) => e.id == 'a') as SketchEntity;
+      final b = c.elements.firstWhere((e) => e.id == 'b') as SketchEntity;
+      expect(a.attributes.map((x) => x.name), ['id']);
+      expect(b.attributes, isEmpty);
+    });
+
+    testWidgets('clearing selection mid-edit still commits to the element', (
+      tester,
+    ) async {
+      final c = SketchController(initialElements: [entity('a')]);
+      addTearDown(c.dispose);
+      c.select('a');
+      await tester.pumpWidget(_host(c));
+      await tester.enterText(
+        find.byKey(const ValueKey('properties_attributes')),
+        'id int',
+      );
+      c.clearSelection();
+      await tester.pump();
+
+      expect((c.elements.single as SketchEntity).attributes.single.name, 'id');
+    });
+
+    testWidgets('frame name edit survives selection change', (tester) async {
+      final f = SketchFrame.create(
+        id: 'f',
+        rect: const Rect.fromLTWH(0, 0, 200, 100),
+        name: 'Frame 1',
+      );
+      final c = SketchController(
+        initialElements: [
+          f,
+          _rect(id: 'r'),
+        ],
+      );
+      addTearDown(c.dispose);
+      c.select('f');
+      await tester.pumpWidget(_host(c));
+      await tester.enterText(
+        find.byKey(const ValueKey('properties_name')),
+        'API',
+      );
+      c.select('r');
+      await tester.pump();
+
+      expect((c.elements.first as SketchFrame).name, 'API');
+    });
+
+    testWidgets('duplicate attribute names show an error and do not commit', (
+      tester,
+    ) async {
+      final c = SketchController(initialElements: [entity('a')]);
+      addTearDown(c.dispose);
+      c.select('a');
+      await tester.pumpWidget(_host(c));
+      await tester.enterText(
+        find.byKey(const ValueKey('properties_attributes')),
+        'id int\nid text',
+      );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+
+      expect(find.text('Duplicate attribute name'), findsOneWidget);
+      expect((c.elements.single as SketchEntity).attributes, isEmpty);
+    });
+  });
 }

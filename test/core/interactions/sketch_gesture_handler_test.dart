@@ -1846,6 +1846,60 @@ void main() {
     expect(arrow.endBinding?.elementId, 'target');
     expect(controller.canUndo, isFalse);
   });
+
+  testWidgets(
+    'click on an unbound end near a shape does not bind or push history',
+    (tester) async {
+      final controller = await pumpBinding(tester, [
+        target(),
+        SketchArrow.create(
+          id: 'a',
+          start: const Offset(0, 50),
+          end: const Offset(195, 50),
+        ),
+      ], tool: SketchTool.select);
+      controller.select('a');
+
+      final gesture = await tester.startGesture(const Offset(195, 50));
+      await gesture.up();
+      await tester.pump();
+
+      expect((controller.elements.last as SketchArrow).endBinding, isNull);
+      expect(controller.canUndo, isFalse);
+    },
+  );
+
+  testWidgets('cancelled endpoint drag over a shape rebinds', (tester) async {
+    final controller = await pumpBinding(tester, [
+      target(),
+      SketchArrow.create(
+        id: 'a',
+        start: const Offset(0, 50),
+        end: const Offset(100, 50),
+      ),
+    ], tool: SketchTool.select);
+    controller.select('a');
+
+    final gesture = await tester.startGesture(const Offset(100, 50));
+    await gesture.moveTo(const Offset(180, 50));
+    await tester.pump();
+    await gesture.moveTo(const Offset(250, 50));
+    await tester.pump();
+    await gesture.cancel();
+    await tester.pump();
+
+    expect(
+      (controller.elements.last as SketchArrow).endBinding?.elementId,
+      'target',
+    );
+  });
+
+  test('nextFrameName picks the smallest unused number', () {
+    SketchFrame f(String n) =>
+        SketchFrame.create(rect: const Rect.fromLTWH(0, 0, 9, 9), name: n);
+    expect(nextFrameName([f('Frame 1'), f('Frame 3')]), 'Frame 2');
+    expect(nextFrameName([]), 'Frame 1');
+  });
 }
 
 /// A note collapsed to its badge, sized well past the badge so the two boxes

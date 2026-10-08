@@ -132,8 +132,40 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     super.dispose();
   }
 
+  /// Id of the element the fields currently hold values for. Every blur
+  /// commit writes to THIS element, never to whatever is selected by the
+  /// time the blur fires — otherwise typing in A then clicking B would write
+  /// A's text onto B (and clearing the selection would lose the edit).
+  String? _loadedId;
+  bool _flushing = false;
+
+  SketchElement? get _loaded {
+    if (_loadedId == null) return null;
+    for (final e in _ctrl.elements) {
+      if (e.id == _loadedId) return e;
+    }
+    return null;
+  }
+
+  /// Error shown under the attributes box when two rows share a name.
+  String? _attrsError;
+
   void _onChange() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // Selection moved off the element being edited: commit whatever is still
+    // pending in a focused field to the OLD element before the fields reload.
+    if (!_flushing && _loadedId != null && _selected?.id != _loadedId) {
+      _flushing = true;
+      if ([_xFocus, _yFocus, _wFocus, _hFocus].any((f) => f.hasFocus)) {
+        _commitDimensions();
+      }
+      if (_strokeHexFocus.hasFocus) _commitStrokeHex();
+      if (_fillHexFocus.hasFocus) _commitFillHex();
+      if (_nameFocus.hasFocus) _commitName();
+      if (_attrsFocus.hasFocus) _commitAttributes();
+      _flushing = false;
+    }
+    setState(() {});
   }
 
   // ── selection lookup ──────────────────────────────────────────────────
@@ -149,12 +181,14 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
 
   // ── dimensions & position ─────────────────────────────────────────────
 
-  void _syncDimensionFields(SketchElement el) {
+  void _syncDimensionFields(SketchElement el, bool fresh) {
     final rect = PropertiesPanel.rectOf(el) ?? el.bounds;
-    if (!_xFocus.hasFocus) _xCtrl.text = rect.left.toStringAsFixed(0);
-    if (!_yFocus.hasFocus) _yCtrl.text = rect.top.toStringAsFixed(0);
-    if (!_wFocus.hasFocus) _wCtrl.text = rect.width.toStringAsFixed(0);
-    if (!_hFocus.hasFocus) _hCtrl.text = rect.height.toStringAsFixed(0);
+    if (fresh || !_xFocus.hasFocus) _xCtrl.text = rect.left.toStringAsFixed(0);
+    if (fresh || !_yFocus.hasFocus) _yCtrl.text = rect.top.toStringAsFixed(0);
+    if (fresh || !_wFocus.hasFocus) _wCtrl.text = rect.width.toStringAsFixed(0);
+    if (fresh || !_hFocus.hasFocus) {
+      _hCtrl.text = rect.height.toStringAsFixed(0);
+    }
   }
 
   void _onDimensionFocusChange() {
@@ -168,7 +202,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _commitDimensions() {
-    final el = _selected;
+    final el = _loaded;
     if (el == null) return;
     final rect = PropertiesPanel.rectOf(el);
     if (rect == null) return;
@@ -203,12 +237,12 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     return value == null ? null : Color(value);
   }
 
-  void _syncAppearanceFields(SketchElement el) {
+  void _syncAppearanceFields(SketchElement el, bool fresh) {
     final style = el.style;
-    if (!_strokeHexFocus.hasFocus) {
+    if (fresh || !_strokeHexFocus.hasFocus) {
       _strokeHexCtrl.text = _colorToHex(style.strokeColor);
     }
-    if (!_fillHexFocus.hasFocus) {
+    if (fresh || !_fillHexFocus.hasFocus) {
       _fillHexCtrl.text = style.fillColor == null
           ? ''
           : _colorToHex(style.fillColor!);
@@ -216,7 +250,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _commitStrokeHex() {
-    final el = _selected;
+    final el = _loaded;
     if (el == null) return;
     final color = _hexToColor(_strokeHexCtrl.text);
     if (color == null || color == el.style.strokeColor) return;
@@ -224,7 +258,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _commitFillHex() {
-    final el = _selected;
+    final el = _loaded;
     if (el == null) return;
     final text = _fillHexCtrl.text.trim();
     // Same `withFillColor` rule the toolbar's fill palette uses, so a fill
@@ -246,9 +280,13 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     final el = _selected;
     if (el == null) return const SizedBox.shrink();
 
-    _syncDimensionFields(el);
-    _syncAppearanceFields(el);
-    _syncShapeFields(el);
+    // A different element than the fields last loaded: reload every field
+    // even if one still has focus (its pending text was flushed in _onChange).
+    final fresh = _loadedId != el.id;
+    _syncDimensionFields(el, fresh);
+    _syncAppearanceFields(el, fresh);
+    _syncShapeFields(el, fresh);
+    _loadedId = el.id;
 
     final isBounded = PropertiesPanel.rectOf(el) != null;
 
@@ -652,12 +690,13 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
 
   // ── kind-specific sections ─────────────────────────────────────────────
 
-  void _syncShapeFields(SketchElement el) {
+  void _syncShapeFields(SketchElement el, bool fresh) {
     if (el is SketchFrame || el is SketchEntity) {
       final name = el is SketchFrame ? el.name : (el as SketchEntity).name;
-      if (!_nameFocus.hasFocus) _nameCtrl.text = name;
+      if (fresh || !_nameFocus.hasFocus) _nameCtrl.text = name;
     }
-    if (el is SketchEntity && !_attrsFocus.hasFocus) {
+    if (el is SketchEntity && (fresh || !_attrsFocus.hasFocus)) {
+      if (fresh) _attrsError = null;
       _attrsCtrl.text = el.attributes
           .map(
             (a) => [
@@ -672,7 +711,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _commitName() {
-    final el = _selected;
+    final el = _loaded;
     final name = _nameCtrl.text.trim();
     if (el is SketchFrame && name != el.name) {
       _ctrl.update(el.copyWith(name: name));
@@ -709,9 +748,15 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _commitAttributes() {
-    final el = _selected;
+    final el = _loaded;
     if (el is! SketchEntity) return;
     final attrs = _parseAttributes(_attrsCtrl.text);
+    // Same rule as the MCP/diagram path: names are unique within an entity.
+    final dup = attrs.map((a) => a.name).toSet().length != attrs.length;
+    if (dup != (_attrsError != null) && mounted) {
+      setState(() => _attrsError = dup ? 'Duplicate attribute name' : null);
+    }
+    if (dup) return;
     final same =
         attrs.length == el.attributes.length &&
         [
@@ -801,7 +846,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
           ),
           decoration: _fieldDecoration(
             'Attributes — one per line: name type [PK] [FK]',
-          ),
+          ).copyWith(errorText: _attrsError),
         ),
       ],
       _ => const <Widget>[],

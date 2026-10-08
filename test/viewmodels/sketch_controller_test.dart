@@ -1708,4 +1708,48 @@ void main() {
       expect(c.canUndo, isFalse);
     });
   });
+
+  group('SketchController entity/frame invariants', () {
+    test('resizing an entity keeps its fitted height', () {
+      final e = SketchEntity.create(
+        id: 'e',
+        rect: const Rect.fromLTWH(0, 0, 200, 100),
+        name: 'User',
+        attributes: const [
+          EntityAttribute(name: 'id'),
+          EntityAttribute(name: 'x'),
+        ],
+      ).fittedToAttributes();
+      final c = SketchController(initialElements: [e]);
+      c.resizeElement('e', const Rect.fromLTWH(10, 20, 300, 999));
+      final r = c.elements.single as SketchEntity;
+      expect(r.rect.left, 10);
+      expect(r.rect.width, 300);
+      expect(r.rect.height, r.fittedHeight);
+    });
+
+    test(
+      'addAll puts frames behind existing elements, after existing frames',
+      () {
+        final f1 = SketchFrame.create(
+          id: 'f1',
+          rect: const Rect.fromLTWH(0, 0, 9, 9),
+        );
+        final c = SketchController(
+          initialElements: [
+            f1,
+            _rect(id: 'b'),
+          ],
+        );
+        final f2 = SketchFrame.create(
+          id: 'f2',
+          rect: const Rect.fromLTWH(0, 0, 9, 9),
+        );
+        c.addAll([_rect(id: 'c'), f2]);
+        expect(c.elements.map((e) => e.id), ['f1', 'f2', 'b', 'c']);
+        c.undo();
+        expect(c.elements.map((e) => e.id), ['f1', 'b']);
+      },
+    );
+  });
 }

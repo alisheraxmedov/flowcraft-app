@@ -20,6 +20,18 @@ import 'package:flowcraft/viewmodels/sketch_controller.dart';
 /// so the handler always works with up-to-date pan/zoom.
 typedef ViewportProvider = FlowViewport Function();
 
+/// Smallest "Frame N" not already taken, so deleting a frame and drawing
+/// another never yields two frames with the same name.
+@visibleForTesting
+String nextFrameName(Iterable<SketchElement> elements) {
+  final used = {for (final f in elements.whereType<SketchFrame>()) f.name};
+  var n = 1;
+  while (used.contains('Frame $n')) {
+    n++;
+  }
+  return 'Frame $n';
+}
+
 /// Translates pointer events into [SketchController] mutations based on
 /// the active [SketchTool].
 ///
@@ -376,6 +388,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         // A click, not a drag: the glyph has a natural size, so it lands
         // centred under the pointer and the tool stays armed for the next.
         _ctrl.clearSelection();
+        _collapseStickiesExcept(null);
         _ctrl.add(
           SketchIcon.create(
             rect: Rect.fromCenter(center: canvas, width: 64, height: 64),
@@ -529,7 +542,15 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     // Guarded on there being a session, because this handler only cleans up
     // what it started: a style-slider drag elsewhere brackets its own
     // begin/endDragSession, and must not be cut in half from here.
-    if (_interaction.session != null) _ctrl.endDragSession();
+    final session = _interaction.session;
+    if (session != null) {
+      // A cancelled endpoint drag lands like a finished one, or the arrow is
+      // left detached from the shape it was dropped on.
+      if (session.kind == SketchSessionKind.moveEndpoint) {
+        _rebindEndpoint(session);
+      }
+      _ctrl.endDragSession();
+    }
     _interaction.end();
     _setConsumed(false);
   }
@@ -903,6 +924,9 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     final id = session.linearElementId;
     final which = session.linearEndpoint;
     if (id == null || which == null || _bindingSuppressed) return;
+    // A click that never moved the end must not bind it: there was no drag
+    // to land anywhere, and the arrow (or its history) must stay untouched.
+    if (session.currentCanvas == session.startCanvas) return;
     final el = _ctrl.elements.where((e) => e.id == id).firstOrNull;
     if (el is! SketchArrow) return;
     final atStart = which == LinearEndpoint.start;
@@ -962,7 +986,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         _ctrl.addFrame(
           SketchFrame.create(
             rect: rect,
-            name: 'Frame ${_ctrl.elements.whereType<SketchFrame>().length + 1}',
+            name: nextFrameName(_ctrl.elements),
             style: session.style,
           ),
         );
