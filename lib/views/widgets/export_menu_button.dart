@@ -172,7 +172,7 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
               leadingIcon: const Icon(Icons.content_paste_rounded, size: 18),
               onPressed: () =>
                   PasteSceneDialog.show(context, widget.controller),
-              child: const Text('Paste JSON…'),
+              child: const Text('Paste JSON, Mermaid, DBML…'),
             ),
           ],
           builder: (context, menu, _) => _ExportPill(

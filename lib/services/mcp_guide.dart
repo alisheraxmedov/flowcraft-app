@@ -21,7 +21,7 @@ TOOLS
 - flowcraft_export: png / svg / json of the canvas or a selection, inline or written to an absolute path (extension must match; overwrite: true to replace).
 - flowcraft_guide: this text.
 - flowcraft_checkpoint: list/create/restore canvas snapshots; one is taken automatically before every mutating tool.
-- flowcraft_project: list/current/open/create/rename saved whiteboards.''',
+- flowcraft_project: list/current/open/create/rename/link/unlink saved whiteboards.''',
   'vocabulary':
       '''
 VOCABULARY

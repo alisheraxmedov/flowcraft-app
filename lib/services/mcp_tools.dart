@@ -194,7 +194,12 @@ const List<McpTool> flowcraftMcpTools = [
         'Manages the saved whiteboards. action "list" shows them, "current" '
         'the open one, "open" switches to one by id or unique name, "create" '
         'starts a new empty one with a name, "rename" renames the project '
-        'with the given id. Switching saves the outgoing project first.',
+        'with the given id. "link" (id or name, plus an absolute "path") '
+        'keeps a project mirrored to a scene file in a repo: an existing '
+        'scene file is ADOPTED (the board is replaced by its contents, the '
+        'file is left untouched), a missing file gets the current scene '
+        'written to it, and any other file is refused. "unlink" stops the '
+        'mirroring. Switching saves the outgoing project first.',
     inputSchema: _projectSchema,
     run: _runProject,
   ),
@@ -622,7 +627,7 @@ const Map<String, Object?> _projectSchema = {
   'properties': {
     'action': {
       'type': 'string',
-      'enum': ['list', 'current', 'open', 'create', 'rename'],
+      'enum': ['list', 'current', 'open', 'create', 'rename', 'link', 'unlink'],
     },
     'id': {
       'type': 'string',
@@ -631,7 +636,12 @@ const Map<String, Object?> _projectSchema = {
     'name': {
       'type': 'string',
       'description':
-          'open: project name instead of id. create / rename: the new name.',
+          'open / link / unlink: project name instead of id. create / rename: '
+          'the new name.',
+    },
+    'path': {
+      'type': 'string',
+      'description': 'link: absolute path of the .flowcraft / .json file.',
     },
   },
   'required': ['action'],
@@ -1647,9 +1657,40 @@ Future<McpToolResult> _runProject(
         );
       }
       return McpToolResult('Renamed to "$name".');
+    case 'link':
+    case 'unlink':
+      final id = _stringArg(arguments, 'id');
+      final path = _stringArg(arguments, 'path');
+      final matches = [
+        for (final p in host.list())
+          if (id != null
+              ? p.id == id
+              : name != null && p.name.toLowerCase() == name.toLowerCase())
+            p,
+      ];
+      if (matches.length != 1) {
+        return McpToolResult.failed(
+          '$action needs the "id" (or a unique "name") of one project.',
+        );
+      }
+      final target = matches.single;
+      if (action == 'unlink') {
+        await host.unlink(target.id);
+        return McpToolResult('Unlinked "${target.name}".');
+      }
+      if (path == null || path.isEmpty) {
+        return const McpToolResult.failed('link needs a "path".');
+      }
+      try {
+        await host.link(target.id, path);
+      } on StateError catch (e) {
+        return McpToolResult.failed(e.message);
+      }
+      _frameContent(ctx.controller);
+      return McpToolResult('Linked "${target.name}" to $path.');
     default:
       return const McpToolResult.failed(
-        'action must be list, current, open, create or rename.',
+        'action must be list, current, open, create, rename, link or unlink.',
       );
   }
 }

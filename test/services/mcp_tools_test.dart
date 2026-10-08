@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/models/icon_catalog.dart';
 import 'package:flowcraft/services/mcp_guide.dart';
+import 'package:flowcraft/services/mcp_host.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A 1x1 PNG, so "natural size" is a known 1x1.
@@ -486,6 +487,94 @@ void main() {
         'types': ['ellipse'],
       });
       expect(r['isError'], isTrue);
+    });
+  });
+
+  group('project link / unlink', () {
+    final proj = FlowProject.create(name: 'Board');
+    final calls = <String>[];
+    Object? linkError;
+    late FlowcraftControlServer withHost;
+    late Uri hostBase;
+
+    Future<Map<String, dynamic>> hostCall(Map<String, dynamic> args) async {
+      final request = await client.postUrl(hostBase.replace(path: '/mcp'));
+      request.headers.contentType = ContentType.json;
+      request.headers.set('X-Flowcraft-Token', withHost.token);
+      request.write(
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'tools/call',
+          'params': {'name': 'flowcraft_project', 'arguments': args},
+        }),
+      );
+      final body = await (await request.close()).transform(utf8.decoder).join();
+      return (jsonDecode(body) as Map)['result'] as Map<String, dynamic>;
+    }
+
+    setUp(() async {
+      calls.clear();
+      linkError = null;
+      withHost = FlowcraftControlServer(
+        controller: controller,
+        port: 0,
+        configDir: Directory('${tempDir.path}/config2')..createSync(),
+        projects: McpProjectsHost(
+          list: () => [proj],
+          activeId: () => proj.id,
+          open: (_) async {},
+          create: (_) async {},
+          rename: (_, _) async {},
+          link: (id, path) async {
+            if (linkError != null) throw linkError!;
+            calls.add('link $id $path');
+          },
+          unlink: (id) async => calls.add('unlink $id'),
+        ),
+      );
+      await withHost.start();
+      hostBase = Uri.parse('http://127.0.0.1:${withHost.boundPort}');
+    });
+
+    tearDown(() => withHost.stop());
+
+    test('project link calls host.link and reports the path', () async {
+      final r = await hostCall({
+        'action': 'link',
+        'name': 'board',
+        'path': '/repo/a.flowcraft',
+      });
+      expect(r['isError'], isFalse, reason: textOf(r));
+      expect(calls, ['link ${proj.id} /repo/a.flowcraft']);
+      expect(textOf(r), contains('/repo/a.flowcraft'));
+    });
+
+    test('link refusal surfaces the reason as isError', () async {
+      linkError = StateError('Not a FlowCraft scene file.');
+      final r = await hostCall({
+        'action': 'link',
+        'id': proj.id,
+        'path': '/repo/a.txt',
+      });
+      expect(r['isError'], isTrue);
+      expect(textOf(r), 'Not a FlowCraft scene file.');
+    });
+
+    test('unlink calls host.unlink', () async {
+      final r = await hostCall({'action': 'unlink', 'id': proj.id});
+      expect(r['isError'], isFalse, reason: textOf(r));
+      expect(calls, ['unlink ${proj.id}']);
+    });
+
+    test('no host -> unavailable', () async {
+      final r = await call('flowcraft_project', {
+        'action': 'link',
+        'id': 'x',
+        'path': '/a',
+      });
+      expect(r['isError'], isTrue);
+      expect(textOf(r), contains('unavailable'));
     });
   });
 

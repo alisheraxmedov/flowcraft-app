@@ -60,17 +60,19 @@ void main() {
 
     // Live even on an empty canvas — importing is how you fill one.
     expect(_item(tester, 'Import from file…').onPressed, isNotNull);
-    expect(_item(tester, 'Paste JSON…').onPressed, isNotNull);
+    expect(_item(tester, 'Paste JSON, Mermaid, DBML…').onPressed, isNotNull);
   });
 
-  testWidgets('Paste JSON… opens the paste dialog', (tester) async {
+  testWidgets('Paste JSON, Mermaid, DBML… opens the paste dialog', (
+    tester,
+  ) async {
     final controller = SketchController();
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(_host(controller));
     await tester.tap(find.text('Export'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Paste JSON…'));
+    await tester.tap(find.text('Paste JSON, Mermaid, DBML…'));
     await tester.pumpAndSettle();
 
     expect(find.byType(PasteSceneDialog), findsOneWidget);
