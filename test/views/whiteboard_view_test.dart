@@ -105,6 +105,62 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('no island or shadow is laid out in the bottom-centre', (
+    tester,
+  ) async {
+    const size = Size(2000, 1042);
+    await pumpScreen(tester, size: size);
+    sketch.currentTool = SketchTool.rectangle;
+    await tester.pumpAndSettle();
+
+    // Every shadow-bearing island, wherever it is, must stay clear of the
+    // bottom-centre strip (the only island down there is bottom-right).
+    final strip = Rect.fromLTWH(
+      size.width / 4,
+      size.height - 120,
+      size.width / 2,
+      120,
+    );
+    for (final e in find.byType(GlassIsland).evaluate()) {
+      final island = e.widget as GlassIsland;
+      final rect = tester.getRect(find.byWidget(island));
+      expect(rect.overlaps(strip), isFalse, reason: 'island at $rect');
+      // A radius past half the height is what made the pill's blurred shadow
+      // paint a ghost band at the window's bottom edge.
+      final deco =
+          tester
+                  .widget<DecoratedBox>(
+                    find
+                        .descendant(
+                          of: find.byWidget(island),
+                          matching: find.byType(DecoratedBox),
+                        )
+                        .first,
+                  )
+                  .decoration
+              as BoxDecoration;
+      final r = deco.borderRadius! as BorderRadius;
+      expect(r.topLeft.x, lessThanOrEqualTo(rect.height / 2));
+    }
+  });
+
+  testWidgets('one selected shape: type header, Font enabled, Edit JSON', (
+    tester,
+  ) async {
+    await pumpScreen(tester);
+    addBox();
+    sketch.select('box');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rectangle'), findsOneWidget);
+    expect(find.textContaining(' tool'), findsNothing);
+    expect(find.text('POSITION & SIZE'), findsOneWidget);
+    expect(find.text('Text only'), findsNothing, reason: 'labelled shape');
+    expect(find.byKey(const ValueKey('properties_bold')), findsOneWidget);
+    expect(find.text('Edit JSON'), findsOneWidget);
+    await settleAutosave(tester);
+  });
+
   testWidgets('islands have the mockup outer heights (48/52/48/44)', (
     tester,
   ) async {

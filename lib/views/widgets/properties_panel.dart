@@ -601,7 +601,6 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
         _dimensionsSection(fc, PropertiesPanel.rectOf(el) != null),
         ..._kindSection(fc, el),
         _fontSection(fc, el),
-        _editJsonButton(fc, el),
       ],
     ];
 
@@ -623,6 +622,11 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
                 for (final (i, w) in sections.indexed) ...[
                   if (i > 0) const SizedBox(height: 14),
                   w,
+                ],
+                // Mockup: `margin-top:-2px` on the divider, i.e. a 12px gap.
+                if (el != null) ...[
+                  const SizedBox(height: 12),
+                  _editJsonButton(fc, el),
                 ],
               ],
             ),
@@ -1312,8 +1316,6 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   /// Ghost "Edit JSON" button under a hairline divider.
   Widget _editJsonButton(FcTokens fc, SketchElement el) {
     return Container(
-      // The mockup pulls the divider 2px up into the 14px section gap.
-      transform: Matrix4.translationValues(0, -2, 0),
       padding: const EdgeInsets.only(top: 10),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: fc.glassBorder)),

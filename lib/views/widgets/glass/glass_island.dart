@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -45,7 +46,13 @@ class GlassIsland extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.fc;
-    final r = BorderRadius.circular(radius);
+    // A radius beyond half the height (the tool pill's 999) is clamped here,
+    // not left for the engine to normalise: a blurred shadow of an RRect with
+    // out-of-range radii is what painted a pill-wide ghost band along the
+    // bottom edge of the window.
+    final r = BorderRadius.circular(
+      height == null ? radius : math.min(radius, height! / 2),
+    );
     final fill = strong ? t.glassStrong : t.glass;
     // ponytail: blurSigma == 0 is the kill switch for Windows/Linux where
     // BackdropFilter can jank; it paints an opaque blend instead. Wire it to
