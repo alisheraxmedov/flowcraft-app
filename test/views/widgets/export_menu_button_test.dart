@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +43,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Export as PNG'), findsOneWidget);
+    expect(find.text('Export as SVG'), findsOneWidget);
     expect(find.text('Export as JSON'), findsOneWidget);
     expect(find.text('Copy JSON to clipboard'), findsOneWidget);
   });
@@ -132,5 +135,42 @@ void main() {
 
     expect(copied, contains('"rectangle"'));
     expect(find.text('Copied 1 element as JSON'), findsOneWidget);
+  });
+
+  testWidgets('Export as SVG writes an .svg file', (tester) async {
+    final controller = SketchController(initialElements: [_rect()]);
+    addTearDown(controller.dispose);
+    final dir = Directory.systemTemp.createTempSync('export_menu_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: ExportMenuButton(
+              controller: controller,
+              exportDirectory: dir.path,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+    // Real file IO only completes when started *and* awaited inside
+    // runAsync; the fake-async zone never services its callbacks.
+    await tester.tap(find.text('Export as SVG'));
+    await tester.runAsync(() async {
+      for (var i = 0; i < 100 && dir.listSync().isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await tester.pump();
+      }
+    });
+    await tester.pump();
+
+    final files = dir.listSync();
+    expect(files, hasLength(1));
+    expect(files.single.path, endsWith('.svg'));
+    expect(File(files.single.path).readAsStringSync(), startsWith('<svg'));
   });
 }

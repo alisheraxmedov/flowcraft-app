@@ -1,3 +1,5 @@
+export 'package:flowcraft/services/export_path_exception.dart';
+
 /// Web fallback for [ExportFileSink] — writing files and launching a file
 /// manager both need `dart:io`, which doesn't exist on web. Selected in
 /// place of `export_file_sink_io.dart` by the `dart.library.io` conditional
@@ -15,6 +17,17 @@ class ExportFileSink {
     required String fileName,
     required List<int> bytes,
     String? directoryPath,
+  }) async {
+    throw UnsupportedError(
+      'Saving exports to disk is not available on the web build.',
+    );
+  }
+
+  static Future<String> writeTo(
+    String path,
+    List<int> bytes, {
+    required bool overwrite,
+    String? protectedDirectoryPath,
   }) async {
     throw UnsupportedError(
       'Saving exports to disk is not available on the web build.',

@@ -1,4 +1,11 @@
 import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:flowcraft/services/export_path_exception.dart';
+import 'package:flowcraft/services/project_repository_io.dart';
+import 'package:flowcraft/services/scene_import_source.dart';
+
+export 'package:flowcraft/services/export_path_exception.dart';
 
 /// Writes exported artefacts into `~/Documents/FlowCraft` and hands them to
 /// the OS file manager.
@@ -48,6 +55,93 @@ class ExportFileSink {
     // Reveal, not once the OS gets around to flushing its page cache.
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
+  }
+
+  /// Writes [bytes] to the caller-chosen [path] — the policy gate for
+  /// anything an MCP client can name. Returns the absolute path written, or
+  /// throws [ExportPathException] naming the rule that refused it.
+  ///
+  /// Rules, in order: `~` expands; the path must be absolute and free of
+  /// `..`; its parent must already exist as a directory (nothing is created
+  /// recursively); the target must not be a symlink or a directory; the
+  /// resolved parent must not sit inside [protectedDirectoryPath] (default
+  /// `~/.flowcraft`, which holds the projects *and* the control-server
+  /// token, so an overwrite there would cost work or hijack auth); an
+  /// existing file needs [overwrite]. The write is temp + rename beside the
+  /// target so a crash never leaves a half-written file.
+  ///
+  /// The extension is the caller's check (it knows the format).
+  /// ponytail: exists-check to rename is not atomic, so a file created in
+  /// that window is replaced even with overwrite false; use a hard-link
+  /// rename if exports ever run against untrusted concurrent writers.
+  static Future<String> writeTo(
+    String path,
+    List<int> bytes, {
+    required bool overwrite,
+    String? protectedDirectoryPath,
+  }) async {
+    final target = SceneImportSource.expandHome(path);
+    if (!File(target).isAbsolute) {
+      throw const ExportPathException(
+        'path must be absolute (or start with ~/)',
+      );
+    }
+    final sep = Platform.pathSeparator;
+    if (target.split(RegExp(r'[\\/]')).contains('..')) {
+      throw const ExportPathException("path must not contain '..' segments");
+    }
+    final file = File(target);
+    final parent = file.parent;
+    if (await FileSystemEntity.type(parent.path) !=
+        FileSystemEntityType.directory) {
+      throw ExportPathException(
+        'parent directory does not exist (or is not a directory): '
+        '${parent.path}',
+      );
+    }
+    final type = await FileSystemEntity.type(target, followLinks: false);
+    if (type == FileSystemEntityType.link) {
+      throw const ExportPathException('refusing to write through a symlink');
+    }
+    if (type == FileSystemEntityType.directory) {
+      throw const ExportPathException('path is a directory, not a file');
+    }
+
+    final protectedRoot = Directory(
+      protectedDirectoryPath ??
+          Directory(ProjectRepository.defaultDirectoryPath()).parent.path,
+    );
+    final resolvedParent = await parent.resolveSymbolicLinks();
+    final resolvedProtected = await protectedRoot.exists()
+        ? await protectedRoot.resolveSymbolicLinks()
+        : protectedRoot.path;
+    // macOS and Windows volumes are case-insensitive by default.
+    String fold(String s) => Platform.isLinux ? s : s.toLowerCase();
+    final p = fold(resolvedParent);
+    final r = fold(resolvedProtected);
+    if (p == r || p.startsWith(r.endsWith(sep) ? r : '$r$sep')) {
+      throw const ExportPathException(
+        'refusing to write inside the FlowCraft data directory (~/.flowcraft)',
+      );
+    }
+
+    if (type != FileSystemEntityType.notFound && !overwrite) {
+      throw const ExportPathException(
+        'file already exists; set overwrite: true to replace it',
+      );
+    }
+
+    final temp = File(
+      '$target.${pid}_${math.Random.secure().nextInt(1 << 32)}.tmp',
+    );
+    try {
+      await temp.writeAsBytes(bytes, flush: true);
+      await temp.rename(target);
+    } catch (_) {
+      if (await temp.exists()) await temp.delete();
+      rethrow;
+    }
+    return target;
   }
 
   /// [fileName] inside [directory], or the first `-N` variant of it that

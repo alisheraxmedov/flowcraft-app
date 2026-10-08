@@ -8,12 +8,13 @@ import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
 import 'package:flowcraft/services/canvas_exporter.dart';
+import 'package:flowcraft/services/svg_exporter.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/views/widgets/export_feedback.dart';
 import 'package:flowcraft/views/widgets/import_scene_dialog.dart';
 import 'package:flowcraft/views/widgets/paste_scene_dialog.dart';
 
-/// Top-bar "Export" control: a menu offering PNG, JSON, clipboard — and,
+/// Top-bar "Export" control: a menu offering PNG, SVG, JSON, clipboard — and,
 /// under a divider, the two ways back in (a file, or pasted JSON).
 ///
 /// Import shares the export button rather than taking a second slot in the
@@ -35,12 +36,16 @@ class ExportMenuButton extends StatefulWidget {
     super.key,
     required this.controller,
     this.documentName,
+    this.exportDirectory,
   });
 
   final SketchController controller;
 
   /// Seeds the exported filename; falls back to `flowcraft`.
   final String? documentName;
+
+  /// Overrides `~/Documents/FlowCraft`; tests point it at a temp directory.
+  final String? exportDirectory;
 
   @override
   State<ExportMenuButton> createState() => _ExportMenuButtonState();
@@ -76,6 +81,19 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
     return CanvasExporter.writeExport(
       fileName: CanvasExporter.timestampedFileName(_baseName, 'png'),
       bytes: bytes,
+      directoryPath: widget.exportDirectory,
+    );
+  }
+
+  Future<String> _writeSvg() async {
+    final svg = await SvgExporter.render(
+      widget.controller.elements,
+      background: Theme.of(context).colorScheme.surface,
+    );
+    return CanvasExporter.writeExport(
+      fileName: CanvasExporter.timestampedFileName(_baseName, 'svg'),
+      bytes: utf8.encode(svg),
+      directoryPath: widget.exportDirectory,
     );
   }
 
@@ -86,6 +104,7 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
       // UTF-8, not `codeUnits` — sticky notes and labels routinely carry
       // non-ASCII text that would otherwise be truncated to garbage.
       bytes: utf8.encode(json),
+      directoryPath: widget.exportDirectory,
     );
   }
 
@@ -122,6 +141,11 @@ class _ExportMenuButtonState extends State<ExportMenuButton> {
               leadingIcon: const Icon(Icons.image_outlined, size: 18),
               onPressed: hasContent ? () => _run(_writePng) : null,
               child: const Text('Export as PNG'),
+            ),
+            MenuItemButton(
+              leadingIcon: const Icon(Icons.polyline_outlined, size: 18),
+              onPressed: hasContent ? () => _run(_writeSvg) : null,
+              child: const Text('Export as SVG'),
             ),
             MenuItemButton(
               leadingIcon: const Icon(Icons.data_object_rounded, size: 18),
