@@ -1,5 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:flowcraft/models/icon_catalog.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 
@@ -57,10 +60,19 @@ final RegExp _hexColor = RegExp(r'^#?[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$');
 
 /// Parses a draw payload. [bindableIds] are the ids of elements an arrow's
 /// `fromId`/`toId` may attach to; the default (none) refuses any binding,
-/// which is what the legacy REST `/draw` wants.
+/// which is what the legacy REST `/draw` wants. [entities] are the canvas's
+/// existing entities by id, so `fromAttribute`/`toAttribute` can be checked
+/// against real rows.
+///
+/// Frames are stable-partitioned to the front of the result: the canvas
+/// stacks in list order, and a frame has to land *behind* what it contains.
+/// Images arrive already resolved to `mimeType` + base64 `data` (see
+/// `ImageSource.resolve`); their bytes are counted across the batch against
+/// [maxSceneImageBytes].
 List<SketchElement> parseDiagramElements(
   List<dynamic> raw, {
   Set<String> bindableIds = const {},
+  Map<String, SketchEntity> entities = const {},
 }) {
   if (raw.length > maxDiagramElements) {
     throw DiagramSpecException(
@@ -68,10 +80,28 @@ List<SketchElement> parseDiagramElements(
       'drawn per call — split the diagram across several calls.',
     );
   }
-  return [for (final entry in raw) _parseOne(entry, bindableIds)];
+  final imageBytes = _ImageBudget();
+  final parsed = [
+    for (final entry in raw)
+      _parseOne(entry, bindableIds, entities, imageBytes),
+  ];
+  return [
+    ...parsed.whereType<SketchFrame>(),
+    ...parsed.where((e) => e is! SketchFrame),
+  ];
 }
 
-SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
+/// Running total of image bytes in one batch.
+class _ImageBudget {
+  int total = 0;
+}
+
+SketchElement _parseOne(
+  dynamic entry,
+  Set<String> bindableIds,
+  Map<String, SketchEntity> entities,
+  _ImageBudget images,
+) {
   if (entry is! Map) {
     throw DiagramSpecException('Element must be an object, got: $entry');
   }
@@ -93,7 +123,9 @@ SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
     );
   }
   final fontSize = _fontSize(map);
-  if (type != 'arrow') _refuseBindingKeys(map, 'a "$type"');
+  _refuseForeignKeys(map, type, 'a "$type"');
+  final family = _fontFamily(map, null);
+  final bold = _bool(map, 'bold');
 
   switch (type) {
     case 'rectangle':
@@ -102,28 +134,28 @@ SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
         style: style,
         text: text,
         fontSize: fontSize,
-      );
+      ).copyWith(fontFamily: family, bold: bold);
     case 'ellipse':
       return SketchEllipse.create(
         rect: _rect(map),
         style: style,
         text: text,
         fontSize: fontSize,
-      );
+      ).copyWith(fontFamily: family, bold: bold);
     case 'diamond':
       return SketchDiamond.create(
         rect: _rect(map),
         style: style,
         text: text,
         fontSize: fontSize,
-      );
+      ).copyWith(fontFamily: family, bold: bold);
     case 'triangle':
       return SketchTriangle.create(
         rect: _rect(map),
         style: style,
         text: text,
         fontSize: fontSize,
-      );
+      ).copyWith(fontFamily: family, bold: bold);
     case 'sticky':
       return SketchSticky.create(
         rect: _rect(map),
@@ -132,7 +164,7 @@ SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
             : style,
         text: text,
         fontSize: fontSize,
-      );
+      ).copyWith(fontFamily: family, bold: bold);
     case 'text':
       if (text == null) {
         throw DiagramSpecException('A "text" element needs a "text" field.');
@@ -141,12 +173,67 @@ SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
         position: Offset(_number(map, 'x', 0), _number(map, 'y', 0)),
         text: text,
         fontSize: fontSize,
+        fontFamily: family,
+        bold: bold ?? false,
+        align: _align(map) ?? TextAlign.start,
+        style: style,
+      );
+    case 'frame':
+      return SketchFrame.create(
+        rect: _rect(map),
+        name: _string(map, 'name') ?? '',
+        style: style,
+      );
+    case 'icon':
+      final name = _string(map, 'name');
+      if (name == null || !iconCatalog.containsKey(name)) {
+        throw DiagramSpecException(
+          'Unknown icon "${name ?? ''}". Valid names: '
+          '${iconCatalog.keys.join(', ')}.',
+        );
+      }
+      return SketchIcon.create(
+        rect: Rect.fromLTWH(
+          _number(map, 'x', 0),
+          _number(map, 'y', 0),
+          _dimension(map, 'width', 64),
+          _dimension(map, 'height', 64),
+        ),
+        name: name,
+        style: style,
+      );
+    case 'image':
+      return _parseImage(map, style, images);
+    case 'entity':
+      final name = _string(map, 'name');
+      if (name == null || name.isEmpty) {
+        throw DiagramSpecException('An "entity" needs a non-empty "name".');
+      }
+      _checkTextLength(name);
+      return SketchEntity.create(
+        rect: Rect.fromLTWH(
+          _number(map, 'x', 0),
+          _number(map, 'y', 0),
+          _dimension(map, 'width', 200),
+          0,
+        ),
+        name: name,
+        attributes: _attributes(map['attributes']),
+        fontSize: _fontSizeOr(map, SketchEntity.defaultFontSize),
         style: style,
       );
     case 'arrow':
       final fromId = _bindingId(map, 'fromId', bindableIds);
       final toId = _bindingId(map, 'toId', bindableIds);
       _refuseSelfLoop(fromId, toId);
+      final fromAttr = _attributeFor(
+        map,
+        'fromAttribute',
+        'fromId',
+        fromId,
+        entities,
+      );
+      final toAttr = _attributeFor(map, 'toAttribute', 'toId', toId, entities);
       final end = _offset(map, 'toX', 'toY');
       // A bound end's coordinates are only a placeholder — the controller
       // snaps the tip onto the shape's outline — so a missing one borrows the
@@ -158,9 +245,16 @@ SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
         start: start,
         end: toId != null && map['toX'] == null ? start : end,
         style: style,
+        elbowed: _bool(map, 'elbow') ?? false,
+        startHead: _head(map, 'startHead', ArrowheadStyle.none),
+        endHead: _head(map, 'endHead', ArrowheadStyle.arrow),
       ).copyWith(
-        startBinding: fromId == null ? null : SketchBinding(elementId: fromId),
-        endBinding: toId == null ? null : SketchBinding(elementId: toId),
+        startBinding: fromId == null
+            ? null
+            : SketchBinding(elementId: fromId, attribute: fromAttr),
+        endBinding: toId == null
+            ? null
+            : SketchBinding(elementId: toId, attribute: toAttr),
       );
     case 'line':
       return SketchLine.create(
@@ -173,15 +267,38 @@ SketchElement _parseOne(dynamic entry, Set<String> bindableIds) {
   }
 }
 
-/// `fromId`/`toId` only mean something on an arrow; anywhere else they are a
-/// mistake worth naming rather than silently dropping.
-void _refuseBindingKeys(Map<String, dynamic> map, String what) {
-  for (final key in const ['fromId', 'toId']) {
-    if (map[key] != null) {
-      throw DiagramSpecException('"$key" only applies to arrows, not $what.');
+/// Keys that only mean something on one kind of element. Anywhere else they
+/// are a mistake worth naming rather than silently dropping.
+const _arrowOnlyKeys = [
+  'fromId',
+  'toId',
+  'elbow',
+  'startHead',
+  'endHead',
+  'fromAttribute',
+  'toAttribute',
+];
+
+void _refuseForeignKeys(Map<String, dynamic> map, String type, String what) {
+  void refuse(List<String> keys, String onlyFor) {
+    for (final key in keys) {
+      if (map[key] != null) {
+        throw DiagramSpecException(
+          '"$key" only applies to $onlyFor, not $what.',
+        );
+      }
     }
   }
+
+  if (type != 'arrow') refuse(_arrowOnlyKeys, 'arrows');
+  if (type != 'text') refuse(const ['align'], 'text elements');
+  if (!_labelled.contains(type) && type != 'text') {
+    refuse(const ['fontFamily', 'bold'], 'text and labelled shapes');
+  }
 }
+
+/// Types whose label takes `fontFamily`/`bold` (text is handled beside them).
+const _labelled = {'rectangle', 'ellipse', 'diamond', 'triangle', 'sticky'};
 
 /// Reads an arrow's `fromId`/`toId`: `null` when absent or `""` (no binding),
 /// otherwise an id that must be in [bindableIds].
@@ -306,6 +423,197 @@ Color? _color(dynamic hex) {
   return Color(int.parse(value, radix: 16));
 }
 
+/// Most rows one entity may carry; a table wider than this is a schema dump
+/// the canvas can't usefully show, and each row is laid out every frame.
+const int maxEntityAttributes = 200;
+
+/// Reads a boolean field, or `null` when absent.
+bool? _bool(Map<String, dynamic> map, String key) {
+  final raw = map[key];
+  if (raw == null) return null;
+  if (raw is! bool) {
+    throw DiagramSpecException('"$key" must be true or false, got: $raw');
+  }
+  return raw;
+}
+
+/// `fontFamily`: `sans` or `mono`, [current] when absent. There is no
+/// hand-drawn face bundled, so anything else is refused rather than falling
+/// back silently to the platform default.
+String? _fontFamily(Map<String, dynamic> map, String? current) {
+  final raw = _string(map, 'fontFamily');
+  if (raw == null) return current;
+  if (raw != 'sans' && raw != 'mono') {
+    throw DiagramSpecException(
+      'Unknown fontFamily "$raw". Use "sans" or "mono".',
+    );
+  }
+  return raw;
+}
+
+const _aligns = {
+  'left': TextAlign.left,
+  'center': TextAlign.center,
+  'right': TextAlign.right,
+};
+
+TextAlign? _align(Map<String, dynamic> map) {
+  final raw = _string(map, 'align');
+  if (raw == null) return null;
+  return _aligns[raw] ??
+      (throw DiagramSpecException(
+        'Unknown align "$raw". Use left, center or right.',
+      ));
+}
+
+/// An [ArrowheadStyle] by name, [fallback] when the key is absent.
+ArrowheadStyle _head(
+  Map<String, dynamic> map,
+  String key,
+  ArrowheadStyle fallback,
+) {
+  final raw = _string(map, key);
+  if (raw == null) return fallback;
+  for (final style in ArrowheadStyle.values) {
+    if (style.name == raw) return style;
+  }
+  throw DiagramSpecException(
+    'Unknown $key "$raw". Use one of '
+    '${ArrowheadStyle.values.map((s) => s.name).join(', ')}.',
+  );
+}
+
+/// An arrow end's entity row: `null` when [attrKey] is absent or `""`,
+/// otherwise it needs a bound end ([id], from [idKey]) that is an entity in
+/// [entities] with a row of that name.
+String? _attributeFor(
+  Map<String, dynamic> map,
+  String attrKey,
+  String idKey,
+  String? id,
+  Map<String, SketchEntity> entities,
+) {
+  final attr = _string(map, attrKey);
+  if (attr == null || attr.isEmpty) return null;
+  if (id == null) {
+    throw DiagramSpecException(
+      '"$attrKey" needs "$idKey" naming the entity the row belongs to.',
+    );
+  }
+  final entity = entities[id];
+  if (entity == null) {
+    throw DiagramSpecException(
+      '"$attrKey" refers to a row of "$id", which is not an entity.',
+    );
+  }
+  if (!entity.attributes.any((a) => a.name == attr)) {
+    throw DiagramSpecException(
+      'Entity "${entity.name}" has no attribute "$attr". Its attributes: '
+      '${entity.attributes.map((a) => a.name).join(', ')}.',
+    );
+  }
+  return attr;
+}
+
+/// Entity rows: `[{name, type?, pk?, fk?}]` with unique, non-empty names
+/// (a row is addressed by name when an arrow binds to it).
+List<EntityAttribute> _attributes(Object? raw) {
+  if (raw == null) return const [];
+  if (raw is! List) {
+    throw DiagramSpecException('"attributes" must be a list, got: $raw');
+  }
+  if (raw.length > maxEntityAttributes) {
+    throw DiagramSpecException(
+      'Too many attributes: ${raw.length} (max $maxEntityAttributes).',
+    );
+  }
+  final seen = <String>{};
+  final rows = <EntityAttribute>[];
+  for (final row in raw) {
+    if (row is! Map) {
+      throw DiagramSpecException('An attribute must be an object, got: $row');
+    }
+    final m = row.cast<String, dynamic>();
+    final name = _string(m, 'name');
+    if (name == null || name.isEmpty) {
+      throw DiagramSpecException('Every attribute needs a non-empty "name".');
+    }
+    if (!seen.add(name)) {
+      throw DiagramSpecException('Duplicate attribute "$name".');
+    }
+    final type = _string(m, 'type') ?? '';
+    _checkTextLength(name);
+    _checkTextLength(type);
+    rows.add(
+      EntityAttribute(
+        name: name,
+        type: type,
+        primaryKey: _bool(m, 'pk') ?? false,
+        foreignKey: _bool(m, 'fk') ?? false,
+      ),
+    );
+  }
+  return rows;
+}
+
+/// An image whose bytes are already resolved (`mimeType` + base64 `data`).
+/// Enforces the mime allow-list, the per-image cap and the batch's running
+/// total — this is the trust boundary for anything an agent embeds.
+SketchImage _parseImage(
+  Map<String, dynamic> map,
+  SketchStyle style,
+  _ImageBudget budget,
+) {
+  final mime = _string(map, 'mimeType');
+  if (mime == null || !imageMimeTypes.contains(mime)) {
+    throw DiagramSpecException(
+      'Unsupported image mimeType "${mime ?? ''}". Use one of '
+      '${imageMimeTypes.join(', ')}.',
+    );
+  }
+  final data = _string(map, 'data');
+  if (data == null || data.isEmpty) {
+    throw DiagramSpecException(
+      'An "image" needs base64 "data" (or a "path"/"dataUrl", which the '
+      'server resolves before parsing).',
+    );
+  }
+  if (map['width'] == null || map['height'] == null) {
+    throw DiagramSpecException('An "image" needs "width" and "height".');
+  }
+  // Cheap check before decoding: base64 inflates by 4/3.
+  if (data.length > maxImageBytes * 4 ~/ 3 + 4) {
+    throw DiagramSpecException(
+      'Image is larger than the ${maxImageBytes ~/ (1024 * 1024)} MiB limit.',
+    );
+  }
+  final Uint8List bytes;
+  try {
+    bytes = base64Decode(data);
+  } on FormatException {
+    throw DiagramSpecException('Image "data" is not valid base64.');
+  }
+  if (bytes.isEmpty || bytes.length > maxImageBytes) {
+    throw DiagramSpecException(
+      'Image is empty or larger than the ${maxImageBytes ~/ (1024 * 1024)} MiB '
+      'limit.',
+    );
+  }
+  budget.total += bytes.length;
+  if (budget.total > maxSceneImageBytes) {
+    throw DiagramSpecException(
+      'Images in this call add up to more than the '
+      '${maxSceneImageBytes ~/ (1024 * 1024)} MiB limit.',
+    );
+  }
+  return SketchImage.create(
+    rect: _rect(map),
+    mimeType: mime,
+    bytes: bytes,
+    style: style,
+  );
+}
+
 // ─── Reading the canvas back ─────────────────────────────────────────────
 
 /// One element as a simplified, MCP-facing description — the inverse of
@@ -322,15 +630,50 @@ Color? _color(dynamic hex) {
 Map<String, Object?> describeDiagramElement(SketchElement el) {
   switch (el) {
     case SketchRectangle():
-      return _describeBounded(el, 'rectangle', el.text, el.fontSize);
+      return _describeBounded(
+        el,
+        'rectangle',
+        el.text,
+        el.fontSize,
+        fontFamily: el.fontFamily,
+        bold: el.bold,
+      );
     case SketchEllipse():
-      return _describeBounded(el, 'ellipse', el.text, el.fontSize);
+      return _describeBounded(
+        el,
+        'ellipse',
+        el.text,
+        el.fontSize,
+        fontFamily: el.fontFamily,
+        bold: el.bold,
+      );
     case SketchDiamond():
-      return _describeBounded(el, 'diamond', el.text, el.fontSize);
+      return _describeBounded(
+        el,
+        'diamond',
+        el.text,
+        el.fontSize,
+        fontFamily: el.fontFamily,
+        bold: el.bold,
+      );
     case SketchTriangle():
-      return _describeBounded(el, 'triangle', el.text, el.fontSize);
+      return _describeBounded(
+        el,
+        'triangle',
+        el.text,
+        el.fontSize,
+        fontFamily: el.fontFamily,
+        bold: el.bold,
+      );
     case SketchSticky():
-      return _describeBounded(el, 'sticky', el.text, el.fontSize);
+      return _describeBounded(
+        el,
+        'sticky',
+        el.text,
+        el.fontSize,
+        fontFamily: el.fontFamily,
+        bold: el.bold,
+      );
     case SketchText():
       final b = el.unrotatedBounds;
       return {
@@ -340,6 +683,9 @@ Map<String, Object?> describeDiagramElement(SketchElement el) {
         'y': b.top,
         'text': el.text,
         'fontSize': el.fontSize,
+        'fontFamily': ?el.fontFamily,
+        if (el.bold) 'bold': true,
+        if (el.align != TextAlign.start) 'align': el.align.name,
         'strokeColor': _hex(el.style.strokeColor),
       };
     case SketchLine():
@@ -349,6 +695,11 @@ Map<String, Object?> describeDiagramElement(SketchElement el) {
         ..._describeLinear(el, 'arrow', el.start, el.end),
         'fromId': ?el.startBinding?.elementId,
         'toId': ?el.endBinding?.elementId,
+        'fromAttribute': ?el.startBinding?.attribute,
+        'toAttribute': ?el.endBinding?.attribute,
+        if (el.elbowed) 'elbow': true,
+        if (el.startHead != ArrowheadStyle.none) 'startHead': el.startHead.name,
+        if (el.endHead != ArrowheadStyle.arrow) 'endHead': el.endHead.name,
       };
     case SketchFreedraw():
       // Freedraw geometry is a point list the draw vocabulary has no field
@@ -366,9 +717,25 @@ Map<String, Object?> describeDiagramElement(SketchElement el) {
         'height': b.height,
         'strokeColor': _hex(el.style.strokeColor),
       };
-    case SketchFrame() || SketchIcon() || SketchImage() || SketchEntity():
-      // Placeholder: bounds + stroke only; the vocabulary lands in phase 2.
-      return _describeBounded(el, _wireType(el), null, 0);
+    case SketchFrame():
+      return {..._describeBounded(el, 'frame', null, 0), 'name': el.name};
+    case SketchIcon():
+      return {..._describeBounded(el, 'icon', null, 0), 'name': el.name};
+    case SketchImage():
+      // Carries the bytes so a read → draw round trip is lossless; the
+      // 4 MiB per-image cap bounds what one element adds to a read.
+      return {
+        ..._describeBounded(el, 'image', null, 0),
+        'mimeType': el.mimeType,
+        'data': base64Encode(el.bytes),
+      };
+    case SketchEntity():
+      return {
+        ..._describeBounded(el, 'entity', null, 0),
+        'name': el.name,
+        'attributes': [for (final a in el.attributes) a.toJson()],
+        'fontSize': el.fontSize,
+      };
   }
 }
 
@@ -383,8 +750,10 @@ Map<String, Object?> _describeBounded(
   SketchElement el,
   String type,
   String? text,
-  double fontSize,
-) {
+  double fontSize, {
+  String? fontFamily,
+  bool bold = false,
+}) {
   // `unrotatedBounds` rather than a stored `rect` so linear and text
   // elements can share the same "left/top/width/height" reading; for the
   // bounded shapes it *is* the rect. A collapsed sticky reports its badge
@@ -399,6 +768,8 @@ Map<String, Object?> _describeBounded(
     'height': b.height,
     'text': ?text,
     if (text != null) 'fontSize': fontSize,
+    'fontFamily': ?fontFamily,
+    if (bold) 'bold': true,
     'strokeColor': _hex(el.style.strokeColor),
     if (el.style.fillColor != null) 'fillColor': _hex(el.style.fillColor!),
   };
@@ -456,6 +827,7 @@ SketchElement applyDiagramPatch(
   SketchElement existing,
   Map<String, dynamic> patch, {
   Set<String> bindableIds = const {},
+  Map<String, SketchEntity> entities = const {},
 }) {
   final requestedType = _string(patch, 'type');
   final currentType = _wireType(existing);
@@ -466,22 +838,84 @@ SketchElement applyDiagramPatch(
     );
   }
 
-  if (existing is! SketchArrow) {
-    _refuseBindingKeys(patch, 'a $currentType (id ${existing.id})');
-  }
+  _refuseForeignKeys(patch, currentType, 'a $currentType (id ${existing.id})');
 
   switch (existing) {
-    case SketchFrame() || SketchIcon() || SketchImage() || SketchEntity():
-      // Placeholder: patch vocabulary for these types lands in phase 2.
-      throw DiagramSpecException(
-        'A $currentType (id ${existing.id}) cannot be updated yet.',
+    case SketchFrame():
+      return existing.copyWith(
+        rect: _patchedRect(existing.rect, patch),
+        style: _patchedStyle(existing.style, patch, allowFill: true),
+        name: _string(patch, 'name') ?? existing.name,
       );
+    case SketchIcon():
+      final name = _string(patch, 'name') ?? existing.name;
+      if (!iconCatalog.containsKey(name)) {
+        throw DiagramSpecException(
+          'Unknown icon "$name". Valid names: ${iconCatalog.keys.join(', ')}.',
+        );
+      }
+      return existing.copyWith(
+        rect: _patchedRect(existing.rect, patch),
+        style: _patchedStyle(existing.style, patch, allowFill: false),
+        name: name,
+      );
+    case SketchImage():
+      // Pixels are fixed once drawn; `describe` echoes them back, so the
+      // same bytes are fine, different ones are not.
+      for (final key in const ['path', 'dataUrl']) {
+        if (patch[key] != null) {
+          throw DiagramSpecException(
+            'An image (id ${existing.id}) cannot change its pixels. Delete '
+            'it and draw a new one.',
+          );
+        }
+      }
+      if ((patch['mimeType'] ?? existing.mimeType) != existing.mimeType ||
+          (patch['data'] ?? base64Encode(existing.bytes)) !=
+              base64Encode(existing.bytes)) {
+        throw DiagramSpecException(
+          'An image (id ${existing.id}) cannot change its pixels. Delete it '
+          'and draw a new one.',
+        );
+      }
+      return existing.copyWith(
+        rect: _patchedRect(existing.rect, patch),
+        style: _patchedStyle(existing.style, patch, allowFill: false),
+      );
+    case SketchEntity():
+      final name = patch.containsKey('name')
+          ? _string(patch, 'name')
+          : existing.name;
+      if (name == null || name.isEmpty) {
+        throw DiagramSpecException('An entity needs a non-empty "name".');
+      }
+      _checkTextLength(name);
+      // Height is derived from the rows, so a `height` from `describe` is
+      // accepted and ignored rather than fought.
+      return existing
+          .copyWith(
+            rect: Rect.fromLTWH(
+              _number(patch, 'x', existing.rect.left),
+              _number(patch, 'y', existing.rect.top),
+              _dimension(patch, 'width', existing.rect.width),
+              existing.rect.height,
+            ),
+            name: name,
+            attributes: patch.containsKey('attributes')
+                ? _attributes(patch['attributes'])
+                : existing.attributes,
+            fontSize: _fontSizeOr(patch, existing.fontSize),
+            style: _patchedStyle(existing.style, patch, allowFill: true),
+          )
+          .fittedToAttributes();
     case SketchRectangle():
       return existing.copyWith(
         rect: _patchedRect(existing.rect, patch),
         style: _patchedStyle(existing.style, patch, allowFill: true),
         text: _patchedLabel(patch, existing.text),
         fontSize: _fontSizeOr(patch, existing.fontSize),
+        fontFamily: _fontFamily(patch, existing.fontFamily),
+        bold: _bool(patch, 'bold') ?? existing.bold,
       );
     case SketchEllipse():
       return existing.copyWith(
@@ -489,6 +923,8 @@ SketchElement applyDiagramPatch(
         style: _patchedStyle(existing.style, patch, allowFill: true),
         text: _patchedLabel(patch, existing.text),
         fontSize: _fontSizeOr(patch, existing.fontSize),
+        fontFamily: _fontFamily(patch, existing.fontFamily),
+        bold: _bool(patch, 'bold') ?? existing.bold,
       );
     case SketchDiamond():
       return existing.copyWith(
@@ -496,6 +932,8 @@ SketchElement applyDiagramPatch(
         style: _patchedStyle(existing.style, patch, allowFill: true),
         text: _patchedLabel(patch, existing.text),
         fontSize: _fontSizeOr(patch, existing.fontSize),
+        fontFamily: _fontFamily(patch, existing.fontFamily),
+        bold: _bool(patch, 'bold') ?? existing.bold,
       );
     case SketchTriangle():
       return existing.copyWith(
@@ -503,6 +941,8 @@ SketchElement applyDiagramPatch(
         style: _patchedStyle(existing.style, patch, allowFill: true),
         text: _patchedLabel(patch, existing.text),
         fontSize: _fontSizeOr(patch, existing.fontSize),
+        fontFamily: _fontFamily(patch, existing.fontFamily),
+        bold: _bool(patch, 'bold') ?? existing.bold,
       );
     case SketchSticky():
       return existing.copyWith(
@@ -510,6 +950,8 @@ SketchElement applyDiagramPatch(
         style: _patchedStyle(existing.style, patch, allowFill: true),
         text: _patchedLabel(patch, existing.text),
         fontSize: _fontSizeOr(patch, existing.fontSize),
+        fontFamily: _fontFamily(patch, existing.fontFamily),
+        bold: _bool(patch, 'bold') ?? existing.bold,
       );
     case SketchText():
       // A `SketchText` *is* its text — emptying it would leave nothing to
@@ -535,6 +977,9 @@ SketchElement applyDiagramPatch(
         ),
         text: label,
         fontSize: _fontSizeOr(patch, existing.fontSize),
+        fontFamily: _fontFamily(patch, existing.fontFamily),
+        bold: _bool(patch, 'bold') ?? existing.bold,
+        align: _align(patch) ?? existing.align,
         style: _patchedStyle(existing.style, patch, allowFill: false),
       );
     case SketchLine():
@@ -557,6 +1002,8 @@ SketchElement applyDiagramPatch(
         'fromY',
         existing.startBinding,
         bindableIds,
+        entities,
+        'fromAttribute',
       );
       final end = _patchedBinding(
         patch,
@@ -565,6 +1012,8 @@ SketchElement applyDiagramPatch(
         'toY',
         existing.endBinding,
         bindableIds,
+        entities,
+        'toAttribute',
       );
       _refuseSelfLoop(start?.elementId, end?.elementId);
       return existing.copyWith(
@@ -577,6 +1026,9 @@ SketchElement applyDiagramPatch(
           _number(patch, 'toY', existing.end.dy),
         ),
         style: _patchedStyle(existing.style, patch, allowFill: false),
+        elbowed: _bool(patch, 'elbow') ?? existing.elbowed,
+        startHead: _head(patch, 'startHead', existing.startHead),
+        endHead: _head(patch, 'endHead', existing.endHead),
         startBinding: start,
         endBinding: end,
       );
@@ -620,13 +1072,45 @@ SketchBinding? _patchedBinding(
   String yKey,
   SketchBinding? current,
   Set<String> bindableIds,
+  Map<String, SketchEntity> entities,
+  String attrKey,
 ) {
+  SketchBinding? binding;
   if (patch[idKey] != null) {
     final id = _bindingId(patch, idKey, bindableIds);
-    return id == null ? null : SketchBinding(elementId: id);
+    binding = id == null
+        ? null
+        : SketchBinding(
+            elementId: id,
+            attribute: _attributeFor(patch, attrKey, idKey, id, entities),
+          );
+  } else if (patch[xKey] != null || patch[yKey] != null) {
+    binding = null;
+  } else {
+    binding = current;
   }
-  if (patch[xKey] != null || patch[yKey] != null) return null;
-  return current;
+  // A row named without any bound end is a mistake, not a no-op; a row
+  // named for the kept binding re-targets just the row.
+  if (patch[attrKey] != null && patch[idKey] == null) {
+    if (binding == null) {
+      _attributeFor(patch, attrKey, idKey, null, entities); // throws unless ""
+      return null;
+    }
+    final attr = _attributeFor(
+      patch,
+      attrKey,
+      idKey,
+      binding.elementId,
+      entities,
+    );
+    return SketchBinding(
+      elementId: binding.elementId,
+      focus: binding.focus,
+      gap: binding.gap,
+      attribute: attr,
+    );
+  }
+  return binding;
 }
 
 /// The wire `type` string [SketchElement.fromJson] switches on, for [el].

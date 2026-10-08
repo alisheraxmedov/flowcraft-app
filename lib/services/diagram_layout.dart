@@ -30,6 +30,27 @@ Size _nodeSize(String label, String shape) {
   return Size(w * scale, h * scale);
 }
 
+/// Padding a diagram frame keeps around the members it wraps.
+const double _framePadding = 24;
+
+/// Entity node width: wide enough for its widest "name  type" row.
+double _entityWidth(SketchEntity e) {
+  var widest = TextMetrics.measure(
+    text: e.name,
+    fontSize: e.fontSize,
+    fontWeight: FontWeight.w700,
+  ).width;
+  for (final a in e.attributes) {
+    final w = TextMetrics.measure(
+      text: '${a.name}    ${a.type}',
+      fontSize: e.fontSize,
+    ).width;
+    // ponytail: +56 covers the PK/FK tag column and padding, not measured.
+    widest = math.max(widest, w + 56);
+  }
+  return math.max(e.rect.width, widest + 24);
+}
+
 /// Turns the `flowcraft_diagram` input into laid-out node elements plus
 /// arrows bound to them. [nodeIds] maps each caller-chosen node key to the
 /// element id minted for it.
@@ -42,7 +63,14 @@ Size _nodeSize(String label, String shape) {
   required List<dynamic> edges,
   String direction = 'TB',
   Offset origin = Offset.zero,
+  String connectors = 'straight',
+  List<dynamic> frames = const [],
 }) {
+  if (connectors != 'straight' && connectors != 'elbow') {
+    throw DiagramSpecException(
+      'Unknown connectors "$connectors". Use straight or elbow.',
+    );
+  }
   final dir = _directions[direction];
   if (dir == null) {
     throw DiagramSpecException(
@@ -52,9 +80,9 @@ Size _nodeSize(String label, String shape) {
   if (nodes.isEmpty) {
     throw DiagramSpecException('"nodes" must be a non-empty list.');
   }
-  if (nodes.length + edges.length > maxDiagramElements) {
+  if (nodes.length + edges.length + frames.length > maxDiagramElements) {
     throw DiagramSpecException(
-      'Too many elements: ${nodes.length + edges.length}. At most '
+      'Too many elements: ${nodes.length + edges.length + frames.length}. At most '
       '$maxDiagramElements nodes and edges fit in one call.',
     );
   }
@@ -84,16 +112,23 @@ Size _nodeSize(String label, String shape) {
         '$maxDiagramTextLength).',
       );
     }
-    final shape = node['shape'] ?? 'rectangle';
+    final shape =
+        node['shape'] ?? (node['attributes'] != null ? 'entity' : 'rectangle');
     if (!const {
       'rectangle',
       'ellipse',
       'diamond',
       'triangle',
+      'entity',
     }.contains(shape)) {
       throw DiagramSpecException(
         'Node "$id": unknown shape "$shape". Use rectangle, ellipse, '
-        'diamond or triangle.',
+        'diamond, triangle or entity.',
+      );
+    }
+    if (node['attributes'] != null && shape != 'entity') {
+      throw DiagramSpecException(
+        'Node "$id": "attributes" only applies to shape "entity".',
       );
     }
     keys.add(id);
@@ -123,7 +158,55 @@ Size _nodeSize(String label, String shape) {
     edgeMaps.add(edge);
   }
 
-  final sizes = {for (final k in keys) k: _nodeSize(labels[k]!, shapes[k]!)};
+  // Entity nodes are built up front: their height comes from their rows, and
+  // layout needs the sizes before anything is placed.
+  final entities = <String, SketchEntity>{};
+  for (final k in keys) {
+    if (shapes[k] != 'entity') continue;
+    final probe =
+        parseDiagramElements([
+              {
+                'type': 'entity',
+                'name': labels[k],
+                'attributes': nodeMaps[k]!['attributes'],
+                'fontSize': SketchEntity.defaultFontSize,
+                'fillColor': nodeMaps[k]!['fillColor'],
+                'strokeColor': nodeMaps[k]!['strokeColor'],
+              },
+            ]).single
+            as SketchEntity;
+    entities[k] = probe.copyWith(
+      rect: Rect.fromLTWH(0, 0, _entityWidth(probe), probe.rect.height),
+    );
+  }
+  for (var i = 0; i < pairs.length; i++) {
+    final edge = edgeMaps[i];
+    final (from, to) = pairs[i];
+    for (final key in const ['fromCardinality', 'toCardinality']) {
+      _cardinality(edge, key, from, to);
+    }
+    for (final (attrKey, node) in [
+      ('fromAttribute', from),
+      ('toAttribute', to),
+    ]) {
+      final attr = edge[attrKey];
+      if (attr == null) continue;
+      final entity = entities[node];
+      if (attr is! String ||
+          entity == null ||
+          !entity.attributes.any((a) => a.name == attr)) {
+        throw DiagramSpecException(
+          'Edge "$from" -> "$to": "$attrKey" "$attr" is not an attribute of '
+          'entity node "$node".',
+        );
+      }
+    }
+  }
+
+  final sizes = {
+    for (final k in keys)
+      k: entities[k]?.rect.size ?? _nodeSize(labels[k]!, shapes[k]!),
+  };
   final tops = GraphLayout.layout(
     ids: keys,
     sizes: sizes,
@@ -137,6 +220,11 @@ Size _nodeSize(String label, String shape) {
     final topLeft = tops[k]! + origin;
     final size = sizes[k]!;
     final node = nodeMaps[k]!;
+    if (entities.containsKey(k)) {
+      boxes[k] = entities[k]!.translate(topLeft);
+      centres[k] = topLeft + Offset(size.width / 2, size.height / 2);
+      continue;
+    }
     boxes[k] = parseDiagramElements([
       {
         'type': shapes[k],
@@ -165,19 +253,93 @@ Size _nodeSize(String label, String shape) {
                 'toX': centres[to]!.dx,
                 'toY': centres[to]!.dy,
                 'strokeColor': edgeMaps[i]['strokeColor'],
+                'elbow': connectors == 'elbow',
+                'startHead': edgeMaps[i]['fromCardinality'],
+                'endHead': edgeMaps[i]['toCardinality'],
               },
             ]).single
             as SketchArrow;
     arrows.add(
       arrow.copyWith(
-        startBinding: SketchBinding(elementId: boxes[from]!.id),
-        endBinding: SketchBinding(elementId: boxes[to]!.id),
+        startBinding: SketchBinding(
+          elementId: boxes[from]!.id,
+          attribute: edgeMaps[i]['fromAttribute'] as String?,
+        ),
+        endBinding: SketchBinding(
+          elementId: boxes[to]!.id,
+          attribute: edgeMaps[i]['toAttribute'] as String?,
+        ),
       ),
     );
   }
 
+  // Frames go first so they stack behind what they wrap.
+  final frameElements = [
+    for (final f in frames) _buildFrame(f, nodeMaps.keys.toSet(), boxes),
+  ];
+
   return (
-    elements: [...boxes.values, ...arrows],
+    elements: [...frameElements, ...boxes.values, ...arrows],
     nodeIds: {for (final k in keys) k: boxes[k]!.id},
   );
+}
+
+/// An edge's cardinality as the [ArrowheadStyle] name it must be, validated
+/// here so the error names the edge rather than a bare `startHead`.
+void _cardinality(
+  Map<dynamic, dynamic> edge,
+  String key,
+  String from,
+  String to,
+) {
+  final raw = edge[key];
+  if (raw == null) return;
+  if (raw is! String || !ArrowheadStyle.values.any((s) => s.name == raw)) {
+    throw DiagramSpecException(
+      'Edge "$from" -> "$to": unknown $key "$raw". Use one of '
+      '${ArrowheadStyle.values.map((s) => s.name).join(', ')}.',
+    );
+  }
+}
+
+/// A frame around its members' laid-out bounds, inflated by [_framePadding].
+SketchFrame _buildFrame(
+  dynamic frame,
+  Set<String> nodeKeys,
+  Map<String, SketchElement> boxes,
+) {
+  if (frame is! Map) {
+    throw DiagramSpecException('Frame must be an object, got: $frame');
+  }
+  final name = frame['name'] ?? '';
+  final members = frame['members'];
+  if (name is! String) {
+    throw DiagramSpecException('Frame "name" must be a string, got: $name');
+  }
+  if (members is! List || members.isEmpty) {
+    throw DiagramSpecException(
+      'Frame "$name": "members" must be a non-empty list of node ids.',
+    );
+  }
+  Rect? bounds;
+  for (final m in members) {
+    if (m is! String || !nodeKeys.contains(m)) {
+      throw DiagramSpecException(
+        'Frame "$name": member "$m" does not name a node id.',
+      );
+    }
+    final b = boxes[m]!.bounds;
+    bounds = bounds == null ? b : bounds.expandToInclude(b);
+  }
+  return parseDiagramElements([
+        {
+          'type': 'frame',
+          'name': name,
+          'x': bounds!.left - _framePadding,
+          'y': bounds.top - _framePadding,
+          'width': bounds.width + 2 * _framePadding,
+          'height': bounds.height + 2 * _framePadding,
+        },
+      ]).single
+      as SketchFrame;
 }

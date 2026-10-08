@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -804,6 +805,368 @@ void main() {
       final d = describeDiagramElement(half);
       expect(d['fromId'], 'a');
       expect(d.containsKey('toId'), isFalse);
+    });
+  });
+
+  group('phase 2 vocabulary', () {
+    Map<String, Object?> noId(SketchElement el) =>
+        describeDiagramElement(el)..remove('id');
+
+    /// parse -> describe -> parse; the second description must equal the first.
+    SketchElement roundTrip(
+      Map<String, Object?> input, {
+      Set<String> bindable = const {},
+      Map<String, SketchEntity> entities = const {},
+    }) {
+      final first = parseDiagramElements(
+        [input],
+        bindableIds: bindable,
+        entities: entities,
+      ).single;
+      final second = parseDiagramElements(
+        [describeDiagramElement(first)],
+        bindableIds: bindable,
+        entities: entities,
+      ).single;
+      expect(noId(second), noId(first));
+      return first;
+    }
+
+    String b64(int n) => base64Encode(Uint8List(n)..fillRange(0, n, 7));
+
+    test('frame round-trips', () {
+      final f =
+          roundTrip({
+                'type': 'frame',
+                'x': 5,
+                'y': 6,
+                'width': 300,
+                'height': 200,
+                'name': 'Backend',
+              })
+              as SketchFrame;
+      expect(f.rect, const Rect.fromLTWH(5, 6, 300, 200));
+      expect(f.name, 'Backend');
+    });
+
+    test('icon round-trips and defaults to 64x64', () {
+      final i =
+          roundTrip({'type': 'icon', 'x': 1, 'y': 2, 'name': 'database'})
+              as SketchIcon;
+      expect(i.rect, const Rect.fromLTWH(1, 2, 64, 64));
+    });
+
+    test('unknown icon lists the valid names', () {
+      expect(
+        () => parseDiagramElements([
+          {'type': 'icon', 'name': 'nope'},
+        ]),
+        throwsA(
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('database'), contains('terminal')),
+          ),
+        ),
+      );
+    });
+
+    test('image round-trips', () {
+      final img =
+          roundTrip({
+                'type': 'image',
+                'x': 0,
+                'y': 0,
+                'width': 40,
+                'height': 30,
+                'mimeType': 'image/png',
+                'data': b64(10),
+              })
+              as SketchImage;
+      expect(img.bytes, hasLength(10));
+      expect(img.mimeType, 'image/png');
+    });
+
+    test('image rejects bad mime, oversize, and the per-batch cap', () {
+      Map<String, Object?> image(String mime, String data) => {
+        'type': 'image',
+        'width': 10,
+        'height': 10,
+        'mimeType': mime,
+        'data': data,
+      };
+      expect(
+        () => parseDiagramElements([image('image/svg+xml', b64(4))]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      expect(
+        () =>
+            parseDiagramElements([image('image/png', b64(maxImageBytes + 1))]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      final big = b64(maxImageBytes - 1024);
+      expect(
+        () => parseDiagramElements([
+          for (var i = 0; i < 5; i++) image('image/png', big),
+        ]),
+        throwsA(
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            contains('add up'),
+          ),
+        ),
+      );
+      // Four of them still fit.
+      expect(
+        parseDiagramElements([
+          for (var i = 0; i < 4; i++) image('image/png', big),
+        ]),
+        hasLength(4),
+      );
+    });
+
+    test('entity round-trips with height derived from the rows', () {
+      final e =
+          roundTrip({
+                'type': 'entity',
+                'x': 10,
+                'y': 20,
+                'width': 220,
+                'name': 'users',
+                'attributes': [
+                  {'name': 'id', 'type': 'int', 'pk': true},
+                  {'name': 'org_id', 'type': 'int', 'fk': true},
+                  {'name': 'email'},
+                ],
+              })
+              as SketchEntity;
+      expect(e.rect.height, e.fittedHeight);
+      expect(e.attributes[0].primaryKey, isTrue);
+      expect(e.attributes[1].foreignKey, isTrue);
+    });
+
+    test('entity rejects duplicate attributes', () {
+      expect(
+        () => parseDiagramElements([
+          {
+            'type': 'entity',
+            'name': 't',
+            'attributes': [
+              {'name': 'a'},
+              {'name': 'a'},
+            ],
+          },
+        ]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+    });
+
+    test('elbow arrow with heads and attribute bindings round-trips', () {
+      final entity = SketchEntity.create(
+        rect: const Rect.fromLTWH(0, 0, 200, 0),
+        name: 'users',
+        attributes: const [EntityAttribute(name: 'id')],
+      );
+      final other = SketchEntity.create(
+        rect: const Rect.fromLTWH(300, 0, 200, 0),
+        name: 'orders',
+        attributes: const [EntityAttribute(name: 'user_id')],
+      );
+      final a =
+          roundTrip(
+                {
+                  'type': 'arrow',
+                  'fromId': entity.id,
+                  'toId': other.id,
+                  'fromAttribute': 'id',
+                  'toAttribute': 'user_id',
+                  'elbow': true,
+                  'startHead': 'one',
+                  'endHead': 'zeroOrMany',
+                },
+                bindable: {entity.id, other.id},
+                entities: {entity.id: entity, other.id: other},
+              )
+              as SketchArrow;
+      expect(a.elbowed, isTrue);
+      expect(a.startHead, ArrowheadStyle.one);
+      expect(a.endHead, ArrowheadStyle.zeroOrMany);
+      expect(a.startBinding?.attribute, 'id');
+      expect(a.endBinding?.attribute, 'user_id');
+    });
+
+    test('attribute needs an id and a real row on an entity', () {
+      final entity = SketchEntity.create(
+        rect: const Rect.fromLTWH(0, 0, 200, 0),
+        name: 'users',
+        attributes: const [EntityAttribute(name: 'id')],
+      );
+      final ids = {entity.id};
+      final ents = {entity.id: entity};
+      expect(
+        () => parseDiagramElements([
+          {'type': 'arrow', 'toX': 5, 'toY': 5, 'fromAttribute': 'id'},
+        ], entities: ents),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      expect(
+        () => parseDiagramElements(
+          [
+            {
+              'type': 'arrow',
+              'fromId': entity.id,
+              'toX': 5,
+              'toY': 5,
+              'fromAttribute': 'missing',
+            },
+          ],
+          bindableIds: ids,
+          entities: ents,
+        ),
+        throwsA(
+          isA<DiagramSpecException>().having(
+            (e) => e.message,
+            'message',
+            contains('id'),
+          ),
+        ),
+      );
+    });
+
+    test('patching an arrow keeps its row unless told otherwise', () {
+      final entity = SketchEntity.create(
+        rect: const Rect.fromLTWH(0, 0, 200, 0),
+        name: 'users',
+        attributes: const [
+          EntityAttribute(name: 'id'),
+          EntityAttribute(name: 'x'),
+        ],
+      );
+      final arrow =
+          (parseDiagramElements(
+                [
+                  {
+                    'type': 'arrow',
+                    'fromId': entity.id,
+                    'toX': 9,
+                    'toY': 9,
+                    'fromAttribute': 'id',
+                  },
+                ],
+                bindableIds: {entity.id},
+                entities: {entity.id: entity},
+              ).single
+              as SketchArrow);
+      final recoloured =
+          applyDiagramPatch(arrow, {'strokeColor': '#FF0000'}) as SketchArrow;
+      expect(recoloured.startBinding?.attribute, 'id');
+      final moved =
+          applyDiagramPatch(
+                arrow,
+                {'fromAttribute': 'x', 'elbow': true},
+                entities: {entity.id: entity},
+              )
+              as SketchArrow;
+      expect(moved.startBinding?.attribute, 'x');
+      expect(moved.elbowed, isTrue);
+    });
+
+    test('text style round-trips on text and labelled shapes', () {
+      final t =
+          roundTrip({
+                'type': 'text',
+                'x': 0,
+                'y': 0,
+                'text': 'a\nlonger',
+                'fontFamily': 'mono',
+                'bold': true,
+                'align': 'center',
+              })
+              as SketchText;
+      expect(t.fontFamily, 'mono');
+      expect(t.bold, isTrue);
+      expect(t.align, TextAlign.center);
+      final r =
+          roundTrip({
+                'type': 'rectangle',
+                'text': 'x',
+                'fontFamily': 'sans',
+                'bold': true,
+              })
+              as SketchRectangle;
+      expect(r.fontFamily, 'sans');
+      expect(r.bold, isTrue);
+    });
+
+    test('rejects an unknown font family, and align on a non-text', () {
+      expect(
+        () => parseDiagramElements([
+          {'type': 'text', 'text': 'x', 'fontFamily': 'hand'},
+        ]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      expect(
+        () => parseDiagramElements([
+          {'type': 'rectangle', 'text': 'x', 'align': 'center'},
+        ]),
+        throwsA(isA<DiagramSpecException>()),
+      );
+    });
+
+    test('patch updates frame, icon and entity', () {
+      final frame = parseDiagramElements([
+        {'type': 'frame', 'name': 'a'},
+      ]).single;
+      expect(
+        (applyDiagramPatch(frame, {'name': 'b'}) as SketchFrame).name,
+        'b',
+      );
+      final icon = parseDiagramElements([
+        {'type': 'icon', 'name': 'cloud'},
+      ]).single;
+      expect(
+        () => applyDiagramPatch(icon, {'name': 'nope'}),
+        throwsA(isA<DiagramSpecException>()),
+      );
+      final entity =
+          parseDiagramElements([
+                {
+                  'type': 'entity',
+                  'name': 't',
+                  'attributes': [
+                    {'name': 'a'},
+                  ],
+                },
+              ]).single
+              as SketchEntity;
+      final grown =
+          applyDiagramPatch(entity, {
+                'attributes': [
+                  {'name': 'a'},
+                  {'name': 'b'},
+                ],
+              })
+              as SketchEntity;
+      expect(grown.rect.height, grown.fittedHeight);
+      expect(grown.rect.height, greaterThan(entity.rect.height));
+    });
+
+    test('frames are partitioned to the front, order otherwise stable', () {
+      final out = parseDiagramElements([
+        {'type': 'rectangle', 'text': 'one'},
+        {'type': 'frame', 'name': 'f1'},
+        {'type': 'rectangle', 'text': 'two'},
+        {'type': 'frame', 'name': 'f2'},
+      ]);
+      expect(out.map((e) => e.runtimeType), [
+        SketchFrame,
+        SketchFrame,
+        SketchRectangle,
+        SketchRectangle,
+      ]);
+      expect((out[0] as SketchFrame).name, 'f1');
+      expect((out[2] as SketchRectangle).text, 'one');
     });
   });
 }
