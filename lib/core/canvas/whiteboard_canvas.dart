@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/services.dart' show HardwareKeyboard;
@@ -77,6 +79,10 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
   /// gesture isn't competed for.
   final ValueNotifier<bool> _sketchConsuming = ValueNotifier<bool>(false);
 
+  /// Last frame request this canvas has acted on. Starts at the controller's
+  /// current generation so a request made before mount is not replayed.
+  late int _seenFrameGen;
+
   Offset? _lastFocalPoint;
   double? _lastZoom;
 
@@ -89,6 +95,7 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
       maxZoom: widget.maxZoom,
       zoom: widget.initialZoom,
     );
+    _seenFrameGen = widget.sketchController.frameRequestGen;
     widget.sketchController.addListener(_syncSketchActive);
     _syncSketchActive();
   }
@@ -99,6 +106,7 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
     if (old.sketchController != widget.sketchController) {
       old.sketchController.removeListener(_syncSketchActive);
       widget.sketchController.addListener(_syncSketchActive);
+      _seenFrameGen = widget.sketchController.frameRequestGen;
       _syncSketchActive();
     }
   }
@@ -118,6 +126,43 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
     if (_sketchConsuming.value != active) {
       _sketchConsuming.value = active;
     }
+    final c = widget.sketchController;
+    if (c.frameRequestGen != _seenFrameGen) {
+      _seenFrameGen = c.frameRequestGen;
+      final request = c.frameRequest;
+      if (request != null) _frame(request.rect, request.onlyIfHidden);
+    }
+  }
+
+  /// Fits [rect] (canvas space) into the view with 48 px of padding, centred.
+  /// With [onlyIfHidden] a rect that is already fully visible is left alone.
+  void _frame(Rect rect, bool onlyIfHidden) {
+    final size = context.size;
+    if (size == null || size.isEmpty || !rect.isFinite) return;
+    if (onlyIfHidden) {
+      final visible = Rect.fromPoints(
+        ViewportTransform.screenToCanvas(Offset.zero, _viewport),
+        ViewportTransform.screenToCanvas(
+          size.bottomRight(Offset.zero),
+          _viewport,
+        ),
+      );
+      if (visible.contains(rect.topLeft) &&
+          visible.contains(rect.bottomRight)) {
+        return;
+      }
+    }
+    const pad = 48.0;
+    final zoom = math.min(
+      (size.width - 2 * pad) / math.max(rect.width, 1),
+      (size.height - 2 * pad) / math.max(rect.height, 1),
+    );
+    final fitted = _viewport.copyWith(zoom: zoom);
+    _setViewport(
+      fitted.copyWith(
+        offset: size.center(Offset.zero) - rect.center * fitted.zoom,
+      ),
+    );
   }
 
   bool _sketchEditing() {

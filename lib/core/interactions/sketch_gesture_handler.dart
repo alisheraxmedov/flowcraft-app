@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
 import 'package:flowcraft/models/flow_viewport.dart';
+import 'package:flowcraft/core/domain/arrow_binding.dart';
 import 'package:flowcraft/core/domain/sketch_geometry.dart';
 import 'package:flowcraft/core/domain/sketch_hit_test.dart';
 import 'package:flowcraft/core/domain/stroke_simplifier.dart';
@@ -473,7 +474,10 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         _expandTappedSticky(session);
         break;
       case SketchSessionKind.resize:
+        _ctrl.endDragSession();
+        break;
       case SketchSessionKind.moveEndpoint:
+        _rebindEndpoint(session);
         _ctrl.endDragSession();
         break;
       case SketchSessionKind.marquee:
@@ -856,6 +860,47 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
     ).inflate(SketchGeometry.selectionPadding);
   }
 
+  // ── Arrow binding ────────────────────────────────────────────────────────
+
+  /// Cmd (Apple) / Ctrl (others) held at release draws or drops an arrow
+  /// without attaching it. Read live, like the wheel-zoom modifier test.
+  bool get _bindingSuppressed =>
+      HardwareKeyboard.instance.isMetaPressed ||
+      HardwareKeyboard.instance.isControlPressed;
+
+  /// Binding to the bindable shape under [canvas], if any. The tolerance is
+  /// the hit radius, so an arrow released just outside an edge still lands.
+  SketchBinding? _bindingAt(Offset canvas, {String? exclude}) {
+    final target = ArrowBinding.targetAt(
+      _ctrl.elements,
+      canvas,
+      _canvasHitTolerance,
+      exclude: exclude,
+    );
+    return target == null ? null : SketchBinding(elementId: target.id);
+  }
+
+  /// After an endpoint drag, attaches the dragged end to the shape it was
+  /// released on. `updateLinear` already cleared that end's binding when it
+  /// moved, so a still-bound end means a click without movement: left alone,
+  /// which also keeps it from re-picking a different overlapping shape.
+  void _rebindEndpoint(SketchDragSession session) {
+    final id = session.linearElementId;
+    final which = session.linearEndpoint;
+    if (id == null || which == null || _bindingSuppressed) return;
+    final el = _ctrl.elements.where((e) => e.id == id).firstOrNull;
+    if (el is! SketchArrow) return;
+    final atStart = which == LinearEndpoint.start;
+    if ((atStart ? el.startBinding : el.endBinding) != null) return;
+    final binding = _bindingAt(atStart ? el.start : el.end, exclude: id);
+    if (binding == null) return;
+    _ctrl.setArrowBindings(
+      id,
+      start: atStart ? binding : el.startBinding,
+      end: atStart ? el.endBinding : binding,
+    );
+  }
+
   // ── Commits ──────────────────────────────────────────────────────────────
 
   void _commitBounded(SketchDragSession session) {
@@ -907,11 +952,17 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         break;
       case SketchTool.arrow:
         if ((session.startCanvas - session.currentCanvas).distance < 2) return;
-        element = SketchArrow.create(
+        final arrow = SketchArrow.create(
           start: session.startCanvas,
           end: session.currentCanvas,
           style: session.style,
         );
+        element = _bindingSuppressed
+            ? arrow
+            : arrow.copyWith(
+                startBinding: _bindingAt(arrow.start),
+                endBinding: _bindingAt(arrow.end),
+              );
         break;
       case SketchTool.text:
         // Text needs an editor overlay; not committed via gesture.

@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import 'package:flowcraft/viewmodels/sketch_controller.dart' show AlignEdge;
+
 import 'package:flowcraft/models/sketch_tool.dart';
 
 /// The vocabulary of things a keystroke (or a menu item) can ask the canvas
@@ -85,4 +87,23 @@ class NudgeSelectionIntent extends Intent {
 /// Opens the shortcut reference.
 class ShowShortcutsIntent extends Intent {
   const ShowShortcutsIntent();
+}
+
+/// Zooms and pans so every element is on screen.
+class FitToContentIntent extends Intent {
+  const FitToContentIntent();
+}
+
+/// Aligns the selection's units to [edge] of their combined bounds.
+class AlignSelectionIntent extends Intent {
+  const AlignSelectionIntent(this.edge);
+
+  final AlignEdge edge;
+}
+
+/// Spaces the selection's units evenly along [axis].
+class DistributeSelectionIntent extends Intent {
+  const DistributeSelectionIntent(this.axis);
+
+  final Axis axis;
 }

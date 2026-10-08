@@ -116,4 +116,59 @@ void main() {
     expect(v.zoom, greaterThan(0));
     expect(v.zoom, greaterThanOrEqualTo(v.minZoom));
   });
+
+  group('frame requests', () {
+    final rect = const Rect.fromLTWH(1000, 1000, 400, 200);
+
+    testWidgets('fit zooms to the rect and centres it', (tester) async {
+      final c = await _pump(tester);
+      final size = tester.getSize(find.byType(WhiteboardCanvas));
+      c.requestFrame(rect);
+      await tester.pump();
+
+      final v = _viewportOf(tester);
+      final expected = ((size.width - 96) / 400).clamp(0.1, 4.0);
+      expect(v.zoom, closeTo(expected, 1e-9));
+      expect(
+        rect.center * v.zoom + v.offset,
+        offsetMoreOrLessEquals(size.center(Offset.zero)),
+      );
+    });
+
+    testWidgets(
+      'onlyIfHidden skips a visible rect, reframes an off-screen one',
+      (tester) async {
+        final c = await _pump(tester);
+        c.requestFrame(const Rect.fromLTWH(10, 10, 50, 50), onlyIfHidden: true);
+        await tester.pump();
+        expect(_viewportOf(tester).zoom, 1.0);
+        expect(_viewportOf(tester).offset, Offset.zero);
+
+        c.requestFrame(rect, onlyIfHidden: true);
+        await tester.pump();
+        expect(_viewportOf(tester).zoom, isNot(1.0));
+      },
+    );
+
+    testWidgets('a tiny rect clamps to maxZoom', (tester) async {
+      final c = await _pump(tester);
+      c.requestFrame(const Rect.fromLTWH(5, 5, 1, 1));
+      await tester.pump();
+      expect(_viewportOf(tester).zoom, 4.0);
+    });
+
+    testWidgets('a request made before mount is ignored', (tester) async {
+      final controller = SketchController(currentTool: SketchTool.hand)
+        ..requestFrame(rect);
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: WhiteboardCanvas(sketchController: controller)),
+        ),
+      );
+      await tester.pump();
+      expect(_viewportOf(tester).zoom, 1.0);
+      expect(_viewportOf(tester).offset, Offset.zero);
+    });
+  });
 }

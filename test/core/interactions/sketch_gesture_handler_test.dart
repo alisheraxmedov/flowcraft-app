@@ -1692,6 +1692,113 @@ void main() {
     await tester.pump();
     expect((controller.elements.single as SketchSticky).collapsed, isFalse);
   });
+
+  // ── Arrow binding ────────────────────────────────────────────────────────
+
+  SketchRectangle target() => SketchRectangle.create(
+    id: 'target',
+    rect: const Rect.fromLTWH(200, 0, 100, 100),
+  );
+
+  Future<SketchController> pumpBinding(
+    WidgetTester tester,
+    List<SketchElement> elements, {
+    SketchTool tool = SketchTool.arrow,
+  }) async {
+    final controller = SketchController(
+      currentTool: tool,
+      initialElements: elements,
+    );
+    addTearDown(controller.dispose);
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+    await tester.pumpWidget(_host(controller, interaction, snap: false));
+    return controller;
+  }
+
+  Future<void> drag(WidgetTester tester, Offset from, Offset to) async {
+    final gesture = await tester.startGesture(from);
+    await gesture.moveTo((from + to) / 2);
+    await tester.pump();
+    await gesture.moveTo(to);
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+  }
+
+  testWidgets('an arrow drawn into a shape binds and lands on its edge', (
+    tester,
+  ) async {
+    final controller = await pumpBinding(tester, [target()]);
+    await drag(tester, const Offset(0, 50), const Offset(250, 50));
+
+    final arrow = controller.elements.last as SketchArrow;
+    expect(arrow.endBinding?.elementId, 'target');
+    expect(arrow.startBinding, isNull);
+    expect(arrow.end.dx, closeTo(200, 0.01));
+  });
+
+  testWidgets('holding Cmd/Ctrl draws the arrow unbound', (tester) async {
+    final controller = await pumpBinding(tester, [target()]);
+    await _holding(tester, LogicalKeyboardKey.controlLeft, () async {
+      await drag(tester, const Offset(0, 50), const Offset(250, 50));
+    });
+
+    final arrow = controller.elements.last as SketchArrow;
+    expect(arrow.endBinding, isNull);
+    expect(arrow.end, const Offset(250, 50));
+  });
+
+  testWidgets('dragging an endpoint off a shape unbinds, onto one binds', (
+    tester,
+  ) async {
+    final controller = await pumpBinding(tester, [
+      target(),
+      SketchArrow.create(
+        id: 'a',
+        start: const Offset(0, 50),
+        end: const Offset(200, 50),
+      ).copyWith(endBinding: const SketchBinding(elementId: 'target')),
+    ], tool: SketchTool.select);
+    controller.select('a');
+
+    await drag(tester, const Offset(200, 50), const Offset(100, 50));
+    var arrow = controller.elements.last as SketchArrow;
+    expect(arrow.endBinding, isNull);
+    expect(arrow.end, const Offset(100, 50));
+
+    await drag(tester, const Offset(100, 50), const Offset(250, 50));
+    arrow = controller.elements.last as SketchArrow;
+    expect(arrow.endBinding?.elementId, 'target');
+    expect(arrow.end.dx, closeTo(200, 0.01));
+
+    // Both drags above joined their own session: two undos, not four.
+    controller.undo();
+    controller.undo();
+    expect(controller.canUndo, isFalse);
+  });
+
+  testWidgets('clicking a bound endpoint keeps the binding, no history', (
+    tester,
+  ) async {
+    final controller = await pumpBinding(tester, [
+      target(),
+      SketchArrow.create(
+        id: 'a',
+        start: const Offset(0, 50),
+        end: const Offset(200, 50),
+      ).copyWith(endBinding: const SketchBinding(elementId: 'target')),
+    ], tool: SketchTool.select);
+    controller.select('a');
+
+    final gesture = await tester.startGesture(const Offset(200, 50));
+    await gesture.up();
+    await tester.pump();
+
+    final arrow = controller.elements.last as SketchArrow;
+    expect(arrow.endBinding?.elementId, 'target');
+    expect(controller.canUndo, isFalse);
+  });
 }
 
 /// A note collapsed to its badge, sized well past the badge so the two boxes

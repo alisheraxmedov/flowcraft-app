@@ -135,4 +135,41 @@ void main() {
     expect(find.text('Rectangle'), findsNothing);
     expect(find.text('Nudge'), findsNothing);
   });
+
+  testWidgets('align and distribute wait for 2 and 3 selected shapes', (
+    tester,
+  ) async {
+    final controller = SketchController(
+      initialElements: [_rect('a'), _rect('b', x: 20), _rect('c', x: 40)],
+    );
+    addTearDown(controller.dispose);
+    controller.select('a');
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+    expect(_item(tester, 'Align left').onPressed, isNull);
+    expect(_item(tester, 'Distribute horizontally').onPressed, isNull);
+
+    controller.selectMany(['a', 'b']);
+    await tester.pump();
+    expect(_item(tester, 'Align left').onPressed, isNotNull);
+    expect(_item(tester, 'Distribute horizontally').onPressed, isNull);
+
+    controller.selectMany(['a', 'b', 'c']);
+    await tester.pump();
+    expect(_item(tester, 'Distribute horizontally').onPressed, isNotNull);
+  });
+
+  testWidgets('zoom to fit is disabled on an empty canvas', (tester) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+    expect(_item(tester, 'Zoom to fit').onPressed, isNull);
+
+    controller.add(_rect('a'));
+    await tester.pump();
+    expect(_item(tester, 'Zoom to fit').onPressed, isNotNull);
+  });
 }

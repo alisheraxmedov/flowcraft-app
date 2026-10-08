@@ -2,8 +2,15 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, immutable;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/widgets.dart'
-    show CharacterActivator, Intent, Offset, ShortcutActivator, SingleActivator;
+    show
+        Axis,
+        CharacterActivator,
+        Intent,
+        Offset,
+        ShortcutActivator,
+        SingleActivator;
 
+import 'package:flowcraft/viewmodels/sketch_controller.dart' show AlignEdge;
 import 'package:flowcraft/views/widgets/shortcuts/canvas_intents.dart';
 import 'package:flowcraft/views/widgets/shortcuts/tool_shortcuts.dart';
 
@@ -185,6 +192,63 @@ class CanvasShortcutTable {
           const UngroupSelectionIntent(),
         ),
       ]),
+      CanvasShortcutGroup('Align', <CanvasShortcut>[
+        CanvasShortcut(
+          'Align left',
+          cmd(LogicalKeyboardKey.arrowLeft, shift: true),
+          const AlignSelectionIntent(AlignEdge.left),
+        ),
+        CanvasShortcut(
+          'Align right',
+          cmd(LogicalKeyboardKey.arrowRight, shift: true),
+          const AlignSelectionIntent(AlignEdge.right),
+        ),
+        CanvasShortcut(
+          'Align top',
+          cmd(LogicalKeyboardKey.arrowUp, shift: true),
+          const AlignSelectionIntent(AlignEdge.top),
+        ),
+        CanvasShortcut(
+          'Align bottom',
+          cmd(LogicalKeyboardKey.arrowDown, shift: true),
+          const AlignSelectionIntent(AlignEdge.bottom),
+        ),
+        CanvasShortcut(
+          'Center horizontally',
+          const SingleActivator(LogicalKeyboardKey.keyH, alt: true),
+          const AlignSelectionIntent(AlignEdge.centerX),
+        ),
+        CanvasShortcut(
+          'Center vertically',
+          const SingleActivator(LogicalKeyboardKey.keyV, alt: true),
+          const AlignSelectionIntent(AlignEdge.centerY),
+        ),
+        CanvasShortcut(
+          'Distribute horizontally',
+          const SingleActivator(
+            LogicalKeyboardKey.keyH,
+            alt: true,
+            shift: true,
+          ),
+          const DistributeSelectionIntent(Axis.horizontal),
+        ),
+        CanvasShortcut(
+          'Distribute vertically',
+          const SingleActivator(
+            LogicalKeyboardKey.keyV,
+            alt: true,
+            shift: true,
+          ),
+          const DistributeSelectionIntent(Axis.vertical),
+        ),
+      ]),
+      CanvasShortcutGroup('View', <CanvasShortcut>[
+        CanvasShortcut(
+          'Zoom to fit',
+          const SingleActivator(LogicalKeyboardKey.digit1, shift: true),
+          const FitToContentIntent(),
+        ),
+      ]),
       // Every arrow shares one label so the reference sheet folds the four
       // of them into a single row (see `ShortcutLabel.merge`) instead of
       // spending eight lines saying the same thing four times.
@@ -239,6 +303,10 @@ class CanvasShortcutTable {
           '$shift${sep}drag',
         ),
         CanvasModifierHint('Disable snapping while dragging', '$alt${sep}drag'),
+        CanvasModifierHint(
+          'Draw or drop an arrow without attaching it',
+          '${apple ? '⌘' : 'Ctrl'}${sep}drag',
+        ),
         const CanvasModifierHint('Edit text', 'Double-click'),
       ]),
       CanvasModifierGroup('While editing text', <CanvasModifierHint>[

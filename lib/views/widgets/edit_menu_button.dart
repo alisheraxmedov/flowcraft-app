@@ -74,7 +74,10 @@ class EditMenuButton extends StatelessWidget {
       UngroupSelectionIntent() => controller.hasSelection,
       UndoCanvasIntent() => controller.canUndo,
       RedoCanvasIntent() => controller.canRedo,
-      SelectAllElementsIntent() => controller.elements.isNotEmpty,
+      SelectAllElementsIntent() ||
+      FitToContentIntent() => controller.elements.isNotEmpty,
+      AlignSelectionIntent() => controller.selectedIds.length >= 2,
+      DistributeSelectionIntent() => controller.selectedIds.length >= 3,
       _ => true,
     };
   }

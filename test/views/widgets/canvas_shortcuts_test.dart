@@ -610,4 +610,60 @@ void main() {
 
     expect(controller.elements, hasLength(2));
   });
+
+  testWidgets('Shift+1 requests a fit on a non-empty canvas', (tester) async {
+    final controller = SketchController(initialElements: [_rect('a')]);
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_host(controller));
+    await tester.pump();
+    final before = controller.frameRequestGen;
+
+    await _chord(
+      tester,
+      LogicalKeyboardKey.shiftLeft,
+      LogicalKeyboardKey.digit1,
+    );
+
+    expect(controller.frameRequestGen, before + 1);
+  });
+
+  testWidgets('Cmd+Shift+Left aligns the selected shapes', (tester) async {
+    final controller = SketchController(
+      initialElements: [_rect('a', x: 0), _rect('b', x: 50)],
+    );
+    addTearDown(controller.dispose);
+    controller.selectMany(['a', 'b']);
+    await tester.pumpWidget(_host(controller));
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await _chord(
+      tester,
+      LogicalKeyboardKey.shiftLeft,
+      LogicalKeyboardKey.arrowLeft,
+    );
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+
+    expect(controller.elements.map((e) => e.bounds.left), [0, 0]);
+  });
+
+  testWidgets('Alt+Shift+H distributes three shapes evenly', (tester) async {
+    final controller = SketchController(
+      initialElements: [
+        _rect('a', x: 0),
+        _rect('b', x: 10),
+        _rect('c', x: 100),
+      ],
+    );
+    addTearDown(controller.dispose);
+    controller.selectMany(['a', 'b', 'c']);
+    await tester.pumpWidget(_host(controller));
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await _chord(tester, LogicalKeyboardKey.shiftLeft, LogicalKeyboardKey.keyH);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+
+    expect(controller.elements.map((e) => e.bounds.left), [0, 50, 100]);
+  });
 }

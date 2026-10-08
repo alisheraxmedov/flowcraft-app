@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:flowcraft/services/canvas_exporter.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
 import 'package:flowcraft/views/widgets/shortcuts/canvas_clipboard.dart';
 import 'package:flowcraft/views/widgets/shortcuts/canvas_intents.dart';
@@ -124,6 +125,16 @@ class _CanvasShortcutsState extends State<CanvasShortcuts> {
       ),
       NudgeSelectionIntent: _run<NudgeSelectionIntent>(
         (i) => _nudge.nudge(i.delta),
+      ),
+      FitToContentIntent: _run<FitToContentIntent>((_) {
+        if (_ctrl.elements.isEmpty) return;
+        _ctrl.requestFrame(CanvasExporter.contentBounds(_ctrl.elements));
+      }),
+      AlignSelectionIntent: _run<AlignSelectionIntent>(
+        (i) => _ctrl.alignSelected(i.edge),
+      ),
+      DistributeSelectionIntent: _run<DistributeSelectionIntent>(
+        (i) => _ctrl.distributeSelected(i.axis),
       ),
       ShowShortcutsIntent: _run<ShowShortcutsIntent>(
         (_) => ShortcutsHelpDialog.show(context),

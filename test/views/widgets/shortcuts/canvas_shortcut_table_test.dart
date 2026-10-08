@@ -39,6 +39,27 @@ void main() {
         }
       });
 
+      test('zoom, align and distribute are bound and listed in the menu', () {
+        final labels = {
+          for (final g in CanvasShortcutTable.menuGroups(platform))
+            for (final s in g.shortcuts) s.label,
+        };
+        expect(
+          labels,
+          containsAll([
+            'Zoom to fit',
+            'Align left',
+            'Align right',
+            'Align top',
+            'Align bottom',
+            'Center horizontally',
+            'Center vertically',
+            'Distribute horizontally',
+            'Distribute vertically',
+          ]),
+        );
+      });
+
       test('every tool is reachable from the keyboard', () {
         final bound = <SketchTool>{
           for (final group in CanvasShortcutTable.groups(platform))
