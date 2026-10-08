@@ -32,6 +32,7 @@ class PopoverButton extends StatefulWidget {
     this.vertical = false,
     this.anchor,
     this.size = 32,
+    this.radius = AppRadius.menu,
   });
 
   final Widget Function(BuildContext, PopoverController) builder;
@@ -47,6 +48,10 @@ class PopoverButton extends StatefulWidget {
   /// Side of the square hit box; the tool rail's icon picker passes 40 to
   /// line up with its [ToolButton] neighbours.
   final double size;
+
+  /// Corner radius of the popover surface: 14 (menu) by default, 18 for the
+  /// Projects popover, 12 for a row's "…" menu, per the mockup.
+  final double radius;
 
   @override
   State<PopoverButton> createState() => _PopoverButtonState();
@@ -153,7 +158,7 @@ class _PopoverButtonState extends State<PopoverButton> {
                     // InkWell/ListTile, which need a Material ancestor.
                     child: GlassIsland(
                       strong: true,
-                      radius: 14,
+                      radius: widget.radius,
                       child: Material(
                         type: MaterialType.transparency,
                         child: widget.popoverBuilder(context, _hide),
@@ -168,7 +173,7 @@ class _PopoverButtonState extends State<PopoverButton> {
         child: Tooltip(
           message: widget.tooltip,
           child: InkWell(
-            borderRadius: AppRadius.smRadius,
+            borderRadius: BorderRadius.circular(AppRadius.button),
             onTap: _toggle,
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 2),

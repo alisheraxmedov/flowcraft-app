@@ -22,19 +22,11 @@ import 'tool_button.dart';
 /// It is as wide as its tools; when the host gives it less (a narrow window)
 /// it scrolls horizontally instead of overflowing.
 ///
-/// [palette], [fillPalette], [backgroundColor], [activeColor], [iconColor] and
-/// [orientation] are accepted and ignored so existing call sites compile; the
-/// look comes from the theme's [FcTokens].
+/// The look comes from the theme's [FcTokens].
 class SketchToolbarRich extends StatefulWidget {
   const SketchToolbarRich({
     super.key,
     required this.controller,
-    this.palette = defaultPalette,
-    this.fillPalette = defaultFillPalette,
-    this.backgroundColor,
-    this.activeColor,
-    this.iconColor,
-    this.orientation = Axis.horizontal,
     this.tools = const [
       // Grouped for the tool rail's group dividers: selection/pan | shapes
       // | connectors | annotation. Keep tools that belong to the same
@@ -58,41 +50,7 @@ class SketchToolbarRich extends StatefulWidget {
   });
 
   final SketchController controller;
-  final List<Color> palette;
-  final List<Color?> fillPalette;
-  final Color? backgroundColor;
-  final Color? activeColor;
-  final Color? iconColor;
-  final Axis orientation;
   final List<SketchTool> tools;
-
-  /// Default stroke / text palette (Excalidraw-ish).
-  static const List<Color> defaultPalette = [
-    Color(0xFF1E1E1E),
-    Color(0xFFE03131),
-    Color(0xFFD6336C),
-    Color(0xFFAE3EC9),
-    Color(0xFF7048E8),
-    Color(0xFF1971C2),
-    Color(0xFF0CA678),
-    Color(0xFF74B816),
-    Color(0xFFF59F00),
-    Color(0xFFFFFFFF),
-  ];
-
-  /// Default fill palette — same set with a "none" sentinel up front.
-  static const List<Color?> defaultFillPalette = [
-    null,
-    Color(0xFFFFE3E3),
-    Color(0xFFFCE4EC),
-    Color(0xFFF3E5F5),
-    Color(0xFFEDE7F6),
-    Color(0xFFE3F2FD),
-    Color(0xFFE0F2F1),
-    Color(0xFFE6F4EA),
-    Color(0xFFFFF8E1),
-    Color(0xFFFFFFFF),
-  ];
 
   @override
   State<SketchToolbarRich> createState() => _SketchToolbarRichState();

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/viewmodels/mcp_view_model.dart';
 import 'package:flowcraft/viewmodels/projects_view_model.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
@@ -130,10 +131,10 @@ class _SplashContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.fc;
 
     return Material(
-      color: colorScheme.surfaceDim,
+      color: t.bg,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -148,7 +149,7 @@ class _SplashContent extends StatelessWidget {
               child: Text(
                 'FlowCraft',
                 style: AppTypography.headlineMd.copyWith(
-                  color: colorScheme.onSurface,
+                  color: t.text,
                   fontSize: 28,
                 ),
               ),
@@ -163,15 +164,13 @@ class _SplashContent extends StatelessWidget {
                     height: 22,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation(colorScheme.primary),
+                      valueColor: AlwaysStoppedAnimation(t.accent),
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     'Loading workspace…',
-                    style: AppTypography.caption.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: AppTypography.caption.copyWith(color: t.muted),
                   ),
                 ],
               ),

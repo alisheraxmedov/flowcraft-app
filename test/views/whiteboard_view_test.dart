@@ -8,7 +8,7 @@ import 'package:flowcraft/flowcraft.dart';
 import '../support/fake_project_repository.dart';
 
 /// Pure-data stand-in so the card renders "running" without binding a
-/// socket — the same shape `mcp_card_test.dart` uses.
+/// socket — the same shape `agents_popover_test.dart` uses.
 class _FakeMcpViewModel extends McpViewModel {
   _FakeMcpViewModel(this.initial);
 
@@ -85,79 +85,134 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('the properties panel and the MCP card never overlap', (
+  testWidgets('the inspector sits at (16, 80) inside the window', (
     tester,
   ) async {
-    // The two used to be anchored independently — panel to the top-right,
-    // card to the bottom-right — and met in the middle on any window
-    // shorter than ~780 px, with the card painting over the panel's
-    // typography dropdown and "Edit JSON" button.
     await pumpScreen(tester);
     addBox();
     sketch.select('box');
     await tester.pump();
 
-    expect(find.text('PROPERTIES'), findsOneWidget);
-    expect(find.text('Status: Online'), findsOneWidget);
-
     final panel = tester.getRect(find.byType(PropertiesPanel));
-    final card = tester.getRect(find.byType(McpCard));
-
-    expect(panel.overlaps(card), isFalse, reason: 'panel $panel vs card $card');
-    expect(panel.bottom, lessThanOrEqualTo(card.top));
-    // Both still inside the window, card still pinned to the bottom.
+    // Aligned top-left, not stretched down to the bottom gutter.
+    expect(panel.topLeft, const Offset(16, 80));
+    expect(panel.width, 264);
     expect(
-      card.bottom,
-      720 - AppSpacing.gutter,
-      reason: 'pinned to the bottom',
+      const Rect.fromLTWH(0, 0, 1280, 720).contains(panel.bottomRight),
+      isTrue,
+      reason: '$panel',
     );
-    expect(panel.top, greaterThanOrEqualTo(56), reason: 'below the app bar');
+    await settleAutosave(tester);
+  });
+
+  testWidgets("the inspector's last control is reachable by scrolling", (
+    tester,
+  ) async {
+    await pumpScreen(tester, size: const Size(1280, 480));
+    addBox();
+    sketch.select('box');
+    await tester.pump();
+
+    // `.first`: the panel's own scroll view, above the text fields' own.
+    final scrollable = find
+        .descendant(
+          of: find.byType(PropertiesPanel),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('Edit JSON'),
+      200,
+      scrollable: scrollable,
+    );
+    await tester.pump();
+
+    expect(
+      tester.getRect(find.text('Edit JSON')).bottom,
+      lessThanOrEqualTo(480 - AppSpacing.gutter),
+    );
+    await settleAutosave(tester);
+  });
+
+  testWidgets('every tool sits inside the window', (tester) async {
+    await pumpScreen(tester);
+
+    const window = Rect.fromLTWH(0, 0, 1280, 720);
+    for (final tool in SketchTool.values) {
+      // The tooltip is rich (name + key chip): its plain text is "Name￼".
+      final rect = tester.getRect(
+        find.byTooltip(
+          RegExp('^${RegExp.escape(ToolShortcuts.labels[tool]!)}￼\$'),
+        ),
+      );
+      expect(window.contains(rect.topLeft), isTrue, reason: '$tool $rect');
+      expect(window.contains(rect.bottomRight), isTrue, reason: '$tool $rect');
+    }
+  });
+
+  testWidgets('Undo, Redo, Grid and Theme each exist exactly once', (
+    tester,
+  ) async {
+    await pumpScreen(tester);
+
+    for (final tooltip in ['Undo', 'Redo', 'Hide grid', 'Dark mode']) {
+      expect(find.byTooltip(tooltip), findsOneWidget, reason: tooltip);
+    }
+  });
+
+  testWidgets('Undo follows the history; Redo gives the edit back', (
+    tester,
+  ) async {
+    await pumpScreen(tester);
+    addBox();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Undo'));
+    await tester.pump();
+    expect(sketch.elements.any((e) => e.id == 'box'), isFalse);
+
+    await tester.tap(find.byTooltip('Redo'));
+    await tester.pump();
+    expect(sketch.elements.any((e) => e.id == 'box'), isTrue);
     await settleAutosave(tester);
   });
 
   testWidgets(
-    "the panel's last control is reachable by scrolling, not hidden",
+    'no Delete selected or Clear sketches controls; the Edit menu has no Undo',
     (tester) async {
       await pumpScreen(tester);
       addBox();
       sketch.select('box');
       await tester.pump();
 
-      // The panel shrank to fit above the card, so its bottom control may be
-      // below the fold — but inside its own scroll view, never under the
-      // card.
-      // `.first`: the panel's own scroll view, above the text fields' own.
-      final scrollable = find
-          .descendant(
-            of: find.byType(PropertiesPanel),
-            matching: find.byType(Scrollable),
-          )
-          .first;
-      await tester.scrollUntilVisible(
-        find.text('Edit JSON'),
-        200,
-        scrollable: scrollable,
-      );
-      await tester.pump();
+      expect(find.byTooltip('Delete selected'), findsNothing);
+      expect(find.byTooltip('Clear sketches'), findsNothing);
 
-      final button = tester.getRect(find.text('Edit JSON'));
-      final card = tester.getRect(find.byType(McpCard));
-      expect(button.overlaps(card), isFalse);
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Undo'), findsNothing);
+      expect(find.text('Redo'), findsNothing);
+      // Delete and Clear live in the menu, once each.
+      expect(find.text('Delete'), findsOneWidget);
+      expect(find.text('Clear canvas'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
       await settleAutosave(tester);
     },
   );
 
-  testWidgets('every rail control sits inside the window', (tester) async {
+  testWidgets('the Agents chip opens the popover with the server status', (
+    tester,
+  ) async {
     await pumpScreen(tester);
+    expect(find.text('Online'), findsNothing);
 
-    for (final tool in SketchTool.values) {
-      final rect = tester.getRect(find.byTooltip(ToolShortcuts.tooltip(tool)));
-      expect(rect.bottom, lessThanOrEqualTo(720), reason: '$tool');
-    }
-    expect(
-      tester.getRect(find.byTooltip('Clear sketches')).bottom,
-      lessThanOrEqualTo(720),
-    );
+    await tester.tap(find.text('Agents'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Online'), findsOneWidget);
   });
 
   testWidgets('a tool key works after Enter in the inline editor', (

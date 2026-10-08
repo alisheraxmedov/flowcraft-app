@@ -199,6 +199,7 @@ class _RowMenu extends StatelessWidget {
       tooltip: 'Project actions',
       activeColor: t.accent,
       anchor: PopoverAnchor.belowEnd,
+      radius: AppRadius.row,
       builder: (context, _) => Opacity(
         opacity: visible ? 1 : 0,
         child: FcIconGlyph(FcIcons.ellipsis, size: 16, color: t.text),

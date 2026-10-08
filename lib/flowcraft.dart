@@ -27,6 +27,7 @@ export 'viewmodels/mcp_view_model.dart';
 // Views — screens and reusable widgets
 export 'views/splash_view.dart';
 export 'views/whiteboard_view.dart';
+export 'views/widgets/agents_popover.dart';
 export 'views/widgets/canvas_shortcuts.dart';
 export 'views/widgets/edit_menu_button.dart';
 export 'views/widgets/export_feedback.dart';
@@ -36,13 +37,12 @@ export 'views/widgets/import/import_feedback.dart';
 export 'views/widgets/import/import_scene_list.dart';
 export 'views/widgets/import/import_source_picker.dart';
 export 'views/widgets/import_scene_dialog.dart';
-export 'views/widgets/mcp_card.dart';
 export 'views/widgets/mcp_setup_dialog.dart';
 export 'views/widgets/partial_scene_banner.dart';
 export 'views/widgets/paste_scene_dialog.dart';
 export 'views/widgets/project_dialogs.dart';
-export 'views/widgets/project_drawer.dart';
 export 'views/widgets/project_tile.dart';
+export 'views/widgets/projects_popover.dart';
 export 'views/widgets/project_title_field.dart';
 export 'views/widgets/properties_panel.dart';
 export 'views/widgets/shortcuts/canvas_clipboard.dart';
@@ -55,10 +55,13 @@ export 'views/widgets/shortcuts/tool_shortcuts.dart';
 export 'views/widgets/shortcuts_help_dialog.dart';
 export 'views/widgets/sketch_layer.dart';
 export 'views/widgets/sketch_text_editor.dart';
+export 'views/widgets/fc_dialog.dart';
+export 'views/widgets/fc_menu.dart';
 export 'views/widgets/glass/fc_icon_button.dart';
 export 'views/widgets/glass/fc_icons.dart';
 export 'views/widgets/glass/fc_segmented.dart';
 export 'views/widgets/glass/glass_island.dart';
+export 'views/widgets/toolbar/popover_button.dart';
 export 'views/widgets/toolbar/toolbar.dart';
 
 // Services — external I/O boundary (MCP control server)

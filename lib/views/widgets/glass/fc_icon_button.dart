@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/fc_tokens.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 
 /// Square icon button for the glass chrome: surface2 on hover, a raised
 /// accent-text chip while [pressed] (toggled on), 35% opacity when disabled.
@@ -16,7 +17,7 @@ class FcIconButton extends StatefulWidget {
     this.iconSize = 18,
   });
 
-  final IconData icon;
+  final FcIcon icon;
   final String tooltip;
 
   /// Null disables the button.
@@ -68,7 +69,7 @@ class _FcIconButtonState extends State<FcIconButton> {
                   ),
                   boxShadow: on ? t.raisedShadow : null,
                 ),
-                child: Icon(
+                child: FcIconGlyph(
                   widget.icon,
                   size: widget.iconSize,
                   color: on ? t.accentText : t.text,

@@ -3,12 +3,12 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flowcraft/core/theme/app_radius.dart';
-import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/models/flow_project.dart';
 import 'package:flowcraft/viewmodels/projects_view_model.dart';
 
-/// The open project's name in the top bar, click-to-rename in place.
+/// The open project's name in the top-left island, click-to-rename in place.
 ///
 /// Inline rather than behind a dialog, because renaming is the one project
 /// action done often enough that a modal gets in the way — and the name is
@@ -21,8 +21,10 @@ import 'package:flowcraft/viewmodels/projects_view_model.dart';
 /// a [Flexible] so a long name ellipsises instead of overflowing a narrow
 /// window.
 class ProjectTitleField extends ConsumerStatefulWidget {
-  const ProjectTitleField({super.key, this.width = 220});
+  const ProjectTitleField({super.key, this.width = 160});
 
+  /// Widest the name button grows (it hugs its text below that) and the
+  /// width of the inline rename field.
   final double width;
 
   @override
@@ -96,17 +98,24 @@ class _ProjectTitleFieldState extends ConsumerState<ProjectTitleField> {
       return const SizedBox.shrink();
     }
 
-    return SizedBox(
-      width: widget.width,
-      child: _editing
-          ? _NameField(
+    return _editing
+        ? SizedBox(
+            width: widget.width,
+            height: 32,
+            child: _NameField(
               controller: _controller,
               focusNode: _focusNode,
               onSubmitted: _commit,
               onCancel: _cancel,
-            )
-          : _NameButton(name: active.name, onTap: () => _beginEdit(active)),
-    );
+            ),
+          )
+        : ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: widget.width),
+            child: _NameButton(
+              name: active.name,
+              onTap: () => _beginEdit(active),
+            ),
+          );
   }
 }
 
@@ -118,25 +127,23 @@ class _NameButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.fc;
+    // Mockup: 32px tall, radius 10, 8px side padding, 14/600 text colour.
     return Tooltip(
       message: 'Rename project',
       child: InkWell(
-        borderRadius: AppRadius.xsRadius,
-        hoverColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(AppRadius.button),
+        hoverColor: t.surface2,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.toolbarGap,
-            vertical: 6,
-          ),
+        child: Container(
+          height: 32,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.bodySm.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: AppTypography.uiTitle.copyWith(color: t.text),
           ),
         ),
       ),
@@ -159,7 +166,7 @@ class _NameField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.fc;
     // `CallbackShortcuts` rather than a `KeyboardListener`: it reuses the
     // TextField's own focus instead of needing a second FocusNode this
     // stateless widget would have nowhere to dispose.
@@ -171,17 +178,17 @@ class _NameField extends StatelessWidget {
         autofocus: true,
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => onSubmitted(),
-        style: AppTypography.bodySm.copyWith(color: colorScheme.onSurface),
+        style: AppTypography.uiTitle.copyWith(color: t.text),
         decoration: InputDecoration(
           isDense: true,
           filled: true,
-          fillColor: colorScheme.surfaceContainerHighest,
+          fillColor: t.surface2,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.toolbarGap,
+            horizontal: 8,
             vertical: 6,
           ),
-          border: const OutlineInputBorder(
-            borderRadius: AppRadius.xsRadius,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
             borderSide: BorderSide.none,
           ),
         ),

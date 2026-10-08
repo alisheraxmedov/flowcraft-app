@@ -1,6 +1,5 @@
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/views/widgets/link_file_dialog.dart';
-import 'package:flowcraft/views/widgets/projects_popover.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

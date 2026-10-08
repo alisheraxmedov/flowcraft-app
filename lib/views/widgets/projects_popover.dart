@@ -24,6 +24,7 @@ class ProjectsButton extends StatelessWidget {
       tooltip: 'Projects',
       activeColor: t.accent,
       anchor: PopoverAnchor.below,
+      radius: AppRadius.island,
       builder: (context, _) =>
           FcIconGlyph(FcIcons.panelLeft, size: 18, color: t.muted),
       popoverBuilder: (context, close) => ProjectsPopover(close: close),
