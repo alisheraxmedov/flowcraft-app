@@ -16,5 +16,5 @@ class AppSpacing {
   static const double toolbarGap = 8.0;
 
   /// Outer margin between floating chrome and the window edge.
-  static const double gutter = 24.0;
+  static const double gutter = 16.0;
 }

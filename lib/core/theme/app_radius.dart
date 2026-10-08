@@ -19,6 +19,14 @@ class AppRadius {
   /// radius on a narrow vertical bar.
   static const double full = 12.0;
 
+  /// Glass Canvas radii.
+  static const double island = 18.0;
+  static const double pill = 999.0;
+  static const double menu = 14.0;
+  static const double row = 12.0;
+  static const double button = 10.0;
+  static const double input = 8.0;
+
   static const BorderRadius xsRadius = BorderRadius.all(Radius.circular(xs));
   static const BorderRadius smRadius = BorderRadius.all(Radius.circular(sm));
   static const BorderRadius mdRadius = BorderRadius.all(Radius.circular(md));

@@ -55,6 +55,9 @@ export 'views/widgets/shortcuts/tool_shortcuts.dart';
 export 'views/widgets/shortcuts_help_dialog.dart';
 export 'views/widgets/sketch_layer.dart';
 export 'views/widgets/sketch_text_editor.dart';
+export 'views/widgets/glass/fc_icon_button.dart';
+export 'views/widgets/glass/fc_segmented.dart';
+export 'views/widgets/glass/glass_island.dart';
 export 'views/widgets/toolbar/toolbar.dart';
 
 // Services — external I/O boundary (MCP control server)

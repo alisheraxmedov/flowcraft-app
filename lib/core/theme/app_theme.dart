@@ -1,85 +1,156 @@
 import 'package:flutter/material.dart';
 
-import 'app_colors.dart';
+import 'app_radius.dart';
 import 'app_typography.dart';
+import 'fc_tokens.dart';
 
-/// Builds the app's [ThemeData] for the Material widgets that fall back to
-/// framework defaults (dialogs, dropdowns, default text styles, etc).
+/// Builds the app's [ThemeData] from the Glass Canvas [FcTokens].
 ///
-/// The hand-styled chrome (top bar, tool rail, properties panel, MCP card,
-/// canvas grid) reads [AppColors] directly rather than `Theme.of(context)`
-/// — the source "Kinetic Blueprint" design is deliberately dark-first, so
-/// that custom chrome keeps its exact tokens regardless of the light/dark
-/// toggle. [dark] mirrors [AppColors] 1:1 for the parts of [ColorScheme]
-/// that still have a non-deprecated home there; [light] derives a
-/// consistent light counterpart via [ColorScheme.fromSeed] since the source
-/// design has no light palette to draw from.
+/// Custom chrome reads `context.fc` directly; Material widgets (dialogs,
+/// menus, sliders, inputs...) get the same palette through a hand-built
+/// [ColorScheme] plus the component themes below. Menus and dialogs use
+/// opaque *blended* glass (glassStrong over bg) rather than a real
+/// BackdropFilter: `MenuAnchor` and `Dialog` can't host a backdrop blur
+/// cleanly, and only the small floating islands pay for one.
 class AppTheme {
   AppTheme._();
 
-  static ThemeData dark() {
-    const colorScheme = ColorScheme.dark(
-      brightness: Brightness.dark,
-      primary: AppColors.primary,
-      onPrimary: AppColors.onPrimary,
-      primaryContainer: AppColors.primaryContainer,
-      onPrimaryContainer: AppColors.onPrimaryContainer,
-      secondary: AppColors.secondary,
-      onSecondary: AppColors.onSecondary,
-      secondaryContainer: AppColors.secondaryContainer,
-      onSecondaryContainer: AppColors.onSecondaryContainer,
-      tertiary: AppColors.tertiary,
-      onTertiary: AppColors.onTertiary,
-      tertiaryContainer: AppColors.tertiaryContainer,
-      onTertiaryContainer: AppColors.onTertiaryContainer,
-      error: AppColors.error,
-      onError: AppColors.onError,
-      errorContainer: AppColors.errorContainer,
-      onErrorContainer: AppColors.onErrorContainer,
-      surface: AppColors.surface,
-      onSurface: AppColors.onSurface,
-      surfaceDim: AppColors.surfaceDim,
-      surfaceBright: AppColors.surfaceBright,
-      surfaceContainerLowest: AppColors.surfaceContainerLowest,
-      surfaceContainerLow: AppColors.surfaceContainerLow,
-      surfaceContainer: AppColors.surfaceContainer,
-      surfaceContainerHigh: AppColors.surfaceContainerHigh,
-      surfaceContainerHighest: AppColors.surfaceContainerHighest,
-      onSurfaceVariant: AppColors.onSurfaceVariant,
-      outline: AppColors.outline,
-      outlineVariant: AppColors.outlineVariant,
-      inverseSurface: AppColors.inverseSurface,
-      onInverseSurface: AppColors.inverseOnSurface,
-      inversePrimary: AppColors.inversePrimary,
-      surfaceTint: AppColors.surfaceTint,
-    );
-    return _build(colorScheme);
-  }
+  static ThemeData light() => _build(FcTokens.light, Brightness.light);
 
-  static ThemeData light() {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      brightness: Brightness.light,
-    );
-    return _build(colorScheme);
-  }
+  static ThemeData dark() => _build(FcTokens.dark, Brightness.dark);
 
-  static ThemeData _build(ColorScheme colorScheme) {
-    final onSurface = colorScheme.onSurface;
+  static ThemeData _build(FcTokens t, Brightness brightness) {
+    Color blend(Color c) => Color.alphaBlend(c, t.bg);
+    final surface2 = blend(t.surface2);
+    final scheme = ColorScheme(
+      brightness: brightness,
+      primary: t.accent,
+      onPrimary: t.onAccent,
+      primaryContainer: blend(t.accentTint),
+      onPrimaryContainer: t.accentText,
+      secondary: t.accent,
+      onSecondary: t.onAccent,
+      secondaryContainer: blend(t.accentTint),
+      onSecondaryContainer: t.accentText,
+      tertiary: t.ok,
+      onTertiary: t.onAccent,
+      error: t.danger,
+      onError: t.onDanger,
+      errorContainer: blend(t.dangerTint),
+      onErrorContainer: t.danger,
+      surface: t.bg,
+      onSurface: t.text,
+      onSurfaceVariant: t.muted,
+      outline: t.muted,
+      outlineVariant: blend(t.glassBorder),
+      surfaceContainerLowest: t.bg,
+      surfaceContainerLow: surface2,
+      surfaceContainer: Color.alphaBlend(t.surface2, surface2),
+      surfaceContainerHigh: Color.alphaBlend(t.surface2, blend(t.glassStrong)),
+      surfaceContainerHighest: t.raised,
+      inverseSurface: t.tooltipBg,
+      onInverseSurface: t.tooltipFg,
+      inversePrimary: t.accentText,
+      shadow: const Color(0xFF000000),
+    );
+
+    final overlay = Color.alphaBlend(t.glassStrong, t.bg);
+    TextStyle geist(double size, FontWeight w, [Color? color]) => TextStyle(
+      fontFamily: AppTypography.geistFamily,
+      fontSize: size,
+      fontWeight: w,
+      color: color ?? t.text,
+    );
     final textTheme = TextTheme(
-      displayLarge: AppTypography.displayLg.copyWith(color: onSurface),
-      headlineMedium: AppTypography.headlineMd.copyWith(color: onSurface),
-      bodyLarge: AppTypography.bodyBase.copyWith(color: onSurface),
-      bodyMedium: AppTypography.bodyBase.copyWith(color: onSurface),
-      labelMedium: AppTypography.labelMono.copyWith(color: onSurface),
-      labelSmall: AppTypography.caption.copyWith(color: onSurface),
+      displayLarge: geist(32, FontWeight.w600),
+      headlineMedium: geist(20, FontWeight.w600),
+      titleMedium: geist(14, FontWeight.w600),
+      bodyLarge: geist(14, FontWeight.w400),
+      bodyMedium: geist(13, FontWeight.w400),
+      bodySmall: geist(12, FontWeight.w400, t.muted),
+      labelLarge: geist(13, FontWeight.w600),
+      labelMedium: geist(12, FontWeight.w500),
+      labelSmall: geist(11, FontWeight.w600, t.muted),
     );
+    RoundedRectangleBorder shape(double r) =>
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(r));
 
     return ThemeData(
       useMaterial3: true,
-      colorScheme: colorScheme,
+      colorScheme: scheme,
       textTheme: textTheme,
-      scaffoldBackgroundColor: colorScheme.surface,
+      fontFamily: AppTypography.geistFamily,
+      scaffoldBackgroundColor: t.bg,
+      extensions: [t],
+      dialogTheme: DialogThemeData(
+        backgroundColor: overlay,
+        surfaceTintColor: Colors.transparent,
+        shape: shape(AppRadius.island),
+      ),
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(overlay),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          shape: WidgetStatePropertyAll(shape(AppRadius.menu)),
+          padding: const WidgetStatePropertyAll(EdgeInsets.all(6)),
+        ),
+      ),
+      menuButtonTheme: MenuButtonThemeData(
+        style: ButtonStyle(
+          minimumSize: const WidgetStatePropertyAll(Size(0, 30)),
+          shape: WidgetStatePropertyAll(shape(AppRadius.input)),
+          textStyle: WidgetStatePropertyAll(geist(13, FontWeight.w400)),
+        ),
+      ),
+      tooltipTheme: TooltipThemeData(
+        constraints: const BoxConstraints(minHeight: 28),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: t.tooltipBg,
+          borderRadius: BorderRadius.circular(AppRadius.input),
+        ),
+        textStyle: geist(12, FontWeight.w500, t.tooltipFg),
+      ),
+      sliderTheme: SliderThemeData(
+        activeTrackColor: t.accent,
+        inactiveTrackColor: t.surface2,
+        thumbColor: t.accent,
+        trackHeight: 4,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: const WidgetStatePropertyAll(Colors.white),
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? t.accent : surface2,
+        ),
+        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: t.surface2,
+        isDense: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.input),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: t.accent,
+          foregroundColor: t.onAccent,
+          minimumSize: const Size(0, 34),
+          shape: shape(AppRadius.button),
+          textStyle: geist(13, FontWeight.w600),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          backgroundColor: t.surface2,
+          foregroundColor: t.text,
+          shape: shape(AppRadius.button),
+          textStyle: geist(13, FontWeight.w500),
+        ),
+      ),
+      dividerTheme: DividerThemeData(color: t.glassBorder, space: 1),
     );
   }
 }

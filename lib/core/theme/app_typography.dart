@@ -20,14 +20,21 @@ import 'package:flutter/painting.dart' show FontWeight, TextStyle;
 class AppTypography {
   AppTypography._();
 
-  /// Chrome/UI face, and the default face for canvas text.
+  /// App-chrome face (Geist). Chrome styles below use this; canvas text keeps
+  /// [interFamily]/[monoFamily] so existing scenes render unchanged.
+  static const String geistFamily = 'Geist';
+
+  /// App-chrome monospace face (Geist Mono).
+  static const String geistMonoFamily = 'Geist Mono';
+
+  /// Default face for canvas text (scene data — do not repoint at chrome), and the default face for canvas text.
   static const String interFamily = 'Inter';
 
-  /// Monospace face for labels that read as machine output (ports, status).
+  /// Canvas monospace face (scene data).
   static const String monoFamily = 'JetBrains Mono';
 
   static const TextStyle displayLg = TextStyle(
-    fontFamily: interFamily,
+    fontFamily: geistFamily,
     fontSize: 48,
     fontWeight: FontWeight.w700,
     height: 1.2,
@@ -35,7 +42,7 @@ class AppTypography {
   );
 
   static const TextStyle headlineMd = TextStyle(
-    fontFamily: interFamily,
+    fontFamily: geistFamily,
     fontSize: 24,
     fontWeight: FontWeight.w600,
     height: 1.4,
@@ -43,7 +50,7 @@ class AppTypography {
   );
 
   static const TextStyle bodyBase = TextStyle(
-    fontFamily: interFamily,
+    fontFamily: geistFamily,
     fontSize: 14,
     fontWeight: FontWeight.w400,
     height: 1.6,
@@ -55,7 +62,7 @@ class AppTypography {
   /// packed into a toolbar, and hand-rolling `bodyBase.copyWith(fontSize:
   /// 13)` at each call site is how that size drifts.
   static const TextStyle bodySm = TextStyle(
-    fontFamily: interFamily,
+    fontFamily: geistFamily,
     fontSize: 13,
     fontWeight: FontWeight.w400,
     height: 1.6,
@@ -63,7 +70,7 @@ class AppTypography {
   );
 
   static const TextStyle labelMono = TextStyle(
-    fontFamily: monoFamily,
+    fontFamily: geistMonoFamily,
     fontSize: 12,
     fontWeight: FontWeight.w500,
     height: 1.2,
@@ -71,10 +78,44 @@ class AppTypography {
   );
 
   static const TextStyle caption = TextStyle(
-    fontFamily: interFamily,
+    fontFamily: geistFamily,
     fontSize: 11,
     fontWeight: FontWeight.w500,
     height: 1.2,
     letterSpacing: 0.01 * 11,
+  );
+
+  /// Small-caps-style section label (letter-spaced, semibold).
+  static const TextStyle uiLabel = TextStyle(
+    fontFamily: geistFamily,
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+    letterSpacing: 0.55,
+  );
+
+  /// Panel / card titles.
+  static const TextStyle uiTitle = TextStyle(
+    fontFamily: geistFamily,
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+    letterSpacing: 0,
+  );
+
+  static const TextStyle mono12 = TextStyle(
+    fontFamily: geistMonoFamily,
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    height: 1.4,
+    letterSpacing: 0,
+  );
+
+  static const TextStyle mono11 = TextStyle(
+    fontFamily: geistMonoFamily,
+    fontSize: 11,
+    fontWeight: FontWeight.w400,
+    height: 1.4,
+    letterSpacing: 0,
   );
 }

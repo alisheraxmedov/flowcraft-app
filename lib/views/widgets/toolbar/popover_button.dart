@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show KeyDownEvent, LogicalKeyboardKey;
 
 import 'package:flowcraft/core/theme/app_radius.dart';
+import 'package:flowcraft/views/widgets/glass/glass_island.dart';
+
+/// Where a [PopoverButton]'s popover opens relative to its anchor.
+enum PopoverAnchor {
+  /// Below, left edges aligned.
+  below,
+
+  /// Below, right edges aligned (anchor sits at the right of a bar).
+  belowEnd,
+
+  /// Beside, to the anchor's right.
+  side,
+}
 
 /// Generic anchor button that opens a floating popover on tap.
 ///
@@ -17,6 +30,7 @@ class PopoverButton extends StatefulWidget {
     required this.tooltip,
     required this.activeColor,
     this.vertical = false,
+    this.anchor,
     this.size = 32,
   });
 
@@ -25,6 +39,10 @@ class PopoverButton extends StatefulWidget {
   final String tooltip;
   final Color activeColor;
   final bool vertical;
+
+  /// Placement override; null keeps the legacy [vertical] behaviour
+  /// (side when vertical, below otherwise).
+  final PopoverAnchor? anchor;
 
   /// Side of the square hit box; the tool rail's icon picker passes 40 to
   /// line up with its [ToolButton] neighbours.
@@ -95,6 +113,9 @@ class _PopoverButtonState extends State<PopoverButton> {
       child: OverlayPortal(
         controller: _portal,
         overlayChildBuilder: (context) {
+          final anchor =
+              widget.anchor ??
+              (widget.vertical ? PopoverAnchor.side : PopoverAnchor.below);
           return Stack(
             children: [
               Positioned.fill(
@@ -112,23 +133,31 @@ class _PopoverButtonState extends State<PopoverButton> {
                 child: CompositedTransformFollower(
                   link: _link,
                   showWhenUnlinked: false,
-                  targetAnchor: widget.vertical
-                      ? Alignment.centerRight
-                      : Alignment.bottomLeft,
-                  followerAnchor: widget.vertical
-                      ? Alignment.centerLeft
-                      : Alignment.topLeft,
-                  offset: widget.vertical
+                  targetAnchor: switch (anchor) {
+                    PopoverAnchor.side => Alignment.centerRight,
+                    PopoverAnchor.belowEnd => Alignment.bottomRight,
+                    PopoverAnchor.below => Alignment.bottomLeft,
+                  },
+                  followerAnchor: switch (anchor) {
+                    PopoverAnchor.side => Alignment.centerLeft,
+                    PopoverAnchor.belowEnd => Alignment.topRight,
+                    PopoverAnchor.below => Alignment.topLeft,
+                  },
+                  offset: anchor == PopoverAnchor.side
                       ? const Offset(6, 0)
                       : const Offset(0, 6),
                   child: Focus(
                     focusNode: _focus,
                     onKeyEvent: _onKey,
-                    child: Material(
-                      elevation: 6,
-                      borderRadius: AppRadius.mdRadius,
-                      clipBehavior: Clip.antiAlias,
-                      child: widget.popoverBuilder(context, _hide),
+                    // Material kept inside the island: popover content uses
+                    // InkWell/ListTile, which need a Material ancestor.
+                    child: GlassIsland(
+                      strong: true,
+                      radius: 14,
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: widget.popoverBuilder(context, _hide),
+                      ),
                     ),
                   ),
                 ),
