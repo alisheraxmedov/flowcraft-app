@@ -17,6 +17,7 @@ class PopoverButton extends StatefulWidget {
     required this.tooltip,
     required this.activeColor,
     this.vertical = false,
+    this.size = 32,
   });
 
   final Widget Function(BuildContext, PopoverController) builder;
@@ -24,6 +25,10 @@ class PopoverButton extends StatefulWidget {
   final String tooltip;
   final Color activeColor;
   final bool vertical;
+
+  /// Side of the square hit box; the tool rail's icon picker passes 40 to
+  /// line up with its [ToolButton] neighbours.
+  final double size;
 
   @override
   State<PopoverButton> createState() => _PopoverButtonState();
@@ -138,8 +143,8 @@ class _PopoverButtonState extends State<PopoverButton> {
             onTap: _toggle,
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 2),
-              width: 32,
-              height: 32,
+              width: widget.size,
+              height: widget.size,
               alignment: Alignment.center,
               child: widget.builder(context, _ctrl),
             ),

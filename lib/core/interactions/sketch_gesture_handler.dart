@@ -342,6 +342,7 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
       case SketchTool.line:
       case SketchTool.arrow:
       case SketchTool.sticky:
+      case SketchTool.frame:
         _ctrl.clearSelection();
         // Drawing a new shape is a click outside every open note, the
         // sticky tool included: starting a second note closes the first.
@@ -371,9 +372,18 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         _setConsumed(true);
         return;
 
-      case SketchTool.frame:
       case SketchTool.icon:
-        // Placeholder: created by the phase 2 interaction work.
+        // A click, not a drag: the glyph has a natural size, so it lands
+        // centred under the pointer and the tool stays armed for the next.
+        _ctrl.clearSelection();
+        _ctrl.add(
+          SketchIcon.create(
+            rect: Rect.fromCenter(center: canvas, width: 64, height: 64),
+            name: _ctrl.currentIcon,
+            style: _ctrl.currentStyle,
+          ),
+        );
+        _setConsumed(true);
         return;
 
       case SketchTool.hand:
@@ -946,6 +956,16 @@ class _SketchGestureHandlerState extends State<SketchGestureHandler> {
         final sticky = SketchSticky.create(rect: SketchSticky.rectFor(rect));
         _ctrl.add(sticky);
         _ctrl.beginTextEdit(elementId: sticky.id);
+        return;
+      case SketchTool.frame:
+        if (degenerate) return;
+        _ctrl.addFrame(
+          SketchFrame.create(
+            rect: rect,
+            name: 'Frame ${_ctrl.elements.whereType<SketchFrame>().length + 1}',
+            style: session.style,
+          ),
+        );
         return;
       case SketchTool.line:
         if ((session.startCanvas - session.currentCanvas).distance < 2) return;

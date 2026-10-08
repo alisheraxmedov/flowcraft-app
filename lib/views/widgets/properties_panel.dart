@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/models/icon_catalog.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
@@ -31,6 +32,9 @@ class PropertiesPanel extends StatefulWidget {
     if (el is SketchDiamond) return el.rect;
     if (el is SketchTriangle) return el.rect;
     if (el is SketchSticky) return el.rect;
+    if (el is SketchFrame) return el.rect;
+    if (el is SketchIcon) return el.rect;
+    if (el is SketchEntity) return el.rect;
     return null;
   }
 
@@ -60,6 +64,14 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   final _strokeHexFocus = FocusNode();
   final _fillHexFocus = FocusNode();
 
+  // Frame / entity name and the entity's attribute rows. Committed when the
+  // field loses focus (or, for the single-line name, on submit) so typing
+  // one word is one undo entry, not one per keystroke.
+  final _nameCtrl = TextEditingController();
+  final _attrsCtrl = TextEditingController();
+  final _nameFocus = FocusNode();
+  final _attrsFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +84,12 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     });
     _fillHexFocus.addListener(() {
       if (!_fillHexFocus.hasFocus) _commitFillHex();
+    });
+    _nameFocus.addListener(() {
+      if (!_nameFocus.hasFocus) _commitName();
+    });
+    _attrsFocus.addListener(() {
+      if (!_attrsFocus.hasFocus) _commitAttributes();
     });
   }
 
@@ -94,6 +112,8 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       _hCtrl,
       _strokeHexCtrl,
       _fillHexCtrl,
+      _nameCtrl,
+      _attrsCtrl,
     ]) {
       c.dispose();
     }
@@ -104,6 +124,8 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       _hFocus,
       _strokeHexFocus,
       _fillHexFocus,
+      _nameFocus,
+      _attrsFocus,
     ]) {
       f.dispose();
     }
@@ -226,6 +248,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
 
     _syncDimensionFields(el);
     _syncAppearanceFields(el);
+    _syncShapeFields(el);
 
     final isBounded = PropertiesPanel.rectOf(el) != null;
 
@@ -258,6 +281,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
                 _dimensionsSection(el, isBounded),
                 const SizedBox(height: 16),
                 _appearanceSection(el),
+                ..._kindSection(el),
                 const SizedBox(height: 16),
                 _typographySection(el),
                 const SizedBox(height: 16),
@@ -468,13 +492,6 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   static String _widthLabel(double w) =>
       '${w.toStringAsFixed(w == w.roundToDouble() ? 0 : 1)}px';
 
-  /// The faces the dropdown offers — the two bundled families, which are
-  /// the only strings the panel ever writes.
-  static const List<String> _fontFamilies = [
-    AppTypography.interFamily,
-    AppTypography.monoFamily,
-  ];
-
   Widget _strokeWidthDropdown(SketchElement el, SketchStyle style) {
     const presets = [1.0, 2.0, 4.0, 6.0, 8.0];
     final options = {...presets, style.strokeWidth}.toList()..sort();
@@ -509,21 +526,57 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     );
   }
 
+  /// Family and weight of anything that paints a label, or `null` for
+  /// elements that carry none.
+  static (String?, bool)? _fontOf(SketchElement el) => switch (el) {
+    SketchText(:final fontFamily, :final bold) ||
+    SketchRectangle(:final fontFamily, :final bold) ||
+    SketchEllipse(:final fontFamily, :final bold) ||
+    SketchDiamond(:final fontFamily, :final bold) ||
+    SketchTriangle(:final fontFamily, :final bold) ||
+    SketchSticky(:final fontFamily, :final bold) => (fontFamily, bold),
+    _ => null,
+  };
+
+  /// Copy of [el] with a new label [family] and/or [bold]; one `update`, so
+  /// one undo entry, and the new instance re-measures its own bounds.
+  void _setFont(SketchElement el, {String? family, bool? bold}) {
+    final f = family ?? _fontOf(el)!.$1;
+    _ctrl.update(switch (el) {
+      SketchText() => el.copyWith(fontFamily: f, bold: bold),
+      SketchRectangle() => el.copyWith(fontFamily: f, bold: bold),
+      SketchEllipse() => el.copyWith(fontFamily: f, bold: bold),
+      SketchDiamond() => el.copyWith(fontFamily: f, bold: bold),
+      SketchTriangle() => el.copyWith(fontFamily: f, bold: bold),
+      SketchSticky() => el.copyWith(fontFamily: f, bold: bold),
+      _ => el,
+    });
+  }
+
+  /// Folds the legacy family names ("Inter", "JetBrains Mono") into the
+  /// element-level `sans` / `mono`, so one dropdown entry covers both.
+  static String _familyKey(String? f) => switch (f) {
+    null || 'sans' || AppTypography.interFamily => 'sans',
+    'mono' || AppTypography.monoFamily => 'mono',
+    final other => other,
+  };
+
   Widget _typographySection(SketchElement el) {
-    final isText = el is SketchText;
-    // `null` reads as Inter: that is the face `TextMetrics` resolves a
-    // missing family to, so it is what the text is actually painted in.
-    final current = isText
-        ? (el.fontFamily ?? AppTypography.interFamily)
-        : AppTypography.interFamily;
+    final font = _fontOf(el);
+    final current = _familyKey(font?.$1);
     // Anything else — an "Arial" from a hand-edited JSON file, say — is
     // listed as-is rather than asserting: `DropdownButton` requires its
     // value to be one of its items, and a panel that throws on a file the
     // app happily painted is the worse of the two.
-    final options = [
-      ..._fontFamilies,
-      if (!_fontFamilies.contains(current)) current,
-    ];
+    final labels = {
+      'sans': AppTypography.interFamily,
+      'mono': AppTypography.monoFamily,
+      if (current != 'sans' && current != 'mono') current: current,
+    };
+    final rowStyle = AppTypography.bodyBase.copyWith(
+      fontSize: 12,
+      color: _colorScheme.onSurfaceVariant,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -533,27 +586,304 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
           isExpanded: true,
           dropdownColor: _colorScheme.surfaceContainerHigh,
           underline: const SizedBox.shrink(),
-          disabledHint: Text(
-            current,
-            style: AppTypography.bodyBase.copyWith(
-              fontSize: 12,
-              color: _colorScheme.onSurfaceVariant,
-            ),
-          ),
+          disabledHint: Text(labels[current]!, style: rowStyle),
           style: AppTypography.bodyBase.copyWith(
             fontSize: 12,
             color: _colorScheme.onSurface,
           ),
           items: [
-            for (final family in options)
-              DropdownMenuItem(value: family, child: Text(family)),
+            for (final e in labels.entries)
+              DropdownMenuItem(value: e.key, child: Text(e.value)),
           ],
-          onChanged: !isText
+          onChanged: font == null
               ? null
               : (v) {
-                  if (v == null) return;
-                  _ctrl.update(el.copyWith(fontFamily: v));
+                  if (v != null) _setFont(el, family: v);
                 },
+        ),
+        if (font != null)
+          Row(
+            children: [
+              Text('Bold', style: rowStyle),
+              const Spacer(),
+              Switch(
+                key: const ValueKey('properties_bold'),
+                value: font.$2,
+                onChanged: (v) => _setFont(el, bold: v),
+              ),
+            ],
+          ),
+        if (el is SketchText)
+          SegmentedButton<TextAlign>(
+            key: const ValueKey('properties_align'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(
+                value: TextAlign.start,
+                icon: Icon(Icons.format_align_left_rounded, size: 16),
+                tooltip: 'Align left',
+              ),
+              ButtonSegment(
+                value: TextAlign.center,
+                icon: Icon(Icons.format_align_center_rounded, size: 16),
+                tooltip: 'Align center',
+              ),
+              ButtonSegment(
+                value: TextAlign.right,
+                icon: Icon(Icons.format_align_right_rounded, size: 16),
+                tooltip: 'Align right',
+              ),
+            ],
+            selected: {
+              // Legacy `TextAlign.left` / `justify` collapse onto the three
+              // buttons; `start` reads as left in this left-to-right app.
+              el.align == TextAlign.center
+                  ? TextAlign.center
+                  : el.align == TextAlign.right || el.align == TextAlign.end
+                  ? TextAlign.right
+                  : TextAlign.start,
+            },
+            onSelectionChanged: (v) =>
+                _ctrl.update(el.copyWith(align: v.first)),
+          ),
+      ],
+    );
+  }
+
+  // ── kind-specific sections ─────────────────────────────────────────────
+
+  void _syncShapeFields(SketchElement el) {
+    if (el is SketchFrame || el is SketchEntity) {
+      final name = el is SketchFrame ? el.name : (el as SketchEntity).name;
+      if (!_nameFocus.hasFocus) _nameCtrl.text = name;
+    }
+    if (el is SketchEntity && !_attrsFocus.hasFocus) {
+      _attrsCtrl.text = el.attributes
+          .map(
+            (a) => [
+              a.name,
+              if (a.type.isNotEmpty) a.type,
+              if (a.primaryKey) 'PK',
+              if (a.foreignKey) 'FK',
+            ].join(' '),
+          )
+          .join('\n');
+    }
+  }
+
+  void _commitName() {
+    final el = _selected;
+    final name = _nameCtrl.text.trim();
+    if (el is SketchFrame && name != el.name) {
+      _ctrl.update(el.copyWith(name: name));
+    } else if (el is SketchEntity && name != el.name) {
+      _ctrl.update(el.copyWith(name: name));
+    }
+  }
+
+  /// "name type [PK] [FK]" per line, parsed leniently: blank lines vanish,
+  /// flags may sit anywhere in any case, and whatever is left after the
+  /// first word is the type.
+  static List<EntityAttribute> _parseAttributes(String text) {
+    final rows = <EntityAttribute>[];
+    for (final line in text.split('\n')) {
+      final words = line
+          .trim()
+          .split(RegExp(r'\s+'))
+          .where((w) => w.isNotEmpty);
+      final flags = words.map((w) => w.toUpperCase()).toSet();
+      final rest = words
+          .where((w) => w.toUpperCase() != 'PK' && w.toUpperCase() != 'FK')
+          .toList();
+      if (rest.isEmpty) continue;
+      rows.add(
+        EntityAttribute(
+          name: rest.first,
+          type: rest.skip(1).join(' '),
+          primaryKey: flags.contains('PK'),
+          foreignKey: flags.contains('FK'),
+        ),
+      );
+    }
+    return rows;
+  }
+
+  void _commitAttributes() {
+    final el = _selected;
+    if (el is! SketchEntity) return;
+    final attrs = _parseAttributes(_attrsCtrl.text);
+    final same =
+        attrs.length == el.attributes.length &&
+        [
+          for (var i = 0; i < attrs.length; i++)
+            attrs[i].name == el.attributes[i].name &&
+                attrs[i].type == el.attributes[i].type &&
+                attrs[i].primaryKey == el.attributes[i].primaryKey &&
+                attrs[i].foreignKey == el.attributes[i].foreignKey,
+        ].every((b) => b);
+    if (same) return;
+    _ctrl.update(el.copyWith(attributes: attrs).fittedToAttributes());
+  }
+
+  List<Widget> _kindSection(SketchElement el) {
+    final rowStyle = AppTypography.bodyBase.copyWith(
+      fontSize: 12,
+      color: _colorScheme.onSurfaceVariant,
+    );
+    final children = switch (el) {
+      SketchArrow() => [
+        _sectionTitle('ARROW'),
+        Row(
+          children: [
+            Text('Elbow', style: rowStyle),
+            const Spacer(),
+            Switch(
+              key: const ValueKey('properties_elbow'),
+              value: el.elbowed,
+              onChanged: (v) => _ctrl.update(el.copyWith(elbowed: v)),
+            ),
+          ],
+        ),
+        _headPicker(
+          'Start',
+          const ValueKey('properties_start_head'),
+          el.startHead,
+          (v) => _ctrl.update(el.copyWith(startHead: v)),
+        ),
+        _headPicker(
+          'End',
+          const ValueKey('properties_end_head'),
+          el.endHead,
+          (v) => _ctrl.update(el.copyWith(endHead: v)),
+        ),
+      ],
+      SketchFrame() => [_sectionTitle('FRAME'), _nameField('Name')],
+      SketchIcon() => [
+        _sectionTitle('ICON'),
+        DropdownButton<String>(
+          key: const ValueKey('properties_icon'),
+          value: iconCatalog.containsKey(el.name) ? el.name : null,
+          hint: Text(el.name, style: rowStyle),
+          isExpanded: true,
+          dropdownColor: _colorScheme.surfaceContainerHigh,
+          underline: const SizedBox.shrink(),
+          items: [
+            for (final e in iconCatalog.entries)
+              DropdownMenuItem(
+                value: e.key,
+                child: Row(
+                  children: [
+                    Icon(e.value, size: 16, color: _colorScheme.onSurface),
+                    const SizedBox(width: 8),
+                    Text(e.key, style: rowStyle),
+                  ],
+                ),
+              ),
+          ],
+          onChanged: (v) {
+            if (v != null) _ctrl.update(el.copyWith(name: v));
+          },
+        ),
+      ],
+      SketchEntity() => [
+        _sectionTitle('ENTITY'),
+        _nameField('Name'),
+        const SizedBox(height: 8),
+        TextField(
+          key: const ValueKey('properties_attributes'),
+          controller: _attrsCtrl,
+          focusNode: _attrsFocus,
+          minLines: 3,
+          maxLines: 8,
+          style: AppTypography.labelMono.copyWith(
+            fontSize: 12,
+            color: _colorScheme.onSurface,
+          ),
+          decoration: _fieldDecoration(
+            'Attributes — one per line: name type [PK] [FK]',
+          ),
+        ),
+      ],
+      _ => const <Widget>[],
+    };
+    return children.isEmpty
+        ? children
+        : [const SizedBox(height: 16), ...children];
+  }
+
+  InputDecoration _fieldDecoration(String label) => InputDecoration(
+    isDense: true,
+    labelText: label,
+    labelStyle: AppTypography.caption.copyWith(
+      color: _colorScheme.onSurfaceVariant,
+    ),
+    filled: true,
+    fillColor: _colorScheme.surfaceContainerHigh,
+    border: OutlineInputBorder(
+      borderRadius: AppRadius.smRadius,
+      borderSide: BorderSide(color: _colorScheme.outlineVariant),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+  );
+
+  Widget _nameField(String label) => TextField(
+    key: const ValueKey('properties_name'),
+    controller: _nameCtrl,
+    focusNode: _nameFocus,
+    style: AppTypography.bodyBase.copyWith(
+      fontSize: 12,
+      color: _colorScheme.onSurface,
+    ),
+    decoration: _fieldDecoration(label),
+    onSubmitted: (_) => _commitName(),
+  );
+
+  /// Readable names for [ArrowheadStyle]; the ER ones say what they draw.
+  static const _headLabels = {
+    ArrowheadStyle.none: 'None',
+    ArrowheadStyle.arrow: 'Arrow',
+    ArrowheadStyle.one: 'One',
+    ArrowheadStyle.many: 'Many',
+    ArrowheadStyle.zeroOrOne: 'Zero or one',
+    ArrowheadStyle.zeroOrMany: 'Zero or many',
+    ArrowheadStyle.oneOrMany: 'One or many',
+  };
+
+  Widget _headPicker(
+    String label,
+    Key key,
+    ArrowheadStyle value,
+    ValueChanged<ArrowheadStyle> onPick,
+  ) {
+    return Row(
+      children: [
+        Text(
+          '$label head',
+          style: AppTypography.bodyBase.copyWith(
+            fontSize: 12,
+            color: _colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DropdownButton<ArrowheadStyle>(
+            key: key,
+            isExpanded: true,
+            value: value,
+            dropdownColor: _colorScheme.surfaceContainerHigh,
+            underline: const SizedBox.shrink(),
+            style: AppTypography.labelMono.copyWith(
+              fontSize: 12,
+              color: _colorScheme.onSurface,
+            ),
+            items: [
+              for (final e in _headLabels.entries)
+                DropdownMenuItem(value: e.key, child: Text(e.value)),
+            ],
+            onChanged: (v) {
+              if (v != null) onPick(v);
+            },
+          ),
         ),
       ],
     );

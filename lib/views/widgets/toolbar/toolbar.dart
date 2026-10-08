@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:flowcraft/core/theme/app_radius.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
+import 'package:flowcraft/models/icon_catalog.dart';
 import 'package:flowcraft/models/sketch_style.dart';
 import 'package:flowcraft/models/sketch_tool.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/shortcuts/tool_shortcuts.dart';
 
 import 'action_button.dart';
 import 'palette_popover.dart';
@@ -52,6 +54,8 @@ class SketchToolbarRich extends StatefulWidget {
       SketchTool.diamond,
       SketchTool.triangle,
       SketchTool.sticky,
+      SketchTool.frame,
+      SketchTool.icon,
       SketchTool.line,
       SketchTool.arrow,
       SketchTool.freedraw,
@@ -562,6 +566,7 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
   }
 
   Widget _toolButton(SketchTool tool) {
+    if (tool == SketchTool.icon) return _iconToolButton();
     return ToolButton(
       tool: tool,
       selected: _ctrl.currentTool == tool,
@@ -569,6 +574,67 @@ class _SketchToolbarRichState extends State<SketchToolbarRich> {
       onActiveColor: _colorScheme.onPrimary,
       iconColor: _iconColor,
       onTap: () => _ctrl.currentTool = tool,
+    );
+  }
+
+  /// The icon tool's rail slot: a [PopoverButton] sized like a [ToolButton],
+  /// whose popover is the catalog grid. Picking a glyph both chooses it and
+  /// arms the tool, so one click goes from "which icon" to "place it".
+  Widget _iconToolButton() {
+    final selected = _ctrl.currentTool == SketchTool.icon;
+    return PopoverButton(
+      tooltip: ToolShortcuts.tooltip(SketchTool.icon),
+      activeColor: _activeColor,
+      vertical: widget.orientation == Axis.vertical,
+      size: 40,
+      builder: (context, _) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: selected ? _activeColor : Colors.transparent,
+          borderRadius: AppRadius.mdRadius,
+        ),
+        child: SizedBox.square(
+          dimension: 36,
+          child: Center(
+            child: ToolGlyph(
+              tool: SketchTool.icon,
+              color: selected ? _colorScheme.onPrimary : _iconColor,
+            ),
+          ),
+        ),
+      ),
+      popoverBuilder: (context, close) => Container(
+        width: 224,
+        padding: const EdgeInsets.all(8),
+        child: Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            for (final entry in iconCatalog.entries)
+              Tooltip(
+                message: entry.key,
+                child: InkWell(
+                  borderRadius: AppRadius.smRadius,
+                  onTap: () {
+                    _ctrl.currentIcon = entry.key;
+                    _ctrl.currentTool = SketchTool.icon;
+                    close();
+                  },
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      borderRadius: AppRadius.smRadius,
+                      color: _ctrl.currentIcon == entry.key
+                          ? _activeColor.withValues(alpha: 0.2)
+                          : null,
+                    ),
+                    child: Icon(entry.value, size: 18, color: _iconColor),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

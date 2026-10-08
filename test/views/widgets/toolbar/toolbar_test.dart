@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/models/icon_catalog.dart';
 import 'package:flowcraft/views/widgets/toolbar/palette_popover.dart';
 import 'package:flowcraft/views/widgets/toolbar/style_popovers.dart';
 
@@ -399,12 +400,13 @@ void main() {
     });
 
     testWidgets('keeps one tool per row when there is room', (tester) async {
-      // A single-column rail is ~780 px with its anchors and actions; a
-      // desktop-height window still gets the source design's one-per-row.
-      _laptopWindow(tester, height: 900);
+      // A single-column rail is ~870 px with its anchors and actions (the
+      // frame and icon tools added two rows); a desktop-height window still
+      // gets the source design's one-per-row.
+      _laptopWindow(tester, height: 1000);
       final controller = SketchController();
       addTearDown(controller.dispose);
-      await tester.pumpWidget(_rail(controller, height: 850));
+      await tester.pumpWidget(_rail(controller, height: 950));
 
       // Single-column: every tool button shares one x.
       final lefts = {
@@ -616,5 +618,41 @@ void main() {
     await tester.pump();
 
     expect(controller.elements, hasLength(2));
+  });
+
+  group('frame and icon tools', () {
+    testWidgets('every SketchTool has a rail button', (tester) async {
+      _laptopWindow(tester, height: 900);
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_rail(controller, height: 850));
+
+      for (final tool in SketchTool.values) {
+        expect(
+          find.byTooltip(ToolShortcuts.tooltip(tool)),
+          findsOneWidget,
+          reason: tool.name,
+        );
+      }
+    });
+
+    testWidgets('icon popover lists the catalog and picking one selects the '
+        'icon tool', (tester) async {
+      _laptopWindow(tester, height: 900);
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_rail(controller, height: 850));
+
+      await tester.tap(find.byTooltip(ToolShortcuts.tooltip(SketchTool.icon)));
+      await tester.pumpAndSettle();
+      for (final name in iconCatalog.keys) {
+        expect(find.byTooltip(name), findsOneWidget, reason: name);
+      }
+
+      await tester.tap(find.byTooltip('cloud'));
+      await tester.pumpAndSettle();
+      expect(controller.currentTool, SketchTool.icon);
+      expect(controller.currentIcon, 'cloud');
+    });
   });
 }

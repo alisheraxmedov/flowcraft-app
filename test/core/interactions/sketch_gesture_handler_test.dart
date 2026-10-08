@@ -75,6 +75,53 @@ SketchText _greeting() => SketchText.create(
 /// stroke-hit consolidation, and the text-edit entry points, where a click
 /// on existing text used to spawn a second text box on top of it.
 void main() {
+  testWidgets('frame tool drag creates a frame behind existing elements (one '
+      'undo entry)', (tester) async {
+    final controller = SketchController(
+      currentTool: SketchTool.frame,
+      initialElements: [_filledBox()],
+    );
+    addTearDown(controller.dispose);
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+    await tester.pumpWidget(_host(controller, interaction, snap: false));
+
+    final gesture = await tester.startGesture(const Offset(200, 200));
+    await gesture.moveBy(const Offset(120, 80));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(controller.elements, hasLength(2));
+    final frame = controller.elements.first as SketchFrame;
+    expect(frame.name, 'Frame 1');
+    expect(frame.rect, const Rect.fromLTWH(200, 200, 120, 80));
+    controller.undo();
+    expect(controller.elements.single.id, 'box');
+    expect(controller.canUndo, isFalse);
+  });
+
+  testWidgets('icon tool click places a 64×64 icon', (tester) async {
+    final controller = SketchController(currentTool: SketchTool.icon)
+      ..currentIcon = 'cloud';
+    addTearDown(controller.dispose);
+    final interaction = SketchInteractionState();
+    addTearDown(interaction.dispose);
+    await tester.pumpWidget(_host(controller, interaction, snap: false));
+
+    await tester.tapAt(const Offset(300, 200));
+    await tester.pump();
+
+    final icon = controller.elements.single as SketchIcon;
+    expect(icon.name, 'cloud');
+    expect(
+      icon.rect,
+      Rect.fromCenter(center: const Offset(300, 200), width: 64, height: 64),
+    );
+    controller.undo();
+    expect(controller.elements, isEmpty);
+  });
+
   testWidgets(
     'eraser tool removes the element under the pointer on pointer down',
     (tester) async {

@@ -38,6 +38,7 @@ class SketchController extends ChangeNotifier {
 
   SketchTool _currentTool;
   SketchStyle _currentStyle;
+  String _currentIcon = 'database';
 
   int _paintGen = 0;
 
@@ -66,6 +67,9 @@ class SketchController extends ChangeNotifier {
 
   SketchTool get currentTool => _currentTool;
   SketchStyle get currentStyle => _currentStyle;
+
+  /// Catalog name the icon tool places next.
+  String get currentIcon => _currentIcon;
 
   /// Monotonically increasing version bumped on every visual change.
   /// Use in `CustomPainter.shouldRepaint` for O(1) diffing.
@@ -135,12 +139,28 @@ class SketchController extends ChangeNotifier {
     notifyListeners();
   }
 
+  set currentIcon(String name) {
+    if (_currentIcon == name) return;
+    _currentIcon = name;
+    notifyListeners();
+  }
+
   // ── Mutations (history-tracked) ────────────────────────────────────────
 
   /// Adds an element to the top of the stack.
   void add(SketchElement element) {
     _pushHistory();
     _elements.add(element);
+    _invalidateCache();
+    _bumpPaint();
+  }
+
+  /// Adds [frame] behind everything but other frames, so it never covers the
+  /// shapes it is drawn around (the painter walks the list bottom-up).
+  void addFrame(SketchFrame frame) {
+    _pushHistory();
+    final at = _elements.indexWhere((e) => e is! SketchFrame);
+    _elements.insert(at < 0 ? _elements.length : at, frame);
     _invalidateCache();
     _bumpPaint();
   }

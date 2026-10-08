@@ -17,6 +17,38 @@ SketchRectangle _rect({String? id, Rect? rect}) => SketchRectangle.create(
 );
 
 void main() {
+  group('SketchController.addFrame', () {
+    test('inserts behind shapes but after earlier frames, one undo entry', () {
+      final f1 = SketchFrame.create(
+        id: 'f1',
+        rect: const Rect.fromLTWH(0, 0, 9, 9),
+      );
+      final box = SketchRectangle.create(
+        id: 'b',
+        rect: const Rect.fromLTWH(0, 0, 5, 5),
+      );
+      final c = SketchController(initialElements: [f1, box]);
+      addTearDown(c.dispose);
+      c.addFrame(
+        SketchFrame.create(id: 'f2', rect: const Rect.fromLTWH(0, 0, 9, 9)),
+      );
+      expect(c.elements.map((e) => e.id), ['f1', 'f2', 'b']);
+      c.undo();
+      expect(c.elements.map((e) => e.id), ['f1', 'b']);
+    });
+
+    test('currentIcon defaults to database and notifies on change', () {
+      final c = SketchController();
+      addTearDown(c.dispose);
+      var n = 0;
+      c.addListener(() => n++);
+      expect(c.currentIcon, 'database');
+      c.currentIcon = 'cloud';
+      c.currentIcon = 'cloud';
+      expect(n, 1);
+    });
+  });
+
   group('SketchController.add / remove', () {
     test('add appends element and bumps paintGen', () {
       final c = SketchController();

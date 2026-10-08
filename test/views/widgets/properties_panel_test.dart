@@ -204,4 +204,110 @@ void main() {
       },
     );
   });
+
+  group('PropertiesPanel kind-specific controls', () {
+    SketchController seeded(SketchElement el) {
+      final c = SketchController(initialElements: [el])..select(el.id);
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    SketchElement only(SketchController c) => c.elements.single;
+
+    testWidgets('elbow switch toggles elbowed', (tester) async {
+      final c = seeded(
+        SketchArrow.create(
+          id: 'a',
+          start: Offset.zero,
+          end: const Offset(100, 50),
+        ),
+      );
+      await tester.pumpWidget(_host(c));
+      await tester.tap(find.byKey(const ValueKey('properties_elbow')));
+      await tester.pump();
+      expect((only(c) as SketchArrow).elbowed, isTrue);
+      c.undo();
+      expect((only(c) as SketchArrow).elbowed, isFalse);
+    });
+
+    testWidgets('head picker sets endHead', (tester) async {
+      final c = seeded(
+        SketchArrow.create(
+          id: 'a',
+          start: Offset.zero,
+          end: const Offset(100, 50),
+        ),
+      );
+      await tester.pumpWidget(_host(c));
+      await tester.tap(find.byKey(const ValueKey('properties_end_head')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Zero or many').last);
+      await tester.pumpAndSettle();
+      expect((only(c) as SketchArrow).endHead, ArrowheadStyle.zeroOrMany);
+    });
+
+    testWidgets('bold toggle updates element', (tester) async {
+      final c = seeded(
+        SketchText.create(id: 't', position: Offset.zero, text: 'hi'),
+      );
+      await tester.pumpWidget(_host(c));
+      await tester.tap(find.byKey(const ValueKey('properties_bold')));
+      await tester.pump();
+      expect((only(c) as SketchText).bold, isTrue);
+    });
+
+    testWidgets('align segment updates text', (tester) async {
+      final c = seeded(
+        SketchText.create(id: 't', position: Offset.zero, text: 'a\nbbb'),
+      );
+      await tester.pumpWidget(_host(c));
+      await tester.tap(find.byTooltip('Align right'));
+      await tester.pump();
+      expect((only(c) as SketchText).align, TextAlign.right);
+    });
+
+    testWidgets('frame name edit', (tester) async {
+      final c = seeded(
+        SketchFrame.create(
+          id: 'f',
+          rect: const Rect.fromLTWH(0, 0, 200, 100),
+          name: 'Frame 1',
+        ),
+      );
+      await tester.pumpWidget(_host(c));
+      await tester.enterText(
+        find.byKey(const ValueKey('properties_name')),
+        'API',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect((only(c) as SketchFrame).name, 'API');
+    });
+
+    testWidgets('entity attributes textarea parses rows and refits height', (
+      tester,
+    ) async {
+      final c = seeded(
+        SketchEntity.create(
+          id: 'e',
+          rect: const Rect.fromLTWH(0, 0, 200, 100),
+          name: 'User',
+        ),
+      );
+      await tester.pumpWidget(_host(c));
+      await tester.enterText(
+        find.byKey(const ValueKey('properties_attributes')),
+        'id int PK\n\nteam_id int FK\nemail',
+      );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pump();
+
+      final e = only(c) as SketchEntity;
+      expect(e.attributes.map((a) => a.name), ['id', 'team_id', 'email']);
+      expect(e.attributes[0].primaryKey, isTrue);
+      expect(e.attributes[0].type, 'int');
+      expect(e.attributes[1].foreignKey, isTrue);
+      expect(e.rect.height, e.fittedHeight);
+    });
+  });
 }
