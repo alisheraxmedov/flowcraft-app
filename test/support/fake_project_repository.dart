@@ -85,14 +85,14 @@ class FakeProjectRepository implements ProjectRepository {
   /// Only the extension rule is simulated — path policy belongs to the real
   /// repository's tests.
   @override
-  Future<FlowProject> link(String id, String path) async {
+  Future<FlowProjectScene?> link(String id, String path) async {
     if (!path.endsWith('.flowcraft') && !path.endsWith('.json')) {
       throw const ExportPathException('file must end in .flowcraft or .json');
     }
     final scene = await load(id);
     final linked = scene.project.copyWith(linkedPath: path, updatedAt: _tick());
     _scenes[id] = FlowProjectScene(project: linked, elements: scene.elements);
-    return linked;
+    return null;
   }
 
   @override

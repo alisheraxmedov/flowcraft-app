@@ -492,7 +492,8 @@ void main() {
 
     test('load prefers a newer linked file', () async {
       final p = await linkedRepo.create('Doc');
-      final linked = await linkedRepo.link(p.id, linkedPath);
+      await linkedRepo.link(p.id, linkedPath);
+      final linked = (await linkedRepo.load(p.id)).project;
       File(linkedPath).writeAsStringSync(
         ProjectSerializer.encodeScene(
           FlowProjectScene(project: linked, elements: [_rect('x'), _rect('y')]),
@@ -529,6 +530,64 @@ void main() {
 
       expect(loaded.elements.single.id, 'mine');
       expect(errors, hasLength(1));
+    });
+
+    test('linking to an existing scene file loads it and leaves the file '
+        'untouched (bytes equal)', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.save(id: p.id, elements: [_rect('mine')]);
+      final committed = ProjectSerializer.encodeScene(
+        FlowProjectScene(
+          project: FlowProject.create(name: 'Theirs'),
+          elements: [_rect('x'), _rect('y')],
+        ),
+      );
+      File(linkedPath).writeAsStringSync(committed);
+      final before = File(linkedPath).readAsBytesSync();
+
+      final adopted = await linkedRepo.link(p.id, linkedPath);
+
+      expect(adopted!.elements.map((e) => e.id), ['x', 'y']);
+      expect(File(linkedPath).readAsBytesSync(), before);
+      final loaded = await linkedRepo.load(p.id);
+      expect(loaded.elements.map((e) => e.id), ['x', 'y']);
+      expect(loaded.project.name, 'Doc');
+      expect(loaded.project.linkedPath, linkedPath);
+    });
+
+    test('linking to an existing non-scene file is refused, nothing '
+        'persisted', () async {
+      final p = await linkedRepo.create('Doc');
+      for (final junk in ['{ not json', '{}', '{"foo": 1}', '[1]']) {
+        File(linkedPath).writeAsStringSync(junk);
+        await expectLater(
+          linkedRepo.link(p.id, linkedPath),
+          throwsA(
+            isA<ExportPathException>().having(
+              (e) => e.message,
+              'message',
+              contains('is not a FlowCraft scene'),
+            ),
+          ),
+          reason: junk,
+        );
+        expect(File(linkedPath).readAsStringSync(), junk);
+      }
+      expect((await linkedRepo.load(p.id)).project.linkedPath, isNull);
+    });
+
+    test('linking to a missing file mirrors the current scene', () async {
+      final p = await linkedRepo.create('Doc');
+      await linkedRepo.save(id: p.id, elements: [_rect('mine')]);
+
+      expect(await linkedRepo.link(p.id, linkedPath), isNull);
+
+      expect(
+        ProjectSerializer.decodeScene(
+          File(linkedPath).readAsStringSync(),
+        ).elements.single.id,
+        'mine',
+      );
     });
 
     test('old index/header without linkedPath loads', () async {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flowcraft/core/serialization/project_serializer.dart';
+import 'package:flowcraft/core/serialization/sketch_serializer.dart';
 import 'package:flowcraft/models/flow_project.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/services/export_file_sink_io.dart';
@@ -156,27 +157,101 @@ class ProjectRepository {
     return updated;
   }
 
-  /// Points [id] at [path] and writes the current scene there straight
-  /// away, so a bad path is refused now rather than on some later autosave.
-  /// Nothing is persisted unless that first mirror succeeds.
-  Future<FlowProject> link(String id, String path) async {
-    final lower = path.toLowerCase();
+  /// Points [id] at [path].
+  ///
+  /// A path with no file yet gets the current scene written there straight
+  /// away, so a bad path is refused now rather than on some later autosave;
+  /// that returns `null`. A path that already holds a FlowCraft scene (a
+  /// cloned repo's `docs/arch.flowcraft`) is *adopted*: the file is never
+  /// written, this project's scene is replaced by its contents, and that
+  /// scene is returned so the caller can put it on the canvas. Anything else
+  /// there is refused. Nothing is persisted on a refusal.
+  Future<FlowProjectScene?> link(String id, String path) async {
+    final trimmed = path.trim();
+    final lower = trimmed.toLowerCase();
     if (!lower.endsWith('.flowcraft') && !lower.endsWith('.json')) {
       throw const ExportPathException('file must end in .flowcraft or .json');
     }
-    final target = SceneImportSource.expandHome(path.trim());
+    final target = SceneImportSource.expandHome(trimmed);
     final file = _sceneFile(id);
     if (!await file.exists()) throw StateError('No project with id "$id".');
     final source = await file.readAsString();
     final linked = ProjectSerializer.decodeHeader(
       source,
     ).copyWith(linkedPath: target, updatedAt: DateTime.now());
-    final next = ProjectSerializer.replaceHeader(source, linked);
-    await _mirror(target, next);
-    await _writeAtomic(file, next);
-    _headers[id] = linked;
-    await _upsertIndex(linked);
-    return linked;
+
+    final type = await FileSystemEntity.type(target, followLinks: false);
+    if (type == FileSystemEntityType.notFound) {
+      final next = ProjectSerializer.replaceHeader(source, linked);
+      await _mirror(target, next);
+      await _writeAtomic(file, next);
+      _headers[id] = linked;
+      await _upsertIndex(linked);
+      return null;
+    }
+
+    final adopted = await _readLinkTarget(target, type, linked);
+    await _writeAtomic(file, ProjectSerializer.encodeScene(adopted));
+    _headers[id] = adopted.project;
+    await _upsertIndex(adopted.project);
+    return adopted;
+  }
+
+  /// Reads an existing link target as a scene, or throws why it can't be.
+  ///
+  /// ponytail: the path rules here (absolute, no `..`, not a symlink, not
+  /// under the data directory) are a small copy of the ones in
+  /// [ExportFileSink.writeTo], which only runs for writes; fold them into
+  /// one shared check if a third caller needs them.
+  Future<FlowProjectScene> _readLinkTarget(
+    String target,
+    FileSystemEntityType type,
+    FlowProject linked,
+  ) async {
+    final file = File(target);
+    if (!file.isAbsolute || target.split(RegExp(r'[\\/]')).contains('..')) {
+      throw const ExportPathException(
+        "path must be absolute (or start with ~/) and not contain '..'",
+      );
+    }
+    if (type != FileSystemEntityType.file) {
+      throw ExportPathException(
+        '$target is a symlink or directory, not a file',
+      );
+    }
+    final resolved = await file.resolveSymbolicLinks();
+    final data = _directory.parent.path;
+    String fold(String p) => Platform.isLinux ? p : p.toLowerCase();
+    final root = fold(
+      await Directory(data).exists()
+          ? await Directory(data).resolveSymbolicLinks()
+          : data,
+    );
+    if (fold(resolved).startsWith('$root${Platform.pathSeparator}')) {
+      throw const ExportPathException(
+        'refusing to link inside the FlowCraft data directory (~/.flowcraft)',
+      );
+    }
+    try {
+      if ((await file.stat()).size > maxSceneImportBytes) {
+        throw const FormatException('too large');
+      }
+      final map = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      // Our own wrapper nests the scene; a plain export is the scene itself.
+      // Anything else (`{}`, some other tool's JSON) is not ours to adopt.
+      final scene = map['project'] is Map && map['scene'] is Map
+          ? map['scene'] as Map<String, dynamic>
+          : map;
+      if (scene['elements'] is! List) throw const FormatException('no scene');
+      final load = SketchSerializer.load(scene);
+      return FlowProjectScene(
+        project: linked.copyWith(elementCount: load.elements.length),
+        elements: load.elements,
+        droppedCount: load.droppedCount,
+      );
+    } catch (_) {
+      throw ExportPathException('$target exists and is not a FlowCraft scene');
+    }
   }
 
   /// Stops mirroring; the linked file is left on disk untouched.

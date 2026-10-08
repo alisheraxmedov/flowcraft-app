@@ -372,6 +372,40 @@ void main() {
       },
     );
 
+    test('linking the active project to an existing scene file shows it '
+        'with empty undo history', () async {
+      await model().ready;
+      final id = state().activeId!;
+      canvas().add(_rect('mine'));
+      final committed = ProjectSerializer.encodeScene(
+        FlowProjectScene(
+          project: FlowProject.create(name: 'Theirs'),
+          elements: [_rect('x'), _rect('y')],
+        ),
+      );
+      File(linkedPath).writeAsStringSync(committed);
+
+      expect(await model().linkProject(id, linkedPath), isNull);
+
+      expect(canvas().elements.map((e) => e.id), ['x', 'y']);
+      expect(canvas().canUndo, isFalse);
+      await model().flush();
+      expect((await repository.load(id)).elements.map((e) => e.id), ['x', 'y']);
+      expect(File(linkedPath).readAsStringSync(), committed);
+    });
+
+    test('a non-scene file is refused and the canvas is kept', () async {
+      await model().ready;
+      final id = state().activeId!;
+      canvas().add(_rect('mine'));
+      File(linkedPath).writeAsStringSync('hello');
+
+      expect(await model().linkProject(id, linkedPath), contains('not a'));
+
+      expect(canvas().elements.map((e) => e.id), ['mine']);
+      expect(state().active?.linkedPath, isNull);
+    });
+
     test('unlink stops mirroring', () async {
       await model().ready;
       final id = state().activeId!;

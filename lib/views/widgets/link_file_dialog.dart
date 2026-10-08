@@ -61,8 +61,8 @@ class _LinkFileDialogState extends State<LinkFileDialog> {
         decoration: InputDecoration(
           hintText: '~/repo/docs/board.flowcraft',
           helperText:
-              'Absolute path ending in .flowcraft or .json. '
-              'An existing file is overwritten.',
+              'Absolute path ending in .flowcraft or .json. If the file '
+              'already exists, this board is replaced by its contents.',
           helperMaxLines: 2,
           errorText: _error,
           errorMaxLines: 3,

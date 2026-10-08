@@ -113,7 +113,9 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
   Future<void> renameProject(String id, String name) =>
       _queue(() => _renameProject(id, name));
 
-  /// Links [id] to the file at [path] and mirrors to it at once. Resolves to
+  /// Links [id] to the file at [path]. A missing file is created from the
+  /// current board; an existing FlowCraft scene file replaces the board
+  /// (and is left untouched); anything else there is refused. Resolves to
   /// `null` on success, or the reason it was refused — returned rather than
   /// put in `state.error` so the link dialog can show it inline; nothing is
   /// persisted on a refusal.
@@ -191,7 +193,14 @@ class ProjectsViewModel extends Notifier<ProjectsState> {
     try {
       // Flush first so the first mirror already holds the pending edit.
       if (state.activeId == id) await _autosave.flush();
-      await _repository.link(id, path);
+      final adopted = await _repository.link(id, path);
+      // The file already held a scene and now *is* this project's scene, so
+      // an open project must show it — via `loadScene`, like any switch.
+      if (adopted != null && state.activeId == id) {
+        await _autosave.unbind();
+        _replaceCanvas(adopted.elements, droppedOnLoad: adopted.droppedCount);
+        _autosave.bind(id);
+      }
       _set(state.copyWith(clearError: true));
       await refresh();
       return null;

@@ -31,7 +31,8 @@ class ProjectRepository {
   Future<FlowProject> rename(String id, String name) async =>
       throw _unsupported;
 
-  Future<FlowProject> link(String id, String path) async => throw _unsupported;
+  Future<FlowProjectScene?> link(String id, String path) async =>
+      throw _unsupported;
 
   Future<FlowProject> unlink(String id) async => throw _unsupported;
 
