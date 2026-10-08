@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:flutter/widgets.dart';
 
 import 'package:flowcraft/core/canvas/grid_painter.dart';
+import 'package:flowcraft/core/canvas/tool_cursor.dart';
 import 'package:flowcraft/core/canvas/viewport_transform.dart';
 import 'package:flowcraft/core/theme/app_colors.dart';
 import 'package:flowcraft/core/theme/app_spacing.dart';
@@ -251,55 +252,58 @@ class _WhiteboardCanvasState extends State<WhiteboardCanvas> {
     // `CanvasShortcuts`, which needs *something* inside it to hold focus so
     // key events walk up through it. Autofocus is what makes the keyboard
     // work on a freshly-opened window with nothing clicked yet.
-    return Focus(
-      focusNode: _focusNode,
-      autofocus: true,
-      child: GestureDetector(
-        onTap: () {
-          if (_sketchEditing()) return;
-          _focusNode.requestFocus();
-        },
-        behavior: HitTestBehavior.translucent,
-        child: Container(
-          color: widget.backgroundColor,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: _sketchConsuming,
-            builder: (context, consuming, child) {
-              return Listener(
-                onPointerSignal: _onPointerSignal,
-                child: consuming
-                    ? child!
-                    : GestureDetector(
-                        onScaleStart: _onScaleStart,
-                        onScaleUpdate: _onScaleUpdate,
-                        onScaleEnd: _onScaleEnd,
-                        behavior: HitTestBehavior.translucent,
-                        child: child!,
+    return ToolCursorLayer(
+      controller: widget.sketchController,
+      child: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        child: GestureDetector(
+          onTap: () {
+            if (_sketchEditing()) return;
+            _focusNode.requestFocus();
+          },
+          behavior: HitTestBehavior.translucent,
+          child: Container(
+            color: widget.backgroundColor,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _sketchConsuming,
+              builder: (context, consuming, child) {
+                return Listener(
+                  onPointerSignal: _onPointerSignal,
+                  child: consuming
+                      ? child!
+                      : GestureDetector(
+                          onScaleStart: _onScaleStart,
+                          onScaleUpdate: _onScaleUpdate,
+                          onScaleEnd: _onScaleEnd,
+                          behavior: HitTestBehavior.translucent,
+                          child: child!,
+                        ),
+                );
+              },
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  RepaintBoundary(
+                    child: CustomPaint(
+                      painter: GridPainter(
+                        viewport: _viewport,
+                        gridType: widget.gridType,
+                        gridColor: widget.gridColor,
+                        gridOpacity: widget.gridOpacity,
+                        gridSpacing: widget.gridSpacing,
                       ),
-              );
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                RepaintBoundary(
-                  child: CustomPaint(
-                    painter: GridPainter(
-                      viewport: _viewport,
-                      gridType: widget.gridType,
-                      gridColor: widget.gridColor,
-                      gridOpacity: widget.gridOpacity,
-                      gridSpacing: widget.gridSpacing,
                     ),
                   ),
-                ),
-                SketchLayer(
-                  controller: widget.sketchController,
-                  viewportProvider: () => _viewport,
-                  animateReveal: widget.animateReveal,
-                  selectionColor: Theme.of(context).colorScheme.primary,
-                  marqueeColor: Theme.of(context).colorScheme.primary,
-                ),
-              ],
+                  SketchLayer(
+                    controller: widget.sketchController,
+                    viewportProvider: () => _viewport,
+                    animateReveal: widget.animateReveal,
+                    selectionColor: Theme.of(context).colorScheme.primary,
+                    marqueeColor: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
