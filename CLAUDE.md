@@ -98,6 +98,9 @@ text edit along with it.
 
 ## Gotchas — read before touching these areas
 
+- **Popovers position via `OverlayPortal.overlayChildLayoutBuilder`; never wrap popover content in
+  a `CompositedTransformFollower`.** Tooltips (and `MenuAnchor`) inside a follower assert during
+  layout ("paint transform cannot be reliably computed because of RenderFollowerLayer(s)").
 - **Zero Flutter plugins, and that is load-bearing.** It is what the macOS CocoaPods gotcha
   below is about. It is also why export writes to `~/Documents/FlowCraft/` instead of showing
   a native save dialog, and why `services/` uses `_io`/`_stub` conditional-import pairs

@@ -32,6 +32,10 @@ decision, live in [`CHANGESLOGS/`](CHANGESLOGS/).
 
 ### Added
 
+- **Tool cursors.** Pen and eraser draw their toolbar glyph (with a contrast halo) as the cursor;
+  the other tools get a system cursor (arrow, grab, text, crosshair).
+- **Colour picker for stroke and fill.** A colour chip beside each Stroke/Fill hex field opens an
+  HSV picker beside the inspector; a drag is one undo step.
 - **Read/edit MCP surface.** Three new tools join `flowcraft_draw`, so an AI
   agent can correct a diagram instead of clearing it and starting over:
   `flowcraft_read` returns every element on the canvas with its `id`, `type`,
@@ -97,6 +101,11 @@ decision, live in [`CHANGESLOGS/`](CHANGESLOGS/).
   wins on load. Linking to an existing scene file adopts it and never
   overwrites it. Available from the project sidebar and as `flowcraft_project`
   `link` / `unlink`.
+
+### Fixed
+
+- Tooltips inside popovers (for example a project's **…** button) no longer throw a layout
+  assertion.
 
 ### Changed
 
