@@ -12,23 +12,33 @@ lib/
 ├── main.dart          Entry point — wraps app in ProviderScope
 ├── app.dart            MaterialApp host, reads ThemeViewModel
 ├── flowcraft.dart       Barrel export of the public API
-├── models/              Immutable data (SketchElement, SketchStyle, SketchTool, FlowViewport)
+├── models/              Immutable data (SketchElement, SketchStyle, SketchTool, FlowViewport, FlowProject, icon catalog)
 ├── viewmodels/           App state + Riverpod providers
 │   ├── sketch_controller.dart   Canvas state (ChangeNotifier) + sketchControllerProvider
 │   ├── sketch_history.dart
 │   ├── theme_view_model.dart    Dark/light toggle
 │   ├── projects_view_model.dart Saved-project library + which one the canvas is editing
 │   ├── project_autosave.dart    Debounced write-behind for the active project
+│   ├── scene_importer.dart      JSON / Excalidraw / Mermaid / DBML text → canvas
+│   ├── canvas_preferences.dart  View-only switches (animate agent drawing)
 │   └── mcp_view_model.dart      MCP control-server on/off, owns AppControlServer lifecycle
 ├── views/                Screens + presentation widgets (splash_view.dart,
 │                          whiteboard_view.dart + widgets/)
 ├── services/              External I/O boundary — the MCP server, storage, JSON→element parsing
 │   ├── flowcraft_control_server.dart  Loopback HTTP router (dart:io), owns auth + token
 │   ├── mcp_http_handler.dart          MCP over Streamable HTTP: JSON-RPC on POST /mcp
-│   ├── mcp_tools.dart                 The three tools, as plain data + handlers
+│   ├── mcp_tools.dart                 The thirteen tools, as plain data + handlers
+│   ├── mcp_guide.dart                 Text behind flowcraft_guide
+│   ├── mcp_checkpoints.dart           In-memory canvas snapshots, per project
+│   ├── mcp_host.dart                  Project operations the tools may call
 │   ├── project_repository.dart        Saved projects in ~/.flowcraft/projects (io/stub split)
 │   ├── canvas_exporter.dart           Scene → PNG bytes / export file (io/stub split)
-│   └── diagram_spec.dart              JSON → SketchElement
+│   ├── svg_exporter.dart              Scene → SVG
+│   ├── export_file_sink.dart          Checked write-to-path for exports (io/stub split)
+│   ├── image_source.dart              Image path / data URL → bytes (io/stub split)
+│   ├── diagram_spec.dart              JSON → SketchElement
+│   ├── diagram_layout.dart            Nodes + edges → laid-out elements
+│   └── text_import/                   Mermaid, DBML, Excalidraw parsers
 └── core/                  Framework-agnostic infra: canvas, domain, rendering, interactions,
                             serialization, utils
 ```

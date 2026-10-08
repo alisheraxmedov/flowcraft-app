@@ -21,6 +21,73 @@ decision, live in [`CHANGESLOGS/`](CHANGESLOGS/).
   untouched; and `flowcraft_delete` removes specific elements by `id`. Reading
   and editing use the same field names as drawing, and an element's type
   cannot be changed through an update — delete it and draw a new one instead.
+- **Automatic layout.** A new `flowcraft_diagram` MCP tool takes nodes and
+  edges, with no coordinates, and lays the graph out itself: ranked, ordered
+  to limit crossings and evenly spaced, in any of four directions, with
+  optional frames and elbow connectors. Arrows come back bound to their boxes.
+- **Arrows stay attached.** An arrow drawn or dragged onto a rectangle,
+  ellipse, diamond, triangle or sticky note binds to it and re-anchors on its
+  outline when the shape moves, resizes or rotates. Hold Cmd/Ctrl to leave an
+  end unattached; over MCP use `fromId` / `toId`. Straight arrows do not route
+  around obstacles. Older scenes load unchanged.
+- **Zoom to fit** (Shift+1, or Edit › Zoom to fit), and the view re-frames
+  onto what an agent has just drawn when it landed off-screen.
+- **Align and distribute.** Align edges or centres of a multi-selection and
+  distribute three or more items evenly, from the Edit menu or the keyboard
+  (Cmd/Ctrl+Shift+arrows, Alt+H, Alt+V, Alt+Shift+H, Alt+Shift+V).
+- **See and verify over MCP.** `flowcraft_screenshot` returns a PNG of the
+  canvas or of a selection, so an agent can check its own drawing, and
+  `flowcraft_guide` hands it the drawing conventions in one call.
+- **Checkpoints.** A snapshot of the canvas is taken before every MCP tool that
+  changes it (the last 20, in memory); `flowcraft_checkpoint` lists, creates
+  and restores them, and a restore is one undo step.
+- **Export from MCP.** `flowcraft_export` produces PNG, SVG or JSON, inline or
+  written to a checked absolute path (matching extension, existing folder,
+  `overwrite: true` to replace, `~/.flowcraft` off limits).
+- **Projects over MCP.** `flowcraft_project` lists, opens, creates, renames,
+  links and unlinks saved whiteboards.
+- **Import Mermaid, DBML and Excalidraw.** The `flowcraft_import` tool and the
+  paste dialog take Mermaid flowcharts and `erDiagram`, DBML, Excalidraw scenes
+  (import only) and FlowCraft JSON, detected from the text. Mermaid and DBML
+  are laid out automatically, subgraphs become frames, and a syntax error is
+  reported with its line number without touching the canvas.
+- **Filtered, paginated `flowcraft_read`.** Narrow by `ids`, `types`, `frame`
+  or `region`; page with `limit` and `offset`.
+- **Live draw animation.** Agent drawings draw themselves on; a switch on the
+  System card turns it off. Undo, autosave and export are unaffected.
+- **Frames** (F). Named containers drawn behind what they wrap; dragging a frame
+  moves what is inside it.
+- **Elbow arrows.** A per-arrow switch (and `elbow` over MCP) routes arrows
+  with right-angle bends.
+- **Icon library** (I). 24 built-in glyphs placed from the tool rail or by name
+  over MCP.
+- **Images.** Edit › Insert image from file… (Cmd/Ctrl+Shift+I) and MCP `image`
+  elements embed PNG, JPEG, WebP and GIF files, up to 4 MiB each and 16 MiB per
+  scene. There is no paste or drag-and-drop: the app has no plugins, and
+  Flutter's clipboard is text-only.
+- **ER diagrams.** Entity tables with typed attribute rows and PK/FK tags,
+  crow's-foot cardinality ends, and relationship edges that attach to a
+  specific row.
+- **SVG export** from the Export menu and over MCP. Hand-drawn strokes are
+  kept; text references Inter and JetBrains Mono by name, and icons are
+  embedded as raster images.
+- **Richer text.** Sans (Inter) or mono (JetBrains Mono), bold, and
+  left/centre/right alignment for free text.
+- **Link a board to a file in a repo.** Link a project to a `.flowcraft` or
+  `.json` file: every save mirrors the scene there, and a newer linked file
+  wins on load. Linking to an existing scene file adopts it and never
+  overwrites it. Available from the project sidebar and as `flowcraft_project`
+  `link` / `unlink`.
+
+### Changed
+
+- **MCP surface.** Tool handlers are asynchronous. Tools can reply with image
+  content blocks (`flowcraft_screenshot`, and PNG exports returned inline).
+  `flowcraft_draw` now lists the ids of the elements it created. `flowcraft_read`
+  is paginated (500 elements per page by default, `nextOffset` when more
+  remain) and omits image bytes unless `includeImageData` is true. The server
+  now exposes thirteen tools, up from six.
+- The paste dialog now reads Excalidraw, Mermaid and DBML as well as JSON.
 
 ## [1.0.0] - 2026-08-22
 

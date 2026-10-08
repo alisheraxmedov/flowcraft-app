@@ -14,7 +14,7 @@ FlowCraft is a free, open-source **whiteboard and diagramming desktop app** for 
 
 The MCP server is part of the app: there is no second binary to install, no account to create, and no cloud service in the loop. It binds to `127.0.0.1` only, authenticates every request with a token stored on your machine, and works with the network switched off. Your code and your diagrams stay local.
 
-FlowCraft is also a perfectly ordinary whiteboard. If you never connect an AI agent, it is still an offline sketching app with saved projects, autosave, undo/redo and PNG/JSON export.
+FlowCraft is also a perfectly ordinary whiteboard. If you never connect an AI agent, it is still an offline sketching app with saved projects, autosave, undo/redo and PNG/SVG/JSON export.
 
 ---
 
@@ -180,27 +180,77 @@ FlowCraft actually exposes today:
 > On FlowCraft, sketch a three-column board with sticky notes for this week's tasks — one column
 > per status, a text heading above each column.
 
-**Getting better results.** FlowCraft does not lay diagrams out for you yet — the agent chooses the
-coordinates itself, and models are famously bad at spatial packing. Two things that help:
+**Let FlowCraft do the layout.** For anything that is boxes and arrows, ask for `flowcraft_diagram`:
+the agent sends nodes and edges, no coordinates, and FlowCraft ranks, orders and spaces them and
+binds each arrow to its boxes.
 
-- Give it a budget in the prompt: *"use 260×120 boxes with at least 80px of space between them."*
-- If the result overlaps, say *"redraw it with `mode: replace` and more vertical spacing"* rather
-  than asking for nudges. Automatic layout is the top item on the [roadmap](#roadmap).
+```json
+{
+  "direction": "LR",
+  "nodes": [
+    { "id": "app", "label": "App" },
+    { "id": "mcp", "label": "MCP server" },
+    { "id": "db", "label": "Projects", "shape": "ellipse" }
+  ],
+  "edges": [ { "from": "app", "to": "mcp" }, { "from": "mcp", "to": "db" } ],
+  "frames": [ { "name": "Backend", "members": ["mcp", "db"] } ]
+}
+```
+
+Or hand it text you already have. `flowcraft_import` takes Mermaid, DBML or an Excalidraw scene and
+lays it out the same way:
+
+```json
+{ "text": "flowchart LR\n  a[Client] --> b{Auth?}\n  b --> c((DB))\n  subgraph Backend\n    b\n    c\n  end" }
+```
+
+**Getting better results.** Use `flowcraft_diagram` or `flowcraft_import` for graphs and
+`flowcraft_draw` only when you need exact coordinates. With `flowcraft_draw` the agent chooses the
+coordinates itself, and models are famously bad at spatial packing, so give it a budget: *"use
+260×120 boxes with at least 80px of space between them."* Ask it to call `flowcraft_screenshot`
+after drawing to look at its own work, and to fix single elements with `flowcraft_update` rather
+than clearing and redrawing. `flowcraft_guide` hands the agent the house conventions in one call.
+The view scrolls to whatever the agent just drew, and the strokes animate in (the **System** card
+has an *Animate agent drawing* switch).
 
 ---
 
 ## MCP tool reference
 
-FlowCraft exposes six tools:
+FlowCraft exposes thirteen tools:
 
 | Tool | Arguments | What it does |
 | --- | --- | --- |
 | `flowcraft_status` | none | Confirms the app is running and reachable, and reports how many elements are on the canvas. |
-| `flowcraft_read` | none | Returns every element on the canvas with its `id`, `type`, geometry, text and colours — the same field names `flowcraft_draw` accepts. Call it before editing so `flowcraft_update`/`flowcraft_delete` can target elements by `id`. |
-| `flowcraft_draw` | `{ mode?: "add" \| "replace", elements: [...] }` | Draws elements. `add` (the default) appends; `replace` clears the canvas first. Any unrecognised mode is treated as `add`, so a typo can never wipe your work. |
+| `flowcraft_read` | `{ ids?, types?, frame?, region?, limit?, offset?, includeImageData? }` | Returns elements with their `id`, `type`, geometry, text and colours — the same field names `flowcraft_draw` accepts. Filter by `ids`, `types`, a `frame` (id or name, returns the frame and what is inside it) or a `region` `{x, y, width, height}`. Paged: `limit` 1–2000 (default 500) and `offset`; the reply carries `count`, `total`, `offset`, `limit` and, when more remain, `nextOffset`. Image bytes are left out (only their size is reported) unless `includeImageData` is true. Call it before editing so `flowcraft_update`/`flowcraft_delete` can target elements by `id`. |
+| `flowcraft_draw` | `{ mode?: "add" \| "replace", elements: [...] }` | Draws elements at explicit coordinates. `add` (the default) appends; `replace` clears the canvas first. Any unrecognised mode is treated as `add`, so a typo can never wipe your work. The reply lists the new element ids, in order. |
+| `flowcraft_diagram` | `{ nodes, edges?, frames?, direction?, connectors?, mode? }` | Lays out a graph for you. See below. |
+| `flowcraft_import` | `{ text, format?, mode?, direction?, connectors? }` | Imports Mermaid, DBML, an Excalidraw scene or a FlowCraft JSON scene. See below. |
 | `flowcraft_update` | `{ elements: [{ id, ...fields }] }` | Edits existing elements in place, each addressed by its `id`. Only the fields you include change; everything else, and every other element, is left untouched. An element's `type` cannot be changed this way. |
 | `flowcraft_delete` | `{ ids: [string] }` | Removes specific elements by `id`, leaving the rest in place. |
 | `flowcraft_clear` | none | Removes every element from the canvas. |
+| `flowcraft_screenshot` | `{ ids?, types?, frame?, region?, maxSide? }` | Returns a PNG image of the canvas, or of just the matching elements, so the agent can check its own drawing. `maxSide` is the longest side in pixels (64–8192, default 1568). Fails when nothing matches. |
+| `flowcraft_export` | `{ format, path?, ids?, types?, frame?, region?, overwrite?, pixelRatio?, background? }` | Exports the canvas, or a selection, as `png`, `svg` or `json`. Without `path` the result comes back inline (PNG as an image, SVG/JSON as text). With `path` it is written to disk: an absolute path (or `~/…`) whose extension matches the format, in an existing folder. An existing file needs `overwrite: true`, and `~/.flowcraft` is off limits. `pixelRatio` is 0.25–4 (default 2, PNG only). |
+| `flowcraft_guide` | `{ topic?: "all" \| "tools" \| "vocabulary" \| "layout" \| "style" \| "examples" }` | Returns the drawing guide: every tool, the element vocabulary, layout and colour conventions, and examples. |
+| `flowcraft_checkpoint` | `{ action: "list" \| "create" \| "restore", id?, label? }` | Canvas snapshots. One is taken automatically before every tool that changes the canvas; the last 20 are kept, in memory only (they are gone when the app quits). `restore` brings a scene back as a single undo step in the app, and only in the project the checkpoint was taken in. |
+| `flowcraft_project` | `{ action, id?, name?, path? }` | Manages saved whiteboards: `list`, `current`, `open` (by `id` or unique `name`), `create` (with a `name`), `rename`, and `link` / `unlink` (see [Projects](#projects-autosave-and-export)). Switching saves the outgoing project first. |
+
+Every tool that changes the canvas is one undo step in the app, however many elements it touched.
+
+**`flowcraft_diagram`** takes `nodes` (`id`, optional `label`, `shape` of `rectangle`, `ellipse`,
+`diamond` or `triangle`, `fillColor`, `strokeColor`, and `attributes` to make the node an ER table),
+`edges` (`from`, `to`, optional `strokeColor`, and the ER fields `fromCardinality`, `toCardinality`,
+`fromAttribute`, `toAttribute`), `frames` (`name` and the `members` node ids it wraps), `direction`
+(`TB` default, `LR`, `BT`, `RL`), `connectors` (`straight` default, or `elbow`) and `mode` (`add`
+places the graph to the right of existing content, `replace` clears first). Edges have no labels.
+Arrows are bound to their boxes, so they follow when a box is moved. The reply maps your node ids
+to element ids, and lists the edge and frame ids, `count` and `bounds`.
+
+**`flowcraft_import`** takes `text` and a `format` of `auto` (the default, detected from the text),
+`mermaid`, `dbml`, `excalidraw` or `json`. Mermaid and DBML are laid out like `flowcraft_diagram`
+(`direction` and `connectors` override the defaults); `mode` is `add` or `replace`. A syntax error is
+reported with its line number and leaves the canvas untouched. The reply gives the new ids and how
+many source elements were dropped as unsupported.
 
 Each entry in a `flowcraft_draw` `elements` array is an object with a required `type` and the
 fields that type uses; a `flowcraft_update` entry uses the same fields but is keyed by `id` instead
@@ -208,12 +258,27 @@ of `type`:
 
 | `type` | Fields |
 | --- | --- |
-| `rectangle`, `ellipse`, `diamond`, `triangle`, `sticky` | `x`, `y`, `width`, `height`, `text`, `fontSize`, `strokeColor`, `fillColor` |
-| `text` | `x`, `y`, `text` (required), `fontSize`, `strokeColor` |
-| `arrow`, `line` | `fromX`, `fromY`, `toX`, `toY`, `strokeColor` |
+| `rectangle`, `ellipse`, `diamond`, `triangle`, `sticky` | `x`, `y`, `width`, `height`, `text`, `fontSize`, `fontFamily`, `bold`, `strokeColor`, `fillColor` |
+| `text` | `x`, `y`, `text` (required), `fontSize`, `fontFamily`, `bold`, `align`, `strokeColor` |
+| `arrow`, `line` | `fromX`, `fromY`, `toX`, `toY`, `strokeColor`; arrows also `fromId`, `toId`, `elbow`, `startHead`, `endHead`, `fromAttribute`, `toAttribute` |
+| `frame` | `x`, `y`, `width`, `height`, `name` |
+| `icon` | `x`, `y`, `width`, `height`, `name` — one of `database`, `server`, `cloud`, `user`, `queue`, `lock`, `api`, `storage`, `cache`, `function`, `web`, `mobile`, `mail`, `schedule`, `warning`, `key`, `file`, `folder`, `globe`, `gear`, `bug`, `chart`, `robot`, `terminal` |
+| `image` | `x`, `y`, `path` (absolute or `~/…`, `.png` `.jpg` `.jpeg` `.webp` `.gif`) or `dataUrl`, optional `width`/`height`; at most 4 MiB |
+| `entity` | `x`, `y`, `width`, `name`, `attributes: [{ name, type, pk, fk }]` — height follows the rows |
 
-Coordinates are canvas-space pixels. Colours are hex strings such as `"#1E1E1E"` (3-byte `RRGGBB`
-is expanded to opaque). Bounded shapes default to 160×80 when no size is given. Arrows and lines
+`fromId`/`toId` attach an arrow end to an existing rectangle, ellipse, diamond, triangle or sticky
+(ids come from `flowcraft_read`, a `flowcraft_draw` reply or the `flowcraft_diagram` key map): the
+tip snaps to the outline and follows the shape when it moves; `""` detaches. They override
+`fromX`/`fromY`/`toX`/`toY` for that end. Shapes created in the same `flowcraft_draw` call cannot be
+referenced — use `flowcraft_diagram` for that. `startHead`/`endHead` are `none`, `arrow`, `one`,
+`many`, `zeroOrOne`, `zeroOrMany` or `oneOrMany` (crow's-foot ends); with `fromAttribute` or
+`toAttribute` naming an entity row, the arrow end attaches to that row. `fontFamily` is `sans`
+(Inter, the default) or `mono` (JetBrains Mono); `align` is `left`, `center` or `right` and applies
+to `text` elements only (shape labels stay centred). Entities, icons and frames are listed by
+`flowcraft_read` with the same fields.
+
+Coordinates are canvas-space pixels. Colours are hex strings such as `"#1E1E1E"` (`RRGGBB` is
+expanded to opaque, `AARRGGBB` is accepted too). Bounded shapes default to 160×80 when no size is given. Arrows and lines
 carry no label of their own — place a separate `text` element beside one if you need a caption.
 
 The endpoint supports MCP protocol revisions `2025-06-18`, `2025-03-26` and `2024-11-05`, accepts
@@ -234,9 +299,25 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
 **Tools**
 
 - Select, hand (pan), rectangle, ellipse, diamond, triangle, sticky note, line, arrow, freehand,
-  text, eraser.
+  text, frame, icon, eraser.
+- **Frames** (`F`): a named container drawn behind what it wraps. Membership is containment —
+  whatever lies wholly inside a frame belongs to it, and dragging the frame moves its contents.
+- **Icon library** (`I`): 24 built-in glyphs (database, server, cloud, user, queue, …) chosen from
+  a grid on the tool rail.
+- **Images**: **Edit › Insert image from file…** (`Cmd`+`Shift`+`I`) embeds a PNG, JPEG, WebP or GIF
+  by path, up to 4 MiB each and 16 MiB per scene. See the [FAQ](#faq) for why there is no
+  paste or drag-and-drop.
+- **ER diagrams**: entity tables with typed attribute rows and PK/FK tags, crow's-foot
+  cardinality ends (one, many, zero-or-one, zero-or-many, one-or-many), and relationship arrows
+  that attach to a specific row.
+- **Elbow arrows**: a per-arrow switch that routes with right-angle bends.
 - Text as a centred label inside any shape or sticky note, or as free-floating text, edited inline
-  on the canvas.
+  on the canvas. Sans (Inter) or mono (JetBrains Mono), bold, and left/centre/right alignment for
+  free text.
+- **Arrows that stay attached.** An arrow drawn or dragged onto a rectangle, ellipse, diamond,
+  triangle or sticky note binds to it; move or resize the shape and the arrow re-anchors on its
+  outline. Straight arrows only re-anchor — they do not route around obstacles. Hold `Cmd`/`Ctrl`
+  while drawing or dropping an endpoint to leave it unattached.
 
 **Styling**
 
@@ -255,14 +336,29 @@ SSE stream), and accepts the token either as an `X-Flowcraft-Token` header or as
   windows. Z-order: bring forward, send backward, bring to front, send to back.
 - Snapping to the grid and to other elements' edges and centres, with a guide line showing why, and
   `Alt` to place something freely.
+- **Zoom to fit** (`Shift`+`1`, or **Edit › Zoom to fit**), and the view re-frames onto whatever an
+  agent has just drawn if it landed off-screen.
+- **Align and distribute** a multi-selection from the **Edit** menu or the keyboard: align edges
+  or centres, and space three or more items evenly.
 - Snapshot-based undo/redo, 50 steps deep by default. One continuous drag is one undo entry.
 - Light and dark themes.
 
 **Files**
 
 - Saved projects with autosave (see [below](#projects-autosave-and-export)).
-- Export to PNG or JSON, copy the JSON to the clipboard, and import a scene back from a file or
-  pasted JSON.
+- Export to PNG, SVG or JSON, copy the JSON to the clipboard, and import a scene back from a file or
+  from pasted JSON, Excalidraw, Mermaid or DBML.
+- **Link a board to a file in your repo** (a `.flowcraft` or `.json` file), so the diagram is
+  versioned with the code that it describes.
+
+**For agents**
+
+- **Automatic layout** (`flowcraft_diagram`): send nodes and edges, not coordinates.
+- **Import Mermaid** (flowchart and `erDiagram`), **DBML** and **Excalidraw** scenes.
+- **See and verify**: `flowcraft_screenshot` returns a PNG of the canvas, and `flowcraft_export`
+  writes PNG, SVG or JSON inline or to a path.
+- **Checkpoints** before every canvas-changing tool call, restorable as one undo step.
+- **Live draw animation**: agent drawings draw themselves on, with a switch on the System card.
 
 **Under the hood**
 
@@ -289,12 +385,14 @@ from the live bindings so it cannot drift.
 | `O` | Ellipse | `T` | Text |
 | `D` | Diamond | `E` | Eraser |
 | `G` | Triangle | `N` | Sticky note |
+| `F` | Frame | `I` | Icon |
 
 **Edit, history and arrange:**
 
 | Shortcut | Action |
 | --- | --- |
 | `Cmd`+`C` / `Cmd`+`X` / `Cmd`+`V` | Copy / cut / paste — via the system clipboard, so it works between two FlowCraft windows |
+| `Cmd`+`Shift`+`I` | Insert image from file… |
 | `Cmd`+`D` | Duplicate the selection |
 | `Cmd`+`A` | Select all |
 | `Delete` / `Backspace` | Delete the selection |
@@ -303,6 +401,10 @@ from the live bindings so it cannot drift.
 | `Cmd`+`]` / `Cmd`+`[` | Bring forward / send backward |
 | `Cmd`+`Shift`+`]` / `Cmd`+`Shift`+`[` | Bring to front / send to back |
 | `Cmd`+`G` / `Cmd`+`Shift`+`G` | Group / ungroup |
+| `Cmd`+`Shift`+`←` / `→` / `↑` / `↓` | Align left / right / top / bottom |
+| `Alt`+`H` / `Alt`+`V` | Center horizontally / vertically |
+| `Alt`+`Shift`+`H` / `Alt`+`Shift`+`V` | Distribute horizontally / vertically (three or more items) |
+| `Shift`+`1` | Zoom to fit |
 | Arrow keys | Nudge the selection 1px (`Shift` for 10px) |
 | `?` | Shortcut reference |
 
@@ -312,7 +414,8 @@ its command.
 **On the canvas:** `Shift`-click adds to or removes from the selection, and `Shift`-drag extends a
 marquee instead of replacing it. Clicking any member of a group selects the whole group. Moves,
 resizes and endpoint drags snap to the grid and to other elements' edges and centres, with a guide
-line showing why — hold `Alt` to place something freely.
+line showing why — hold `Alt` to place something freely. Hold `Cmd`/`Ctrl` while drawing an arrow
+or dropping one of its endpoints to leave that end unattached to any shape.
 
 ---
 
@@ -329,11 +432,12 @@ rename). The `index.json` beside them is only a cache that makes the sidebar fas
 corrupt it is rebuilt by scanning the scene files themselves, so a bad index can never cost you a
 whiteboard.
 
-The **Export** button offers three destinations:
+The **Export** button offers four destinations:
 
 | Choice | Result |
 | --- | --- |
 | PNG | The whole scene — not just the visible viewport — at 2×, with a padded margin, capped at 8192px on the longest side. |
+| SVG | The whole scene as a vector file that keeps the hand-drawn strokes (they are sampled from the very paths the canvas draws). Text references the Inter and JetBrains Mono typefaces by name, so a machine without them substitutes another font; icons are embedded as raster images. |
 | JSON | The versioned `SketchSerializer` format: re-importable and diff-able. |
 | Clipboard | The same JSON, straight to the clipboard. |
 
@@ -344,9 +448,19 @@ that.
 
 The same menu **imports** a scene back: pick one of your exports from a list of
 `~/Documents/FlowCraft/`, or type a path to a `.flowcraft.json` someone sent you, or paste the JSON
-directly. Either add it to the current canvas or replace the canvas with it. Loading is tolerant —
+directly — JSON, an Excalidraw scene, Mermaid (flowchart and `erDiagram`) or DBML, detected from the
+text. Either add it to the current canvas or replace the canvas with it. Loading is tolerant —
 an element FlowCraft cannot read is skipped rather than failing the whole file, and you are told how
 many were dropped instead of finding out later.
+
+**Linking a board to a file.** A project's menu in the sidebar has **Link to file…**: type an
+absolute path ending in `.flowcraft` or `.json`, for example inside a repository. From then on every
+save also writes the same scene to that file, so it can be committed. When the file is newer than
+the project (you pulled, or edited it elsewhere), the file wins the next time the project loads.
+If the path already holds a FlowCraft scene, FlowCraft **adopts** it — your board is replaced by
+the file's contents and the file is never overwritten; any other existing file is refused. **Unlink
+file** stops the mirroring and leaves the file where it is. An agent can do the same with
+`flowcraft_project` actions `link` and `unlink`.
 
 That tolerance extends to your saved projects, with a guard attached: if a project file loads with
 elements missing, a banner says so and **autosave stops**, so the reduced scene can never overwrite
@@ -416,9 +530,10 @@ CLI — and FlowCraft is an ordinary offline whiteboard.
 
 ### Can I export diagrams as PNG or SVG?
 
-PNG and JSON today; SVG is on the [roadmap](#roadmap). PNG exports the entire scene rather than the
-visible viewport, so nothing off-screen is silently cropped. JSON goes back in again — the same menu
-imports a scene from a file or from pasted text.
+Yes, both, plus JSON. PNG and SVG export the entire scene rather than the visible viewport, so
+nothing off-screen is silently cropped. SVG keeps the hand-drawn strokes; its text names the Inter
+and JetBrains Mono fonts rather than embedding them, and icons are embedded as raster images. JSON
+goes back in again — the same menu imports a scene from a file or from pasted text.
 
 ### Does FlowCraft collect telemetry or analytics?
 
@@ -433,23 +548,46 @@ says so and offers a Retry instead of showing a green light over a dead endpoint
 
 ### Can FlowCraft draw ER diagrams or database schemas?
 
-Not as a first-class feature yet. An agent can draw an approximate ER diagram today using
-rectangles, text and arrows, but there are no entity boxes with typed attribute rows, no
-primary/foreign-key markers and no crow's-foot cardinality. Proper ER support is on the
-[roadmap](#roadmap).
+Yes. An entity is a table with typed attribute rows and PK/FK tags, relationships are arrows with
+crow's-foot ends that attach to a specific row, and `flowcraft_diagram` or `flowcraft_import` will lay
+a whole schema out for you. You can also build them by hand from the properties panel, which takes
+one `name type [PK] [FK]` row per line.
 
-### Can FlowCraft import Mermaid, DBML or PlantUML?
+### Can FlowCraft import Mermaid or DBML?
 
-Not yet. Today the MCP interface takes explicit shapes and coordinates. Text-format import is on the
-[roadmap](#roadmap).
+Yes, Mermaid and DBML, plus Excalidraw scenes, through the **Export** menu's paste dialog or the
+`flowcraft_import` tool. Supported:
+
+- **Mermaid flowcharts** (`graph` / `flowchart`, directions `TB`, `TD`, `LR`, `BT`, `RL`): the node
+  shapes `[ ]`, `( )`, `([ ])`, `(( ))`, `{ }` and `>]`; links such as `-->`, `---`, `-.->`, `==>`
+  and `--x`, chains and `&`; `subgraph … end` becomes a frame. Link labels are dropped, and
+  `classDef`, `style`, `click` and `linkStyle` lines are ignored.
+- **Mermaid `erDiagram`**: relationships with their cardinalities, and entity blocks with typed,
+  PK/FK-tagged attributes.
+- **DBML**: `Table` blocks with columns, `pk` and `ref:` settings, and top-level `Ref:` lines.
+  `Enum`, `TableGroup` and `Project` are skipped.
+- **Excalidraw** (import only): rectangles, ellipses, diamonds, arrows, lines, text and freehand
+  strokes, including arrows bound to shapes. Anything else is dropped, and you are told how many.
+
+Mermaid sequence, state and class diagrams, and PlantUML, are not supported yet. A syntax error is
+reported with its line number and nothing is imported.
 
 ### If I move a shape, do the connected arrows follow?
 
-Not yet. Arrows are independent elements, so moving a box leaves its arrows where they were. Two
-things soften it in the meantime: an arrow's endpoints are draggable, so a connector is fixable
-without redrawing it, and grouping a box with its arrows makes them move together. Real
-arrow-to-shape binding is on the [roadmap](#roadmap) — the file format already reserves the fields
-for it, so scenes you save today will not be invalidated when it lands.
+Yes, since 1.1.0, for arrows that are attached. An arrow drawn from or onto a rectangle, ellipse,
+diamond, triangle or sticky note is bound to it, and re-anchors on its outline when the shape moves,
+resizes or rotates. Hold `Cmd`/`Ctrl` while drawing or dropping an endpoint to leave it unattached,
+and dragging an attached arrow's body without its shape detaches that end. Straight arrows only
+re-anchor; they do not route around other shapes. Scenes saved before 1.1.0 load unchanged — their
+arrows are simply unattached.
+
+### Can I paste or drag images in?
+
+No. FlowCraft ships with zero Flutter plugins, and Flutter's own clipboard carries text only and
+has no desktop drop target, so receiving a pasted or dropped image would need a plugin. Use **Edit ›
+Insert image from file…** (`Cmd`/`Ctrl`+`Shift`+`I`) and type the file's path, or have an agent send
+an `image` element with a `path` or `dataUrl`. Images are embedded in the scene, so keep them small:
+4 MiB each, 16 MiB per scene.
 
 ### Does FlowCraft support real-time collaboration?
 
@@ -474,10 +612,10 @@ native desktop application on your machine, reached over loopback with a token.
 | [yctimlin/mcp_excalidraw](https://github.com/yctimlin/mcp_excalidraw) (community) | Excalidraw web UI served from a local Node process on `127.0.0.1` | Yes | Yes |
 
 **Where those tools are ahead.** Be realistic about this. The mature editors have years of work
-FlowCraft does not: connectors that stay bound to shapes when you move them, distribute-and-align
-commands, large shape and icon libraries, SVG export, Mermaid import, layers, frames, collaboration,
-and — in several cases — automatic layout, so the model does not have to invent coordinates.
-draw.io and Miro also cover diagram types FlowCraft has no notion of. If you want the most capable
+FlowCraft does not: connectors that route around obstacles and carry labels, large shape and icon
+libraries, layers, collaboration, and a wider range of Mermaid diagram types. FlowCraft now has
+bound connectors, align and distribute, frames, SVG export, Mermaid and DBML import and automatic
+layout, but in a smaller form. draw.io and Miro also cover diagram types FlowCraft has no notion of. If you want the most capable
 canvas available, one of those is very likely the better answer today.
 
 **Where FlowCraft is different.** It is a real desktop app rather than a browser tab or a chat
@@ -523,30 +661,19 @@ Honest about what is not there yet. No dates — this is an ordering, not a sche
 
 **Next**
 
-- **Automatic layout.** The single biggest gap. Today the agent has to choose x/y coordinates for
-  every box, which is the thing language models are worst at; the result is overlapping shapes and
-  crossing arrows. The fix is for the app to lay out a described graph itself so the agent can send
-  semantics instead of geometry.
-- **Arrow-to-shape binding.** Connectors that stay attached and re-route when you move or resize a
-  shape — with a modifier key to suppress binding when you do not want it. The file format already
-  reserves the fields, so enabling it will not invalidate scenes you saved before it lands.
-- **Zoom-to-fit**, and re-framing the viewport onto whatever an agent just drew, so an MCP diagram
-  can never land off-screen.
-- **Align and distribute** across a multi-selection.
+- **Edge labels.** Arrows have no text slot of their own, so Mermaid link labels are dropped on
+  import and `flowcraft_diagram` edges cannot carry a caption.
+- **Obstacle-avoiding routing.** Bound arrows re-anchor but go straight, and elbow arrows bend at
+  the midpoint without looking at what is in the way.
+- **More Mermaid.** Sequence, state and class diagrams; today only flowcharts and `erDiagram`.
 
 **After that**
 
-- **ER diagrams.** Entity boxes with typed attribute rows, primary/foreign-key markers, crow's-foot
-  cardinality, and relationship edges that anchor to a specific attribute row rather than the box
-  edge.
-- **Text-format import** so an agent can send a diagram as text: Mermaid (including `erDiagram`) and
-  DBML are the formats language models produce most reliably.
-- **Richer MCP surface** — reading the canvas back (`flowcraft_read`) and editing existing elements
-  by id (`flowcraft_update`/`flowcraft_delete`) landed in this release; still to come is binding
-  arrows to shapes so a moved box drags its connectors, and reshaping freehand strokes, neither of
-  which the current draw vocabulary can express.
-- **SVG export.**
-- **Richer text styling** on canvas elements.
+- **`.excalidraw` export.** Excalidraw scenes can be imported but not written back.
+- **Persisted checkpoints.** `flowcraft_checkpoint` snapshots live in memory and vanish when the app
+  quits.
+- **Paste and drag-drop for images**, if it can be done without adding a plugin.
+- **Reshaping freehand strokes** over MCP, which the current draw vocabulary cannot express.
 
 **Packaging and distribution**
 
@@ -566,7 +693,10 @@ flowcraft/
 │   ├── flowcraft.dart                ← Barrel export of the public API
 │   │
 │   ├── models/                       ← Immutable data
-│   │   ├── sketch_element.dart          (shapes, text, freedraw)
+│   │   ├── sketch_element.dart          (shapes, text, freedraw, frames, icons,
+│   │   │                                 images, ER entities)
+│   │   ├── icon_catalog.dart            (the built-in icon names)
+│   │   ├── flow_project.dart            (saved-project metadata)
 │   │   ├── sketch_style.dart
 │   │   ├── sketch_tool.dart
 │   │   └── flow_viewport.dart
@@ -577,6 +707,8 @@ flowcraft/
 │   │   ├── theme_view_model.dart        (dark/light toggle)
 │   │   ├── projects_view_model.dart     (project library + active project)
 │   │   ├── project_autosave.dart        (debounced write-behind)
+│   │   ├── scene_importer.dart          (JSON / Excalidraw / Mermaid / DBML → canvas)
+│   │   ├── canvas_preferences.dart      (animate-agent-drawing switch)
 │   │   └── mcp_view_model.dart          (MCP control-server lifecycle)
 │   │
 │   ├── views/                        ← Screens + presentation widgets
@@ -589,14 +721,23 @@ flowcraft/
 │   │   ├── app_control.dart              (conditional import: io/web)
 │   │   ├── flowcraft_control_server.dart (loopback HTTP router)
 │   │   ├── mcp_http_handler.dart         (MCP over Streamable HTTP)
-│   │   ├── mcp_tools.dart                (the three canvas tools)
-│   │   ├── project_repository.dart       (saved projects on disk)
+│   │   ├── mcp_tools.dart                (the thirteen tools, as data + handlers)
+│   │   ├── mcp_guide.dart                (text behind flowcraft_guide)
+│   │   ├── mcp_checkpoints.dart          (in-memory snapshots, per project)
+│   │   ├── mcp_host.dart                 (project operations the tools may call)
+│   │   ├── project_repository.dart       (saved projects on disk, linked files)
 │   │   ├── canvas_exporter.dart          (scene → PNG / JSON file)
-│   │   └── diagram_spec.dart             (JSON → SketchElement)
+│   │   ├── svg_exporter.dart             (scene → SVG)
+│   │   ├── export_file_sink.dart         (checked write-to-path for exports)
+│   │   ├── image_source.dart             (image path / data URL → bytes)
+│   │   ├── diagram_spec.dart             (JSON → SketchElement)
+│   │   ├── diagram_layout.dart           (nodes + edges → laid-out elements)
+│   │   └── text_import/                  (Mermaid, DBML, Excalidraw parsers)
 │   │
 │   └── core/                         ← Framework-agnostic infrastructure
 │       ├── canvas/                      (pan/zoom host, grid painter)
-│       ├── domain/                      (geometry, hit-testing, stroke simplify)
+│       ├── domain/                      (geometry, hit-testing, arrow binding, graph
+│       │                                 layout, elbow routing, frame membership)
 │       ├── rendering/                   (rough/sketchy painters + cache)
 │       ├── interactions/                (pointer → viewmodel mutation)
 │       ├── serialization/               (versioned JSON save/load)
