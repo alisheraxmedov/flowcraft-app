@@ -1,7 +1,11 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/flowcraft.dart';
 import 'package:flowcraft/views/widgets/insert_image_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 
 SketchRectangle _rect(String id, {double x = 0}) {
@@ -10,7 +14,7 @@ SketchRectangle _rect(String id, {double x = 0}) {
 
 /// The menu only works inside the layer that supplies its `Actions`, which
 /// is exactly how it is mounted in the top bar.
-Widget _host(SketchController controller) {
+Widget _host(SketchController controller, {double top = 0}) {
   return MaterialApp(
     theme: ThemeData(platform: TargetPlatform.macOS),
     home: Scaffold(
@@ -18,7 +22,10 @@ Widget _host(SketchController controller) {
         controller: controller,
         child: Align(
           alignment: Alignment.topLeft,
-          child: EditMenuButton(controller: controller),
+          child: Padding(
+            padding: EdgeInsets.only(top: top),
+            child: EditMenuButton(controller: controller),
+          ),
         ),
       ),
     ),
@@ -44,7 +51,31 @@ Future<void> _openMenu(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openAlign(WidgetTester tester) async {
+  await tester.tap(find.text('Align & distribute'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  // The test engine measures with the Ahem box font (1em per glyph) unless
+  // the real faces are registered, which would make every label overflow a
+  // 224px row that holds it comfortably in Geist.
+  setUpAll(() async {
+    for (final (family, file) in [
+      ('Geist', 'Geist-Regular.ttf'),
+      ('Geist', 'Geist-Medium.ttf'),
+      ('Geist Mono', 'GeistMono-Regular.ttf'),
+    ]) {
+      final loader = FontLoader(family)
+        ..addFont(
+          Future.value(
+            ByteData.sublistView(File('assets/fonts/$file').readAsBytesSync()),
+          ),
+        );
+      await loader.load();
+    }
+  });
+
   testWidgets('runs the same action the keystroke does', (tester) async {
     final controller = SketchController(initialElements: [_rect('a')]);
     addTearDown(controller.dispose);
@@ -87,10 +118,12 @@ void main() {
     await tester.pumpWidget(_host(controller));
     await _openMenu(tester);
 
-    for (final header in ['EDIT', 'ARRANGE', 'CANVAS', 'HELP']) {
+    // Help's row lives under CANVAS (see EditMenuButton) so the menu fits 720px.
+    for (final header in ['EDIT', 'ARRANGE', 'CANVAS']) {
       expect(find.text(header), findsOneWidget, reason: header);
     }
     expect(find.text('HISTORY'), findsNothing);
+    expect(find.text('HELP'), findsNothing);
     final copy = find.ancestor(
       of: find.text('Copy'),
       matching: find.byType(MenuItemButton),
@@ -228,6 +261,7 @@ void main() {
 
     await tester.pumpWidget(_host(controller));
     await _openMenu(tester);
+    await _openAlign(tester);
     expect(_item(tester, 'Align left').onPressed, isNull);
     expect(_item(tester, 'Distribute horizontally').onPressed, isNull);
 
@@ -239,6 +273,77 @@ void main() {
     controller.selectMany(['a', 'b', 'c']);
     await tester.pump();
     expect(_item(tester, 'Distribute horizontally').onPressed, isNotNull);
+  });
+
+  testWidgets('Align & distribute submenu lists the 8 actions', (tester) async {
+    final controller = SketchController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_host(controller));
+    await _openMenu(tester);
+    expect(find.text('Align left'), findsNothing, reason: 'folded away');
+    await _openAlign(tester);
+
+    for (final label in [
+      'Align left',
+      'Align right',
+      'Align top',
+      'Align bottom',
+      'Center horizontally',
+      'Center vertically',
+      'Distribute horizontally',
+      'Distribute vertically',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+  });
+
+  testWidgets('edit menu fits in 1280x720 without scrolling, Clear canvas '
+      'visible', (tester) async {
+    final controller = SketchController(initialElements: [_rect('a')]);
+    addTearDown(controller.dispose);
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // The real pill sits 24px from the top (16 gutter + 1 border + 7).
+    await tester.pumpWidget(_host(controller, top: 24));
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+
+    for (final label in [
+      'Clear canvas',
+      'Keyboard shortcuts',
+      'Insert image from file…',
+    ]) {
+      final rect = tester.getRect(find.text(label));
+      expect(rect.bottom, lessThanOrEqualTo(712), reason: label);
+      expect(rect.top, greaterThanOrEqualTo(0), reason: label);
+    }
+    final panel = tester.getRect(
+      find.ancestor(
+        of: find.text('Clear canvas'),
+        matching: find.byType(SingleChildScrollView),
+      ),
+    );
+    // No scrolling: the scroll view is exactly as tall as its content.
+    final scroll = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('Clear canvas'),
+          matching: find.byType(SingleChildScrollView),
+        ),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(scroll.position.maxScrollExtent, 0, reason: 'panel $panel');
+    // ...and it did not have to slide up over the Edit pill to fit.
+    expect(panel.top, greaterThanOrEqualTo(56), reason: 'panel $panel');
+    // Label never truncates next to its hint.
+    expect(
+      tester.getSize(find.text('Insert image from file…')).width,
+      greaterThan(120),
+    );
   });
 
   testWidgets('zoom to fit is disabled on an empty canvas', (tester) async {

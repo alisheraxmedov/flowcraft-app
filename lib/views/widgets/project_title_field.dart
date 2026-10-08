@@ -135,15 +135,23 @@ class _NameButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.button),
         hoverColor: t.surface2,
         onTap: onTap,
+        // A Row, not `alignment:` — an aligned Container expands to its
+        // max width, which left a gap before the Projects icon.
         child: Container(
           height: 32,
-          alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.uiTitle.copyWith(color: t.text),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.uiTitle.copyWith(color: t.text),
+                ),
+              ),
+            ],
           ),
         ),
       ),

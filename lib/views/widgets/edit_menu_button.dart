@@ -34,7 +34,23 @@ class EditMenuButton extends StatelessWidget {
     // overlay.
     final host = context;
     final platform = Theme.of(context).platform;
-    final groups = CanvasShortcutTable.menuGroups(platform);
+    final all = CanvasShortcutTable.menuGroups(platform);
+    final menuGroups = [
+      for (final g in all)
+        if (!g.submenu) g,
+    ];
+    final submenus = [
+      for (final g in all)
+        if (g.submenu) g,
+    ];
+
+    Widget row(CanvasShortcut shortcut) => FcMenuItem(
+      label: shortcut.label,
+      hint: ShortcutLabel.of(shortcut.activator, platform),
+      onPressed: _enabled(shortcut.intent)
+          ? () => Actions.maybeInvoke(host, shortcut.intent)
+          : null,
+    );
 
     return ListenableBuilder(
       listenable: controller,
@@ -42,28 +58,30 @@ class EditMenuButton extends StatelessWidget {
         style: fcMenuStyle(context),
         alignmentOffset: const Offset(0, 6),
         menuChildren: [
-          for (final (index, group) in groups.indexed) ...[
-            // Canvas sits just before Help, as in the mockup.
-            if (group.title == 'Help') ...[
-              const FcMenuHeader('Canvas'),
+          for (final (index, group) in menuGroups.indexed) ...[
+            // Help's rows ride inside Canvas: at the mockup's row sizes the
+            // four-group layout plus the v1.1.0 rows is 679px tall and cannot
+            // clear a 720px window below the pill; a header and a rule fewer
+            // is 645px.
+            if (group.title != 'Help') ...[
+              if (index > 0) const FcMenuDivider(),
+              FcMenuHeader(group.title),
+            ],
+            for (final shortcut in group.shortcuts) row(shortcut),
+            // Align & distribute folds into one row of Arrange (the table
+            // flags it `submenu`).
+            if (group.title == 'Arrange')
+              FcSubmenu(
+                label: 'Align & distribute',
+                children: [for (final s in submenus.first.shortcuts) row(s)],
+              ),
+            if (group.title == 'Help')
               FcMenuItem(
                 label: 'Clear canvas',
                 danger: true,
                 onPressed: controller.elements.isEmpty
                     ? null
                     : () => _clearWithUndo(host),
-              ),
-              const FcMenuDivider(),
-            ] else if (index > 0)
-              const FcMenuDivider(),
-            FcMenuHeader(group.title),
-            for (final shortcut in group.shortcuts)
-              FcMenuItem(
-                label: shortcut.label,
-                hint: ShortcutLabel.of(shortcut.activator, platform),
-                onPressed: _enabled(shortcut.intent)
-                    ? () => Actions.maybeInvoke(host, shortcut.intent)
-                    : null,
               ),
           ],
         ],

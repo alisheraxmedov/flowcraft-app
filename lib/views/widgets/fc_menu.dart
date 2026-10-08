@@ -56,52 +56,7 @@ class FcMenuItem extends StatelessWidget {
     final t = context.fc;
     return MenuItemButton(
       onPressed: onPressed,
-      style: ButtonStyle(
-        // Exact mockup row height: no platform density shrink, no 48px tap pad.
-        visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: WidgetStatePropertyAll(Size(0, height)),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 12),
-        ),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.input),
-          ),
-        ),
-        backgroundColor: WidgetStateProperty.resolveWith(
-          (s) => s.contains(WidgetState.focused)
-              ? (danger ? t.danger : t.accent)
-              : s.contains(WidgetState.hovered)
-              ? t.surface2
-              : Colors.transparent,
-        ),
-        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-        foregroundColor: WidgetStateProperty.resolveWith((s) {
-          if (s.contains(WidgetState.disabled)) {
-            return t.text.withValues(alpha: 0.4);
-          }
-          if (s.contains(WidgetState.focused)) {
-            return danger ? t.onDanger : t.onAccent;
-          }
-          return danger ? t.danger : t.text;
-        }),
-        iconColor: WidgetStateProperty.resolveWith((s) {
-          if (s.contains(WidgetState.disabled)) {
-            return t.muted.withValues(alpha: 0.5);
-          }
-          return s.contains(WidgetState.focused)
-              ? (danger ? t.onDanger : t.onAccent)
-              : t.muted;
-        }),
-        textStyle: const WidgetStatePropertyAll(
-          TextStyle(
-            fontFamily: AppTypography.geistFamily,
-            fontSize: 13,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-      ),
+      style: _rowStyle(t, danger: danger, height: height),
       // 260 panel - 2x6 padding - 2x12 button padding.
       child: SizedBox(
         width: 224,
@@ -111,19 +66,110 @@ class FcMenuItem extends StatelessWidget {
               FcIconGlyph(icon!, size: 16),
               const SizedBox(width: 10),
             ],
-            Expanded(child: Text(label)),
+            // The label is laid out first at its natural width; only the
+            // hint may shrink (ellipsis) when a row is too tight. The
+            // FittedBox is a backstop that scales a label that still cannot
+            // fit instead of clipping it (real faces never reach it).
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(label, softWrap: false),
+            ),
             if (hint != null)
-              Builder(
-                builder: (context) => Text(
-                  hint!,
-                  style: AppTypography.mono12.copyWith(
-                    color: IconTheme.of(context).color,
+              Expanded(
+                child: Builder(
+                  builder: (context) => Text(
+                    hint!,
+                    textAlign: TextAlign.end,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.mono12.copyWith(
+                      color: IconTheme.of(context).color,
+                    ),
                   ),
                 ),
-              ),
+              )
+            else
+              const Spacer(),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Shared row look of [FcMenuItem] and [FcSubmenu].
+ButtonStyle _rowStyle(
+  FcTokens t, {
+  required bool danger,
+  required double height,
+}) {
+  return ButtonStyle(
+    // Exact mockup row height: no platform density shrink, no 48px tap pad.
+    visualDensity: VisualDensity.standard,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    minimumSize: WidgetStatePropertyAll(Size(0, height)),
+    padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12)),
+    shape: WidgetStatePropertyAll(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.input),
+      ),
+    ),
+    backgroundColor: WidgetStateProperty.resolveWith(
+      (s) => s.contains(WidgetState.focused)
+          ? (danger ? t.danger : t.accent)
+          : s.contains(WidgetState.hovered)
+          ? t.surface2
+          : Colors.transparent,
+    ),
+    overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+    foregroundColor: WidgetStateProperty.resolveWith((s) {
+      if (s.contains(WidgetState.disabled)) {
+        return t.text.withValues(alpha: 0.4);
+      }
+      if (s.contains(WidgetState.focused)) {
+        return danger ? t.onDanger : t.onAccent;
+      }
+      return danger ? t.danger : t.text;
+    }),
+    iconColor: WidgetStateProperty.resolveWith((s) {
+      if (s.contains(WidgetState.disabled)) {
+        return t.muted.withValues(alpha: 0.5);
+      }
+      return s.contains(WidgetState.focused)
+          ? (danger ? t.onDanger : t.onAccent)
+          : t.muted;
+    }),
+    textStyle: const WidgetStatePropertyAll(
+      TextStyle(
+        fontFamily: AppTypography.geistFamily,
+        fontSize: 13,
+        fontWeight: FontWeight.w400,
+      ),
+    ),
+  );
+}
+
+/// A row that opens a nested glass menu of [children], styled as an
+/// [FcMenuItem] with a trailing chevron.
+class FcSubmenu extends StatelessWidget {
+  const FcSubmenu({super.key, required this.label, required this.children});
+
+  final String label;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return SubmenuButton(
+      style: _rowStyle(context.fc, danger: false, height: 30),
+      menuStyle: fcMenuStyle(context),
+      menuChildren: children,
+      // The default arrow_right is a Material glyph; chevronDown turned a
+      // quarter-turn is the mockup's chevron, pointing right.
+      trailingIcon: RotatedBox(
+        quarterTurns: 3,
+        child: FcIconGlyph(FcIcons.chevronDown, size: 16),
+      ),
+      child: Text(label),
     );
   }
 }

@@ -33,6 +33,7 @@ class PopoverButton extends StatefulWidget {
     this.anchor,
     this.size = 32,
     this.radius = AppRadius.menu,
+    this.anchorLink,
   });
 
   final Widget Function(BuildContext, PopoverController) builder;
@@ -52,6 +53,11 @@ class PopoverButton extends StatefulWidget {
   /// Corner radius of the popover surface: 14 (menu) by default, 18 for the
   /// Projects popover, 12 for a row's "…" menu, per the mockup.
   final double radius;
+
+  /// Positions the popover against this link's target (e.g. the whole island
+  /// the button sits in) instead of the button itself. The Projects popover
+  /// uses it: the mockup left-aligns it with the island, 8px below it.
+  final LayerLink? anchorLink;
 
   @override
   State<PopoverButton> createState() => _PopoverButtonState();
@@ -136,7 +142,7 @@ class _PopoverButtonState extends State<PopoverButton> {
                 left: 0,
                 top: 0,
                 child: CompositedTransformFollower(
-                  link: _link,
+                  link: widget.anchorLink ?? _link,
                   showWhenUnlinked: false,
                   targetAnchor: switch (anchor) {
                     PopoverAnchor.side => Alignment.centerRight,
@@ -150,7 +156,7 @@ class _PopoverButtonState extends State<PopoverButton> {
                   },
                   offset: anchor == PopoverAnchor.side
                       ? const Offset(6, 0)
-                      : const Offset(0, 6),
+                      : Offset(0, widget.anchorLink == null ? 6 : 8),
                   child: Focus(
                     focusNode: _focus,
                     onKeyEvent: _onKey,

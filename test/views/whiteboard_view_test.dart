@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +30,24 @@ class _FakeMcpViewModel extends McpViewModel {
 /// other test pumps it (if at all) on the default 800×600 surface and asks
 /// only whether things exist; the layout bugs live at 1280×720.
 void main() {
+  // The test engine measures with the Ahem box font (1em per glyph) unless
+  // the real faces are registered; the hug test needs real text widths.
+  setUpAll(() async {
+    for (final (family, file) in [
+      ('Geist', 'Geist-Regular.ttf'),
+      ('Geist', 'Geist-Medium.ttf'),
+      ('Geist', 'Geist-SemiBold.ttf'),
+    ]) {
+      final loader = FontLoader(family)
+        ..addFont(
+          Future.value(
+            ByteData.sublistView(File('assets/fonts/$file').readAsBytesSync()),
+          ),
+        );
+      await loader.load();
+    }
+  });
+
   const running = McpServerStatus.running(port: 5199, token: 'test-token');
 
   late SketchController sketch;
@@ -84,6 +104,56 @@ void main() {
     await tester.pump();
     await tester.pump();
   }
+
+  testWidgets('top-left island hugs the project name', (tester) async {
+    await pumpScreen(tester);
+    await tester.pumpAndSettle();
+
+    final island = tester.getRect(
+      find.ancestor(
+        of: find.byTooltip('Projects'),
+        matching: find.byType(GlassIsland),
+      ),
+    );
+    final name = tester.getRect(find.byTooltip('Rename project'));
+    final button = tester.getRect(find.byTooltip('Projects'));
+    // Mockup: name button, 8px gap, 32px Projects button, 8px + 1px border.
+    // Both rects include the button's own 2px side margin.
+    expect(button.left + 2 - name.right, 8);
+    expect(island.right - (button.right - 2), 9);
+    expect(name.width, lessThan(160), reason: 'hugs its text, not max width');
+    expect(island.height, 48);
+  });
+
+  testWidgets('projects popover opens below the island, left-aligned', (
+    tester,
+  ) async {
+    await pumpScreen(tester);
+    await tester.pumpAndSettle();
+    final island = tester.getRect(
+      find.ancestor(
+        of: find.byTooltip('Projects'),
+        matching: find.byType(GlassIsland),
+      ),
+    );
+
+    await tester.tap(find.byType(ProjectsButton));
+    await tester.pumpAndSettle();
+
+    final popover = tester.getRect(
+      // `.first`: nearest ancestor; the next one up is the top-left island
+      // the overlay portal hangs off.
+      find
+          .ancestor(
+            of: find.byType(ProjectsPopover),
+            matching: find.byType(GlassIsland),
+          )
+          .first,
+    );
+    expect(popover.left, island.left);
+    expect(popover.top, island.bottom + 8);
+    expect(popover.width, 340);
+  });
 
   testWidgets('the inspector sits at (16, 80) inside the window', (
     tester,

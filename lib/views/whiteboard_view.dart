@@ -140,36 +140,51 @@ class _WhiteboardViewState extends ConsumerState<WhiteboardView> {
 
 /// Top-left island: logo, product name, "/", the open project's name
 /// (click to rename) and the Projects popover button.
-class _BrandIsland extends StatelessWidget {
+class _BrandIsland extends StatefulWidget {
   const _BrandIsland();
+
+  @override
+  State<_BrandIsland> createState() => _BrandIslandState();
+}
+
+class _BrandIslandState extends State<_BrandIsland> {
+  /// The island itself is the Projects popover's anchor (mockup: left-aligned
+  /// with the island, 8px below it), not the small button inside it.
+  final LayerLink _link = LayerLink();
 
   @override
   Widget build(BuildContext context) {
     final t = context.fc;
     final muted = AppTypography.bodySm.copyWith(color: t.muted, height: 1.2);
-    return GlassIsland(
-      padding: const EdgeInsets.fromLTRB(14, 0, 8, 0),
-      child: SizedBox(
-        height: 46, // 48 outer minus the 1px border either side
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _LogoGlyph(),
-            const SizedBox(width: 8),
-            Text(
-              'FlowCraft',
-              style: muted.copyWith(fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(width: 8),
-            Text('/', style: muted),
-            const SizedBox(width: 8),
-            // Renders nothing until a project is open, so no placeholder
-            // gap appears during the first load.
-            const Flexible(child: ProjectTitleField()),
-            // 6 + the popover button's own 2px margin = the mockup's 8 gap.
-            const SizedBox(width: 6),
-            const ProjectsButton(),
-          ],
+    return CompositedTransformTarget(
+      link: _link,
+      child: GlassIsland(
+        // Mockup padding 14/8 plus its 1px border; `GlassIsland` paints the
+        // border inside its box, so the border width is added here. Right 7 +
+        // the button's own 2px margin = 9.
+        padding: const EdgeInsets.fromLTRB(15, 0, 7, 0),
+        child: SizedBox(
+          height: 48, // mockup outer height; the border paints inside it
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _LogoGlyph(),
+              const SizedBox(width: 8),
+              Text(
+                'FlowCraft',
+                style: muted.copyWith(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(width: 8),
+              Text('/', style: muted),
+              const SizedBox(width: 8),
+              // Renders nothing until a project is open, so no placeholder
+              // gap appears during the first load.
+              const Flexible(child: ProjectTitleField()),
+              // 6 + the popover button's own 2px margin = the mockup's 8 gap.
+              const SizedBox(width: 6),
+              ProjectsButton(anchorLink: _link),
+            ],
+          ),
         ),
       ),
     );

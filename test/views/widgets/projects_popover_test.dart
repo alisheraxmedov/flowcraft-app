@@ -45,6 +45,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('projects popover opens below the Projects button', (
+    tester,
+  ) async {
+    await pumpPopover(tester);
+
+    final button = tester.getRect(find.byType(ProjectsButton));
+    final popover = tester.getRect(
+      find
+          .ancestor(
+            of: find.byType(ProjectsPopover),
+            matching: find.byType(GlassIsland),
+          )
+          .first,
+    );
+    expect(popover.left, button.left);
+    expect(popover.top, button.bottom + 6);
+  });
+
   testWidgets('opens from the button, lists projects, marks the active one', (
     tester,
   ) async {

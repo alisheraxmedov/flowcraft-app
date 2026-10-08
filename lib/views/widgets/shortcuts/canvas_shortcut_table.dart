@@ -27,7 +27,12 @@ class CanvasShortcut {
 /// A titled block of the reference sheet.
 @immutable
 class CanvasShortcutGroup {
-  const CanvasShortcutGroup(this.title, this.shortcuts, {this.inMenu = true});
+  const CanvasShortcutGroup(
+    this.title,
+    this.shortcuts, {
+    this.inMenu = true,
+    this.submenu = false,
+  });
 
   final String title;
   final List<CanvasShortcut> shortcuts;
@@ -39,6 +44,11 @@ class CanvasShortcutGroup {
   /// and "nudge by one pixel" is not something anyone reaches for through
   /// three clicks.
   final bool inMenu;
+
+  /// Whether the Edit menu folds this group into one "title ▸" submenu row
+  /// inside Arrange instead of listing it inline (Align's eight rows would
+  /// push Clear canvas off a 720px window). Reference sheet is unaffected.
+  final bool submenu;
 }
 
 /// A keyboard behaviour the reference sheet explains but that is not a
@@ -117,11 +127,6 @@ class CanvasShortcutTable {
           const PasteSceneIntent(),
         ),
         CanvasShortcut(
-          'Insert image from file…',
-          cmd(LogicalKeyboardKey.keyI, shift: true),
-          const InsertImageIntent(),
-        ),
-        CanvasShortcut(
           'Duplicate',
           cmd(LogicalKeyboardKey.keyD),
           const DuplicateSelectionIntent(),
@@ -198,7 +203,7 @@ class CanvasShortcutTable {
           const UngroupSelectionIntent(),
         ),
       ]),
-      CanvasShortcutGroup('Align', <CanvasShortcut>[
+      CanvasShortcutGroup('Align', submenu: true, <CanvasShortcut>[
         CanvasShortcut(
           'Align left',
           cmd(LogicalKeyboardKey.arrowLeft, shift: true),
@@ -248,11 +253,16 @@ class CanvasShortcutTable {
           const DistributeSelectionIntent(Axis.vertical),
         ),
       ]),
-      CanvasShortcutGroup('View', <CanvasShortcut>[
+      CanvasShortcutGroup('Canvas', <CanvasShortcut>[
         CanvasShortcut(
           'Zoom to fit',
           const SingleActivator(LogicalKeyboardKey.digit1, shift: true),
           const FitToContentIntent(),
+        ),
+        CanvasShortcut(
+          'Insert image from file…',
+          cmd(LogicalKeyboardKey.keyI, shift: true),
+          const InsertImageIntent(),
         ),
       ]),
       // Every arrow shares one label so the reference sheet folds the four
@@ -343,7 +353,11 @@ class CanvasShortcutTable {
     return [
       for (final group in groups(platform))
         if (group.inMenu)
-          CanvasShortcutGroup(group.title, _firstPerLabel(group.shortcuts)),
+          CanvasShortcutGroup(
+            group.title,
+            _firstPerLabel(group.shortcuts),
+            submenu: group.submenu,
+          ),
     ];
   }
 
