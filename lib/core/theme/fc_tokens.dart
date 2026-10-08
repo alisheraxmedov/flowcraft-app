@@ -63,7 +63,8 @@ class FcTokens extends ThemeExtension<FcTokens> {
   /// Pressed/selected button lift (segmented thumb, active icon button).
   final List<BoxShadow> raisedShadow;
 
-  /// Backdrop blur sigma for glass islands (CSS blur 24px ~ 2 sigma = 12).
+  /// Backdrop blur sigma for glass islands — CSS `blur(24px)`, whose length
+  /// is the Gaussian standard deviation, so sigma 24.
   /// 0 disables the blur and paints opaque glass instead.
   final double blurSigma;
   final Color tooltipBg;
@@ -104,7 +105,7 @@ class FcTokens extends ThemeExtension<FcTokens> {
       BoxShadow(color: Color(0x0F000000), blurRadius: 3, offset: Offset(0, 1)),
     ],
     raisedShadow: _raisedShadow,
-    blurSigma: 12,
+    blurSigma: 24,
     tooltipBg: Color(0xFF2A2A2E),
     tooltipFg: Color(0xFFF5F5F7),
   );
@@ -138,7 +139,7 @@ class FcTokens extends ThemeExtension<FcTokens> {
       ),
     ],
     raisedShadow: _raisedShadow,
-    blurSigma: 12,
+    blurSigma: 24,
     tooltipBg: Color(0xFF2A2A2E),
     tooltipFg: Color(0xFFF5F5F7),
   );
