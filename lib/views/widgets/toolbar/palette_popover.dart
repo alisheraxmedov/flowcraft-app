@@ -1,117 +1,46 @@
 import 'package:flutter/material.dart';
 
-import 'style_popovers.dart' show popoverHeadingStyle;
+import 'package:flowcraft/core/theme/fc_tokens.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
 
-/// `#RRGGBB`, the way the properties panel's hex field spells a colour.
-String _hexOf(Color c) {
-  final rgb = c.toARGB32() & 0xFFFFFF;
-  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
-}
+/// Default stroke / text palette (Excalidraw-ish). The inspector swaps the
+/// first entry for the theme's ink — see `inkFor`.
+const List<Color> defaultPalette = [
+  Color(0xFF1E1E1E),
+  Color(0xFFE03131),
+  Color(0xFFD6336C),
+  Color(0xFFAE3EC9),
+  Color(0xFF7048E8),
+  Color(0xFF1971C2),
+  Color(0xFF0CA678),
+  Color(0xFF74B816),
+  Color(0xFFF59F00),
+  Color(0xFFFFFFFF),
+];
 
-/// Popover content: a swatch grid for picking a stroke [Color].
-class PalettePopover extends StatelessWidget {
-  const PalettePopover({
-    super.key,
-    required this.palette,
-    required this.selected,
-    required this.onPick,
-  });
+/// Default fill palette — same set with a "none" sentinel up front.
+const List<Color?> defaultFillPalette = [
+  null,
+  Color(0xFFFFE3E3),
+  Color(0xFFFCE4EC),
+  Color(0xFFF3E5F5),
+  Color(0xFFEDE7F6),
+  Color(0xFFE3F2FD),
+  Color(0xFFE0F2F1),
+  Color(0xFFE6F4EA),
+  Color(0xFFFFF8E1),
+  Color(0xFFFFFFFF),
+];
 
-  final List<Color> palette;
-
-  /// Swatch to ring as current, or `null` to ring none — which is what the
-  /// toolbar passes when a multi-selection disagrees about this colour.
-  final Color? selected;
-
-  final ValueChanged<Color> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 200,
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Color', style: popoverHeadingStyle(context)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final c in palette)
-                Swatch(
-                  color: c,
-                  label: _hexOf(c),
-                  current: selected == c,
-                  onTap: () => onPick(c),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Popover content: a swatch grid for picking a fill [Color], with a
-/// "none" sentinel entry (`null`) rendered as a slashed circle.
-class FillPalettePopover extends StatelessWidget {
-  const FillPalettePopover({
-    super.key,
-    required this.palette,
-    required this.selected,
-    required this.onPick,
-    this.mixed = false,
-  });
-
-  final List<Color?> palette;
-  final Color? selected;
-  final ValueChanged<Color?> onPick;
-
-  /// When true no swatch is ringed as current. `selected` can't express that
-  /// here the way it can in [PalettePopover] — `null` is a real fill value
-  /// ("none"), so "mixed" needs its own flag.
-  final bool mixed;
-
-  @override
-  Widget build(BuildContext context) {
-    bool isCurrent(Color? c) => !mixed && selected == c;
-    return Container(
-      width: 200,
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Fill', style: popoverHeadingStyle(context)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final c in palette)
-                Swatch(
-                  color: c,
-                  label: c == null ? 'No fill' : _hexOf(c),
-                  current: isCurrent(c),
-                  onTap: () => onPick(c),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One tappable colour in a palette grid.
+/// One tappable colour in the inspector's palette grid.
 ///
 /// A real button rather than a bare `GestureDetector`: it names its colour
 /// to a screen reader and on hover, takes keyboard focus, and shows a click
-/// cursor — a 24-px circle that does none of those is a guess, not a
-/// control. `null` is the fill palette's "none" entry.
+/// cursor. `null` is the fill palette's "none" entry.
+///
+/// Geometry is the mockup's: a 32px hit box with a 2px ring (accent when
+/// [current], transparent otherwise) around a 22px dot (20px when ringed)
+/// that carries an inset 1px grey outline.
 class Swatch extends StatelessWidget {
   const Swatch({
     super.key,
@@ -119,16 +48,27 @@ class Swatch extends StatelessWidget {
     required this.label,
     required this.current,
     required this.onTap,
+    this.dot,
   });
 
+  /// The value this swatch stands for (`null` = "no fill").
   final Color? color;
   final String label;
   final bool current;
   final VoidCallback onTap;
 
+  /// What to paint inside the circle when it differs from [color]: the first
+  /// stroke swatch's value is the theme's ink, but it is drawn in the softer
+  /// `swatchInk` token.
+  final Color? dot;
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final t = context.fc;
+    final fill = dot ?? color;
+    final d = current ? 20.0 : 22.0;
+    // White needs a firmer outline than the rest to read on a light island.
+    final ring = fill == const Color(0xFFFFFFFF) ? 0.45 : 0.35;
     return Tooltip(
       message: label,
       child: Semantics(
@@ -139,61 +79,40 @@ class Swatch extends StatelessWidget {
           customBorder: const CircleBorder(),
           onTap: onTap,
           child: Container(
-            width: 24,
-            height: 24,
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: color ?? Colors.transparent,
               shape: BoxShape.circle,
               border: Border.all(
-                width: current ? 2.5 : 1.0,
-                color: current ? colorScheme.primary : colorScheme.outline,
+                width: 2,
+                color: current ? t.accent : Colors.transparent,
               ),
             ),
-            child: color == null
-                ? Icon(
-                    Icons.do_not_disturb_alt,
-                    size: 14,
-                    color: colorScheme.onSurfaceVariant,
-                  )
-                : null,
+            child: Container(
+              width: d,
+              height: d,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color == null ? t.raised : fill,
+                border: Border.all(
+                  color: const Color(0xFF808080).withValues(alpha: ring),
+                ),
+              ),
+              child: color == null
+                  // The mockup's 22px slash is allowed to overflow the 20px
+                  // ringed dot, so it is not shrunk to fit.
+                  ? OverflowBox(
+                      maxWidth: 22,
+                      maxHeight: 22,
+                      child: FcIconGlyph(FcIcons.strokeNone, size: 22),
+                    )
+                  : null,
+            ),
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Small circular swatch used as a [PopoverButton] anchor glyph, showing
-/// the currently selected stroke/fill color.
-class SwatchCircle extends StatelessWidget {
-  const SwatchCircle({
-    super.key,
-    required this.color,
-    required this.border,
-    this.showNone = false,
-  });
-
-  final Color? color;
-  final Color border;
-  final bool showNone;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: BoxDecoration(
-        color: color ?? Colors.transparent,
-        shape: BoxShape.circle,
-        border: Border.all(color: border, width: 1),
-      ),
-      child: showNone
-          ? Icon(
-              Icons.do_not_disturb_alt,
-              size: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            )
-          : null,
     );
   }
 }

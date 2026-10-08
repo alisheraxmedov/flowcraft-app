@@ -1,23 +1,35 @@
 import 'dart:convert';
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 
 import 'package:flowcraft/core/theme/app_radius.dart';
-import 'package:flowcraft/core/theme/app_spacing.dart';
 import 'package:flowcraft/core/theme/app_typography.dart';
+import 'package:flowcraft/core/theme/canvas_ink.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
 import 'package:flowcraft/models/icon_catalog.dart';
 import 'package:flowcraft/models/sketch_element.dart';
 import 'package:flowcraft/models/sketch_style.dart';
+import 'package:flowcraft/models/sketch_tool.dart';
 import 'package:flowcraft/viewmodels/sketch_controller.dart';
+import 'package:flowcraft/views/widgets/glass/fc_icons.dart';
+import 'package:flowcraft/views/widgets/glass/glass_island.dart';
+import 'package:flowcraft/views/widgets/shortcuts/tool_shortcuts.dart';
+import 'package:flowcraft/views/widgets/toolbar/palette_popover.dart';
+import 'package:flowcraft/views/widgets/toolbar/style_popovers.dart';
 
-/// Floating "Properties" card showing/editing the single currently
-/// selected sketch element. Renders nothing when selection is empty or
-/// spans more than one element.
+/// The inspector island: edits the style (and, for a single element, the
+/// geometry and kind-specific fields) of whatever is selected.
+///
+/// Shown for one or more selected elements — a multi-selection gets the style
+/// sections only, with fields the elements disagree about shown as "mixed" —
+/// and, with nothing selected while a drawing tool is active, edits the
+/// pending [SketchController.currentStyle] the next element is drawn with.
+/// Renders nothing otherwise.
 ///
 /// Self-contained like [SketchToolbarRich] / [WhiteboardCanvas]: listens
 /// to [controller] directly via `addListener` rather than through Riverpod,
-/// so it can be dropped into any `Stack` without extra plumbing.
+/// so it can be dropped into any `Stack` without extra plumbing. It is 264
+/// wide and as tall as its content (scrolling when the parent is shorter), so
+/// the host should align it rather than stretch it.
 class PropertiesPanel extends StatefulWidget {
   const PropertiesPanel({super.key, required this.controller});
 
@@ -250,6 +262,15 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _commitStrokeHex() {
+    if (_styleOnly) {
+      final color = _hexToColor(_strokeHexCtrl.text);
+      final same =
+          !_disp.mixed.contains(_MixedField.strokeColor) &&
+          color == _disp.style.strokeColor;
+      if (color == null || same) return;
+      _applyStyle((s) => s.copyWith(strokeColor: color));
+      return;
+    }
     final el = _loaded;
     if (el == null) return;
     final color = _hexToColor(_strokeHexCtrl.text);
@@ -258,9 +279,17 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   }
 
   void _commitFillHex() {
+    final text = _fillHexCtrl.text.trim();
+    if (_styleOnly) {
+      final c = text.isEmpty ? null : _hexToColor(text);
+      if (c == null && text.isNotEmpty) return;
+      // A mixed field shows empty; that is not a request to clear the fill.
+      if (c == null && _disp.mixed.contains(_MixedField.fillColor)) return;
+      _applyStyle((s) => s.withFillColor(c));
+      return;
+    }
     final el = _loaded;
     if (el == null) return;
-    final text = _fillHexCtrl.text.trim();
     // Same `withFillColor` rule the toolbar's fill palette uses, so a fill
     // set from here is just as visible as one set from there: a colour
     // promotes `FillStyle.none` to solid, an empty field clears both.
@@ -271,296 +300,603 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     _ctrl.update(el.copyWithStyle(style));
   }
 
+  // ── style-only targets (multi-selection / drawing tool) ────────────────
+
+  /// True while the panel edits a multi-selection or, with nothing selected,
+  /// the pending [SketchController.currentStyle]: no single element owns the
+  /// fields, so hex commits go through [_applyStyle] instead of `_loaded`.
+  bool _styleOnly = false;
+
+  /// What the style sections display this build, see [_resolveDisplayStyle].
+  ({SketchStyle style, Set<_MixedField> mixed}) _disp = (
+    style: const SketchStyle(),
+    mixed: <_MixedField>{},
+  );
+
+  /// Thumb positions while a slider is being dragged. Mid-drag the local
+  /// value wins: with a mixed selection the displayed (first element's)
+  /// value would not move and the thumb would stick.
+  double? _dragWidth;
+  double? _dragRough;
+
+  /// Applies a style pick to every selected element AND to the pending
+  /// default for the next element drawn, as one undo entry (the batch goes
+  /// through [SketchController.applyStyleToSelected]).
+  void _applyStyle(SketchStyle Function(SketchStyle) transform) {
+    _ctrl.applyStyleToSelected(transform);
+    _ctrl.currentStyle = transform(_ctrl.currentStyle);
+  }
+
+  /// The style the panel should *display*, plus the fields a multi-element
+  /// selection disagrees about (they render as "mixed" rather than letting
+  /// whichever element comes first speak for all). With nothing selected it
+  /// falls back to `currentStyle`, which is what the next element is drawn
+  /// with. Display only: picks derive from each element's own style.
+  ({SketchStyle style, Set<_MixedField> mixed}) _resolveDisplayStyle() {
+    SketchStyle? first;
+    final mixed = <_MixedField>{};
+    for (final el in _ctrl.elements) {
+      if (!_ctrl.isSelected(el.id)) continue;
+      final s = el.style;
+      if (first == null) {
+        first = s;
+        continue;
+      }
+      if (s.strokeColor != first.strokeColor) {
+        mixed.add(_MixedField.strokeColor);
+      }
+      if (s.fillColor != first.fillColor) mixed.add(_MixedField.fillColor);
+      if (s.strokeWidth != first.strokeWidth) {
+        mixed.add(_MixedField.strokeWidth);
+      }
+      if (s.roughness != first.roughness) mixed.add(_MixedField.roughness);
+      if (s.strokeStyle != first.strokeStyle) {
+        mixed.add(_MixedField.strokeStyle);
+      }
+      if (s.fillStyle != first.fillStyle) mixed.add(_MixedField.fillStyle);
+      if (mixed.length == _MixedField.values.length) break;
+    }
+    return (style: first ?? _ctrl.currentStyle, mixed: mixed);
+  }
+
+  void _syncStyleOnlyHex() {
+    final style = _disp.style;
+    final mixed = _disp.mixed;
+    if (!_strokeHexFocus.hasFocus) {
+      _strokeHexCtrl.text = mixed.contains(_MixedField.strokeColor)
+          ? ''
+          : _colorToHex(style.strokeColor);
+    }
+    if (!_fillHexFocus.hasFocus) {
+      _fillHexCtrl.text =
+          mixed.contains(_MixedField.fillColor) || style.fillColor == null
+          ? ''
+          : _colorToHex(style.fillColor!);
+    }
+  }
+
+  /// Tools that draw something and therefore have a style to edit.
+  static const _nonDrawing = {
+    SketchTool.select,
+    SketchTool.hand,
+    SketchTool.eraser,
+  };
+
+  /// Header label + glyph for [el]; names match the tool that draws it.
+  static (String, FcIcon) _kindOf(SketchElement el) => switch (el) {
+    SketchRectangle() => ('Rectangle', FcIcons.square),
+    SketchEllipse() => ('Ellipse', FcIcons.circle),
+    SketchDiamond() => ('Diamond', FcIcons.diamond),
+    SketchTriangle() => ('Triangle', FcIcons.triangle),
+    SketchSticky() => ('Sticky note', FcIcons.stickyNote),
+    SketchLine() => ('Line', FcIcons.lineDiagonal),
+    SketchArrow() => ('Arrow', FcIcons.arrowUpRight),
+    SketchFreedraw() => ('Drawing', FcIcons.pencil),
+    SketchText() => ('Text', FcIcons.type),
+    SketchFrame() => ('Frame', FcIcons.frame),
+    SketchIcon() => ('Icon', FcIcons.shapes),
+    SketchImage() => ('Image', FcIcons.image),
+    SketchEntity() => ('Entity', FcIcons.square),
+  };
+
+  static FcIcon _toolIcon(SketchTool tool) => switch (tool) {
+    SketchTool.rectangle => FcIcons.square,
+    SketchTool.ellipse => FcIcons.circle,
+    SketchTool.diamond => FcIcons.diamond,
+    SketchTool.triangle => FcIcons.triangle,
+    SketchTool.sticky => FcIcons.stickyNote,
+    SketchTool.line => FcIcons.lineDiagonal,
+    SketchTool.arrow => FcIcons.arrowUpRight,
+    SketchTool.freedraw => FcIcons.pencil,
+    SketchTool.text => FcIcons.type,
+    SketchTool.frame => FcIcons.frame,
+    SketchTool.icon => FcIcons.shapes,
+    SketchTool.eraser => FcIcons.eraser,
+    SketchTool.hand => FcIcons.hand,
+    SketchTool.select => FcIcons.mousePointer2,
+  };
+
   // ── build ──────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     _colorScheme = Theme.of(context).colorScheme;
+    final fc = context.fc;
 
     final el = _selected;
-    if (el == null) return const SizedBox.shrink();
+    final tool = _ctrl.currentTool;
+    // Nothing selected and no drawing tool: nothing to edit. The fields keep
+    // their `_loadedId` so a pending blur still commits to its element.
+    if (el == null && !_ctrl.hasSelection && _nonDrawing.contains(tool)) {
+      _styleOnly = false;
+      return const SizedBox.shrink();
+    }
 
-    // A different element than the fields last loaded: reload every field
-    // even if one still has focus (its pending text was flushed in _onChange).
-    final fresh = _loadedId != el.id;
-    _syncDimensionFields(el, fresh);
-    _syncAppearanceFields(el, fresh);
-    _syncShapeFields(el, fresh);
-    _loadedId = el.id;
+    _styleOnly = el == null;
+    _disp = _resolveDisplayStyle();
+    if (el != null) {
+      // A different element than the fields last loaded: reload every field
+      // even if one still has focus (its pending text was flushed in
+      // _onChange).
+      final fresh = _loadedId != el.id;
+      _syncDimensionFields(el, fresh);
+      _syncAppearanceFields(el, fresh);
+      _syncShapeFields(el, fresh);
+      _loadedId = el.id;
+    } else {
+      _loadedId = null;
+      _syncStyleOnlyHex();
+    }
 
-    final isBounded = PropertiesPanel.rectOf(el) != null;
+    final (title, glyph) = el != null
+        ? _kindOf(el)
+        : _ctrl.hasSelection
+        ? ('${_ctrl.selectedIds.length} selected', FcIcons.mousePointer2)
+        : ('${ToolShortcuts.labels[tool]} tool', _toolIcon(tool));
+    final style = _disp.style;
+    final mixed = _disp.mixed;
+    final ink = inkFor(Theme.of(context).brightness);
 
-    return Container(
-      width: 280,
-      constraints: const BoxConstraints(maxHeight: 640),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: AppRadius.mdRadius,
-        border: Border.all(color: _colorScheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+    final sections = <Widget>[
+      _header(fc, title, glyph),
+      _colorSection(
+        fc,
+        'Stroke',
+        'Stroke hex',
+        _strokeHexCtrl,
+        _strokeHexFocus,
+        mixed.contains(_MixedField.strokeColor),
+        hint: '#RRGGBB',
+        swatches: [
+          // The first swatch is the theme's ink (what new elements are drawn
+          // in); it paints in the softer swatchInk token.
+          for (final c in [ink, ...defaultPalette.skip(1)])
+            Swatch(
+              color: c,
+              dot: c == ink ? fc.swatchInk : null,
+              label: _colorToHex(c),
+              current:
+                  !mixed.contains(_MixedField.strokeColor) &&
+                  style.strokeColor == c,
+              onTap: () => _applyStyle((s) => s.copyWith(strokeColor: c)),
+            ),
+        ],
+      ),
+      _colorSection(
+        fc,
+        'Fill',
+        'Fill hex',
+        _fillHexCtrl,
+        _fillHexFocus,
+        mixed.contains(_MixedField.fillColor),
+        hint: 'none',
+        swatches: [
+          for (final c in defaultFillPalette)
+            Swatch(
+              color: c,
+              label: c == null ? 'No fill' : _colorToHex(c),
+              current:
+                  !mixed.contains(_MixedField.fillColor) &&
+                  style.fillColor == c,
+              onTap: () => _applyStyle((s) => s.withFillColor(c)),
+            ),
+        ],
+      ),
+      _sliderBlock(
+        fc,
+        'Stroke width',
+        style.strokeWidth,
+        1,
+        12,
+        22,
+        mixed.contains(_MixedField.strokeWidth),
+        _dragWidth,
+        (v) => _dragWidth = v,
+        (s, v) => s.copyWith(strokeWidth: v),
+      ),
+      _sliderBlock(
+        fc,
+        'Roughness',
+        style.roughness,
+        0,
+        2.5,
+        25,
+        mixed.contains(_MixedField.roughness),
+        _dragRough,
+        (v) => _dragRough = v,
+        (s, v) => s.copyWith(roughness: v),
+      ),
+      _titled(
+        fc,
+        'Stroke style',
+        _GlyphSegmented<StrokeStyle>(
+          value: mixed.contains(_MixedField.strokeStyle)
+              ? null
+              : style.strokeStyle,
+          height: 44,
+          gap: 6,
+          items: [
+            _Seg(
+              StrokeStyle.solid,
+              StyleLabels.strokeStyle[StrokeStyle.solid]!,
+              FcIcons.strokeSolid,
+              28,
+            ),
+            _Seg(
+              StrokeStyle.dashed,
+              StyleLabels.strokeStyle[StrokeStyle.dashed]!,
+              FcIcons.strokeDashed,
+              28,
+            ),
+            _Seg(
+              StrokeStyle.dotted,
+              StyleLabels.strokeStyle[StrokeStyle.dotted]!,
+              FcIcons.strokeDotted,
+              28,
+            ),
+          ],
+          onChanged: (v) => _applyStyle((s) => s.copyWith(strokeStyle: v)),
+        ),
+      ),
+      _titled(
+        fc,
+        'Fill style',
+        _GlyphSegmented<FillStyle>(
+          value: mixed.contains(_MixedField.fillStyle) ? null : style.fillStyle,
+          height: 46,
+          gap: 5,
+          autoWidth: true,
+          items: [
+            _Seg(
+              FillStyle.none,
+              StyleLabels.fillStyle[FillStyle.none]!,
+              FcIcons.fillNone,
+              22,
+            ),
+            _Seg(
+              FillStyle.solid,
+              StyleLabels.fillStyle[FillStyle.solid]!,
+              FcIcons.fillSolid,
+              22,
+            ),
+            _Seg(
+              FillStyle.hachure,
+              StyleLabels.fillStyle[FillStyle.hachure]!,
+              FcIcons.fillHachure,
+              22,
+            ),
+            _Seg(
+              FillStyle.crossHatch,
+              StyleLabels.fillStyle[FillStyle.crossHatch]!,
+              FcIcons.fillCrossHatch,
+              22,
+            ),
+          ],
+          onChanged: (v) => _applyStyle((s) => s.withFillStyle(v)),
+        ),
+      ),
+      if (el != null) ...[
+        if (el is SketchArrow) _arrowSection(fc, el),
+        _dimensionsSection(fc, PropertiesPanel.rectOf(el) != null),
+        ..._kindSection(fc, el),
+        _fontSection(fc, el),
+        _editJsonButton(fc, el),
+      ],
+    ];
+
+    return SizedBox(
+      width: 264,
+      child: GlassIsland(
+        strong: true,
+        padding: const EdgeInsets.all(14),
+        // Scrolls once the window is shorter than the content, but shrinks
+        // to the content otherwise (a bare SingleChildScrollView would
+        // always fill the height it is given).
+        child: ListView(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, w) in sections.indexed) ...[
+                  if (i > 0) const SizedBox(height: 14),
+                  w,
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _header(FcTokens fc, String title, FcIcon glyph) {
+    return Row(
+      children: [
+        FcIconGlyph(glyph, size: 16, color: fc.muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.uiTitle.copyWith(
+              color: fc.text,
+              height: 20 / 14,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Uppercase section label, 11/600 muted.
+  Widget _label(FcTokens fc, String text) => Text(
+    text.toUpperCase(),
+    style: AppTypography.uiLabel.copyWith(color: fc.muted),
+  );
+
+  /// A 20px label row over [child].
+  Widget _titled(FcTokens fc, String label, Widget child) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 20,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _label(fc, label),
+          ),
+        ),
+        child,
+      ],
+    );
+  }
+
+  /// "STROKE" / "FILL": label + 78x28 hex field over a 5-column swatch grid.
+  Widget _colorSection(
+    FcTokens fc,
+    String label,
+    String semanticLabel,
+    TextEditingController ctrl,
+    FocusNode focus,
+    bool mixed, {
+    required String hint,
+    required List<Widget> swatches,
+  }) {
+    final isFill = label == 'Fill';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 32,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _label(fc, label),
+              SizedBox(
+                width: 78,
+                height: 28,
+                child: TextField(
+                  key: ValueKey('properties_hex_$label'),
+                  controller: ctrl,
+                  focusNode: focus,
+                  expands: true,
+                  maxLines: null,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: AppTypography.mono12.copyWith(color: fc.text),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: mixed ? 'mixed' : hint,
+                    hintStyle: AppTypography.mono12.copyWith(color: fc.muted),
+                    filled: true,
+                    fillColor: fc.surface2,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.input),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  onSubmitted: (_) =>
+                      isFill ? _commitFillHex() : _commitStrokeHex(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        for (var i = 0; i < swatches.length; i += 5)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: swatches.sublist(i, i + 5),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _sliderBlock(
+    FcTokens fc,
+    String label,
+    double value,
+    double min,
+    double max,
+    int divisions,
+    bool mixed,
+    double? drag,
+    void Function(double?) setDrag,
+    SketchStyle Function(SketchStyle, double) apply,
+  ) {
+    final shown = (drag ?? value).clamp(min, max);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 20,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _label(fc, label),
+              Text(
+                mixed && drag == null ? '—' : shown.toStringAsFixed(1),
+                style: AppTypography.mono12.copyWith(color: fc.text),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 24,
+          child: Slider(
+            value: shown,
+            min: min,
+            max: max,
+            divisions: divisions,
+            semanticFormatterCallback: (v) => '$label ${v.toStringAsFixed(1)}',
+            onChangeStart: (_) => _ctrl.beginDragSession(),
+            onChanged: (v) {
+              setState(() => setDrag(v));
+              _applyStyle((s) => apply(s, v));
+            },
+            onChangeEnd: (_) {
+              setState(() => setDrag(null));
+              _ctrl.endDragSession();
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _dimensionsSection(FcTokens fc, bool editable) {
+    return _titled(
+      fc,
+      'Position & size',
+      Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _numberField(fc, 'X', _xCtrl, _xFocus, editable)),
+              const SizedBox(width: 6),
+              Expanded(child: _numberField(fc, 'Y', _yCtrl, _yFocus, editable)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(child: _numberField(fc, 'W', _wCtrl, _wFocus, editable)),
+              const SizedBox(width: 6),
+              Expanded(child: _numberField(fc, 'H', _hCtrl, _hFocus, editable)),
+            ],
           ),
         ],
       ),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          color: _colorScheme.surfaceContainer.withValues(alpha: 0.95),
-          padding: const EdgeInsets.all(AppSpacing.panelPadding),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _header(),
-                const SizedBox(height: 16),
-                _dimensionsSection(el, isBounded),
-                const SizedBox(height: 16),
-                _appearanceSection(el),
-                ..._kindSection(el),
-                const SizedBox(height: 16),
-                _typographySection(el),
-                const SizedBox(height: 16),
-                _editJsonButton(el),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _header() {
-    return Row(
-      children: [
-        Text(
-          'PROPERTIES',
-          style: AppTypography.labelMono.copyWith(
-            color: _colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const Spacer(),
-        Tooltip(
-          message: 'Close',
-          child: InkWell(
-            borderRadius: AppRadius.xsRadius,
-            onTap: _ctrl.clearSelection,
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(
-                Icons.close_rounded,
-                size: 16,
-                color: _colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: AppTypography.caption.copyWith(
-          color: _colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
-  }
-
-  Widget _dimensionsSection(SketchElement el, bool editable) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionTitle('DIMENSIONS & POSITION'),
-        Row(
-          children: [
-            Expanded(child: _numberField('X', _xCtrl, _xFocus, editable)),
-            const SizedBox(width: 8),
-            Expanded(child: _numberField('Y', _yCtrl, _yFocus, editable)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(child: _numberField('W', _wCtrl, _wFocus, editable)),
-            const SizedBox(width: 8),
-            Expanded(child: _numberField('H', _hCtrl, _hFocus, editable)),
-          ],
-        ),
-      ],
     );
   }
 
   Widget _numberField(
+    FcTokens fc,
     String label,
     TextEditingController ctrl,
     FocusNode focus,
     bool editable,
   ) {
-    return TextField(
-      key: ValueKey('properties_field_$label'),
-      controller: ctrl,
-      focusNode: focus,
-      enabled: editable,
-      style: AppTypography.labelMono.copyWith(
-        fontSize: 12,
-        color: _colorScheme.onSurface,
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: fc.surface2,
+        borderRadius: BorderRadius.circular(AppRadius.input),
       ),
-      keyboardType: const TextInputType.numberWithOptions(
-        signed: true,
-        decimal: true,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 12,
+            child: Text(
+              label,
+              style: AppTypography.bodySm.copyWith(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: fc.muted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              key: ValueKey('properties_field_$label'),
+              controller: ctrl,
+              focusNode: focus,
+              enabled: editable,
+              style: AppTypography.mono12.copyWith(
+                color: editable ? fc.text : fc.muted,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                signed: true,
+                decimal: true,
+              ),
+              decoration: const InputDecoration.collapsed(hintText: null),
+              onSubmitted: (_) => _commitDimensions(),
+            ),
+          ),
+        ],
       ),
-      decoration: InputDecoration(
-        isDense: true,
-        labelText: label,
-        labelStyle: AppTypography.caption.copyWith(
-          color: _colorScheme.onSurfaceVariant,
-        ),
-        filled: true,
-        fillColor: _colorScheme.surfaceContainerHigh,
-        border: OutlineInputBorder(
-          borderRadius: AppRadius.smRadius,
-          borderSide: BorderSide(color: _colorScheme.outlineVariant),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      ),
-      onSubmitted: (_) => _commitDimensions(),
     );
   }
 
-  Widget _appearanceSection(SketchElement el) {
-    final style = el.style;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionTitle('APPEARANCE'),
-        _colorRow(
-          'Fill',
-          style.fillColor,
-          _fillHexCtrl,
-          _fillHexFocus,
-          allowNone: true,
-        ),
-        const SizedBox(height: 8),
-        _colorRow('Stroke', style.strokeColor, _strokeHexCtrl, _strokeHexFocus),
-        const SizedBox(height: 8),
-        _strokeWidthDropdown(el, style),
-      ],
-    );
-  }
-
-  Widget _colorRow(
-    String label,
-    Color? color,
-    TextEditingController ctrl,
-    FocusNode focus, {
-    bool allowNone = false,
+  /// 32px surface2 well that hosts a dropdown: the mockup's `<select>`.
+  Widget _selectBox<T>(
+    FcTokens fc, {
+    Key? key,
+    required T? value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?>? onChanged,
+    Widget? hint,
+    Widget? disabledHint,
   }) {
-    return Row(
-      children: [
-        Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: color ?? Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(color: _colorScheme.outline),
-          ),
-          child: color == null
-              ? Icon(
-                  Icons.do_not_disturb_alt,
-                  size: 12,
-                  color: _colorScheme.onSurfaceVariant,
-                )
-              : null,
-        ),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: AppTypography.bodyBase.copyWith(
-            fontSize: 12,
-            color: _colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const Spacer(),
-        SizedBox(
-          width: 96,
-          child: TextField(
-            key: ValueKey('properties_hex_$label'),
-            controller: ctrl,
-            focusNode: focus,
-            style: AppTypography.labelMono.copyWith(
-              fontSize: 12,
-              color: _colorScheme.onSurface,
-            ),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: allowNone ? 'none' : '#RRGGBB',
-              hintStyle: AppTypography.caption.copyWith(
-                color: _colorScheme.onSurfaceVariant,
-              ),
-              filled: true,
-              fillColor: _colorScheme.surfaceContainerHigh,
-              border: OutlineInputBorder(
-                borderRadius: AppRadius.smRadius,
-                borderSide: BorderSide(color: _colorScheme.outlineVariant),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 6,
-              ),
-            ),
-            onSubmitted: (_) =>
-                allowNone ? _commitFillHex() : _commitStrokeHex(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// "2px" for whole widths, "1.5px" otherwise — the toolbar's slider
-  /// steps by halves, and rounding every label to an integer put a "2px"
-  /// next to another "2px" in the list.
-  static String _widthLabel(double w) =>
-      '${w.toStringAsFixed(w == w.roundToDouble() ? 0 : 1)}px';
-
-  Widget _strokeWidthDropdown(SketchElement el, SketchStyle style) {
-    const presets = [1.0, 2.0, 4.0, 6.0, 8.0];
-    final options = {...presets, style.strokeWidth}.toList()..sort();
-    return Row(
-      children: [
-        Text(
-          'Stroke width',
-          style: AppTypography.bodyBase.copyWith(
-            fontSize: 12,
-            color: _colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const Spacer(),
-        DropdownButton<double>(
-          value: style.strokeWidth,
-          dropdownColor: _colorScheme.surfaceContainerHigh,
-          underline: const SizedBox.shrink(),
-          style: AppTypography.labelMono.copyWith(
-            fontSize: 12,
-            color: _colorScheme.onSurface,
-          ),
-          items: [
-            for (final w in options)
-              DropdownMenuItem(value: w, child: Text(_widthLabel(w))),
-          ],
-          onChanged: (v) {
-            if (v == null) return;
-            _ctrl.update(el.copyWithStyle(style.copyWith(strokeWidth: v)));
-          },
-        ),
-      ],
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: fc.surface2,
+        borderRadius: BorderRadius.circular(AppRadius.input),
+      ),
+      child: DropdownButton<T>(
+        key: key,
+        value: value,
+        isExpanded: true,
+        isDense: true,
+        hint: hint,
+        disabledHint: disabledHint,
+        underline: const SizedBox.shrink(),
+        icon: FcIconGlyph(FcIcons.chevronDown, size: 14, color: fc.muted),
+        borderRadius: BorderRadius.circular(AppRadius.menu),
+        dropdownColor: Color.alphaBlend(fc.glassStrong, fc.bg),
+        style: AppTypography.bodyBase.copyWith(fontSize: 13, color: fc.text),
+        items: items,
+        onChanged: onChanged,
+      ),
     );
   }
 
@@ -599,7 +935,10 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     final other => other,
   };
 
-  Widget _typographySection(SketchElement el) {
+  /// Font family + Bold for anything that paints a label, plus Align for
+  /// [SketchText]. Elements without a label get the disabled select and the
+  /// mockup's "Text only" note.
+  Widget _fontSection(FcTokens fc, SketchElement el) {
     final font = _fontOf(el);
     final current = _familyKey(font?.$1);
     // Anything else — an "Arial" from a hand-edited JSON file, say — is
@@ -612,23 +951,33 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       if (current != 'sans' && current != 'mono') current: current,
     };
     final rowStyle = AppTypography.bodyBase.copyWith(
-      fontSize: 12,
-      color: _colorScheme.onSurfaceVariant,
+      fontSize: 13,
+      color: fc.muted,
     );
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionTitle('TYPOGRAPHY'),
-        DropdownButton<String>(
-          value: current,
-          isExpanded: true,
-          dropdownColor: _colorScheme.surfaceContainerHigh,
-          underline: const SizedBox.shrink(),
-          disabledHint: Text(labels[current]!, style: rowStyle),
-          style: AppTypography.bodyBase.copyWith(
-            fontSize: 12,
-            color: _colorScheme.onSurface,
+        SizedBox(
+          height: 20,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _label(fc, 'Font'),
+              if (font == null)
+                Text(
+                  'Text only',
+                  style: AppTypography.bodySm.copyWith(
+                    fontSize: 11.5,
+                    color: fc.muted,
+                  ),
+                ),
+            ],
           ),
+        ),
+        _selectBox<String>(
+          fc,
+          value: current,
+          disabledHint: Text(labels[current]!, style: rowStyle),
           items: [
             for (final e in labels.entries)
               DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -640,50 +989,58 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
                 },
         ),
         if (font != null)
-          Row(
-            children: [
-              Text('Bold', style: rowStyle),
-              const Spacer(),
-              Switch(
-                key: const ValueKey('properties_bold'),
-                value: font.$2,
-                onChanged: (v) => _setFont(el, bold: v),
-              ),
-            ],
+          SizedBox(
+            height: 32,
+            child: Row(
+              children: [
+                Text('Bold', style: rowStyle),
+                const Spacer(),
+                Switch(
+                  key: const ValueKey('properties_bold'),
+                  value: font.$2,
+                  onChanged: (v) => _setFont(el, bold: v),
+                ),
+              ],
+            ),
           ),
-        if (el is SketchText)
-          SegmentedButton<TextAlign>(
+        if (el is SketchText) ...[
+          const SizedBox(height: 6),
+          _GlyphSegmented<TextAlign>(
             key: const ValueKey('properties_align'),
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(
-                value: TextAlign.start,
-                icon: Icon(Icons.format_align_left_rounded, size: 16),
+            height: 32,
+            // Legacy `TextAlign.left` / `justify` collapse onto the three
+            // buttons; `start` reads as left in this left-to-right app.
+            value: el.align == TextAlign.center
+                ? TextAlign.center
+                : el.align == TextAlign.right || el.align == TextAlign.end
+                ? TextAlign.right
+                : TextAlign.start,
+            items: const [
+              _Seg(
+                TextAlign.start,
+                null,
+                FcIcons.textAlignStart,
+                16,
                 tooltip: 'Align left',
               ),
-              ButtonSegment(
-                value: TextAlign.center,
-                icon: Icon(Icons.format_align_center_rounded, size: 16),
+              _Seg(
+                TextAlign.center,
+                null,
+                FcIcons.textAlignCenter,
+                16,
                 tooltip: 'Align center',
               ),
-              ButtonSegment(
-                value: TextAlign.right,
-                icon: Icon(Icons.format_align_right_rounded, size: 16),
+              _Seg(
+                TextAlign.right,
+                null,
+                FcIcons.textAlignEnd,
+                16,
                 tooltip: 'Align right',
               ),
             ],
-            selected: {
-              // Legacy `TextAlign.left` / `justify` collapse onto the three
-              // buttons; `start` reads as left in this left-to-right app.
-              el.align == TextAlign.center
-                  ? TextAlign.center
-                  : el.align == TextAlign.right || el.align == TextAlign.end
-                  ? TextAlign.right
-                  : TextAlign.start,
-            },
-            onSelectionChanged: (v) =>
-                _ctrl.update(el.copyWith(align: v.first)),
+            onChanged: (v) => _ctrl.update(el.copyWith(align: v)),
           ),
+        ],
       ],
     );
   }
@@ -770,116 +1127,134 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     _ctrl.update(el.copyWith(attributes: attrs).fittedToAttributes());
   }
 
-  List<Widget> _kindSection(SketchElement el) {
+  Widget _arrowSection(FcTokens fc, SketchArrow el) {
     final rowStyle = AppTypography.bodyBase.copyWith(
-      fontSize: 12,
-      color: _colorScheme.onSurfaceVariant,
+      fontSize: 13,
+      color: fc.text,
     );
-    final children = switch (el) {
-      SketchArrow() => [
-        _sectionTitle('ARROW'),
-        Row(
-          children: [
-            Text('Elbow', style: rowStyle),
-            const Spacer(),
-            Switch(
-              key: const ValueKey('properties_elbow'),
-              value: el.elbowed,
-              onChanged: (v) => _ctrl.update(el.copyWith(elbowed: v)),
-            ),
-          ],
-        ),
-        _headPicker(
-          'Start',
-          const ValueKey('properties_start_head'),
-          el.startHead,
-          (v) => _ctrl.update(el.copyWith(startHead: v)),
-        ),
-        _headPicker(
-          'End',
-          const ValueKey('properties_end_head'),
-          el.endHead,
-          (v) => _ctrl.update(el.copyWith(endHead: v)),
-        ),
-      ],
-      SketchFrame() => [_sectionTitle('FRAME'), _nameField('Name')],
-      SketchIcon() => [
-        _sectionTitle('ICON'),
-        DropdownButton<String>(
-          key: const ValueKey('properties_icon'),
-          value: iconCatalog.containsKey(el.name) ? el.name : null,
-          hint: Text(el.name, style: rowStyle),
-          isExpanded: true,
-          dropdownColor: _colorScheme.surfaceContainerHigh,
-          underline: const SizedBox.shrink(),
-          items: [
-            for (final e in iconCatalog.entries)
-              DropdownMenuItem(
-                value: e.key,
-                child: Row(
-                  children: [
-                    Icon(e.value, size: 16, color: _colorScheme.onSurface),
-                    const SizedBox(width: 8),
-                    Text(e.key, style: rowStyle),
-                  ],
+    return _titled(
+      fc,
+      'Arrow',
+      Column(
+        children: [
+          SizedBox(
+            height: 32,
+            child: Row(
+              children: [
+                Text('Elbow', style: rowStyle),
+                const Spacer(),
+                Switch(
+                  key: const ValueKey('properties_elbow'),
+                  value: el.elbowed,
+                  onChanged: (v) => _ctrl.update(el.copyWith(elbowed: v)),
                 ),
-              ),
-          ],
-          onChanged: (v) {
-            if (v != null) _ctrl.update(el.copyWith(name: v));
-          },
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          _headPicker(
+            fc,
+            'Start',
+            const ValueKey('properties_start_head'),
+            el.startHead,
+            (v) => _ctrl.update(el.copyWith(startHead: v)),
+          ),
+          const SizedBox(height: 6),
+          _headPicker(
+            fc,
+            'End',
+            const ValueKey('properties_end_head'),
+            el.endHead,
+            (v) => _ctrl.update(el.copyWith(endHead: v)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _kindSection(FcTokens fc, SketchElement el) {
+    final rowStyle = AppTypography.bodyBase.copyWith(
+      fontSize: 13,
+      color: fc.muted,
+    );
+    return switch (el) {
+      SketchFrame() => [_titled(fc, 'Frame', _nameField(fc, 'Name'))],
+      SketchIcon() => [
+        _titled(
+          fc,
+          'Icon',
+          _selectBox<String>(
+            fc,
+            key: const ValueKey('properties_icon'),
+            value: iconCatalog.containsKey(el.name) ? el.name : null,
+            hint: Text(el.name, style: rowStyle),
+            items: [
+              for (final e in iconCatalog.entries)
+                DropdownMenuItem(
+                  value: e.key,
+                  child: Row(
+                    children: [
+                      Icon(e.value, size: 16, color: fc.text),
+                      const SizedBox(width: 8),
+                      Text(e.key, style: rowStyle.copyWith(color: fc.text)),
+                    ],
+                  ),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) _ctrl.update(el.copyWith(name: v));
+            },
+          ),
         ),
       ],
       SketchEntity() => [
-        _sectionTitle('ENTITY'),
-        _nameField('Name'),
-        const SizedBox(height: 8),
-        TextField(
-          key: const ValueKey('properties_attributes'),
-          controller: _attrsCtrl,
-          focusNode: _attrsFocus,
-          minLines: 3,
-          maxLines: 8,
-          style: AppTypography.labelMono.copyWith(
-            fontSize: 12,
-            color: _colorScheme.onSurface,
+        _titled(
+          fc,
+          'Entity',
+          Column(
+            children: [
+              _nameField(fc, 'Name'),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('properties_attributes'),
+                controller: _attrsCtrl,
+                focusNode: _attrsFocus,
+                minLines: 3,
+                maxLines: 8,
+                style: AppTypography.mono12.copyWith(color: fc.text),
+                decoration: _fieldDecoration(
+                  fc,
+                  'Attributes — one per line: name type [PK] [FK]',
+                ).copyWith(errorText: _attrsError),
+              ),
+            ],
           ),
-          decoration: _fieldDecoration(
-            'Attributes — one per line: name type [PK] [FK]',
-          ).copyWith(errorText: _attrsError),
         ),
       ],
       _ => const <Widget>[],
     };
-    return children.isEmpty
-        ? children
-        : [const SizedBox(height: 16), ...children];
   }
 
-  InputDecoration _fieldDecoration(String label) => InputDecoration(
-    isDense: true,
-    labelText: label,
-    labelStyle: AppTypography.caption.copyWith(
-      color: _colorScheme.onSurfaceVariant,
-    ),
-    filled: true,
-    fillColor: _colorScheme.surfaceContainerHigh,
-    border: OutlineInputBorder(
-      borderRadius: AppRadius.smRadius,
-      borderSide: BorderSide(color: _colorScheme.outlineVariant),
-    ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-  );
+  InputDecoration _fieldDecoration(FcTokens fc, String label) =>
+      InputDecoration(
+        isDense: true,
+        labelText: label,
+        labelStyle: AppTypography.caption.copyWith(color: fc.muted),
+        filled: true,
+        fillColor: fc.surface2,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.input),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      );
 
-  Widget _nameField(String label) => TextField(
+  Widget _nameField(FcTokens fc, String label) => TextField(
     key: const ValueKey('properties_name'),
     controller: _nameCtrl,
     focusNode: _nameFocus,
-    style: AppTypography.bodyBase.copyWith(
-      fontSize: 12,
-      color: _colorScheme.onSurface,
-    ),
-    decoration: _fieldDecoration(label),
+    style: AppTypography.bodyBase.copyWith(fontSize: 13, color: fc.text),
+    decoration: _fieldDecoration(fc, label),
     onSubmitted: (_) => _commitName(),
   );
 
@@ -895,6 +1270,7 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   };
 
   Widget _headPicker(
+    FcTokens fc,
     String label,
     Key key,
     ArrowheadStyle value,
@@ -902,25 +1278,21 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
   ) {
     return Row(
       children: [
-        Text(
-          '$label head',
-          style: AppTypography.bodyBase.copyWith(
-            fontSize: 12,
-            color: _colorScheme.onSurfaceVariant,
+        SizedBox(
+          width: 72,
+          child: Text(
+            '$label head',
+            style: AppTypography.bodyBase.copyWith(
+              fontSize: 13,
+              color: fc.muted,
+            ),
           ),
         ),
-        const SizedBox(width: 12),
         Expanded(
-          child: DropdownButton<ArrowheadStyle>(
+          child: _selectBox<ArrowheadStyle>(
+            fc,
             key: key,
-            isExpanded: true,
             value: value,
-            dropdownColor: _colorScheme.surfaceContainerHigh,
-            underline: const SizedBox.shrink(),
-            style: AppTypography.labelMono.copyWith(
-              fontSize: 12,
-              color: _colorScheme.onSurface,
-            ),
             items: [
               for (final e in _headLabels.entries)
                 DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -934,18 +1306,42 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
     );
   }
 
-  Widget _editJsonButton(SketchElement el) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => _openJsonDialog(el),
-        icon: const Icon(Icons.code_rounded, size: 16),
-        label: const Text('Edit JSON'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: _colorScheme.onSurfaceVariant,
-          side: BorderSide(color: _colorScheme.outlineVariant),
-          shape: RoundedRectangleBorder(borderRadius: AppRadius.smRadius),
-          textStyle: AppTypography.bodyBase.copyWith(fontSize: 12),
+  /// Ghost "Edit JSON" button under a hairline divider.
+  Widget _editJsonButton(FcTokens fc, SketchElement el) {
+    return Container(
+      // The mockup pulls the divider 2px up into the 14px section gap.
+      transform: Matrix4.translationValues(0, -2, 0),
+      padding: const EdgeInsets.only(top: 10),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: fc.glassBorder)),
+      ),
+      alignment: Alignment.centerLeft,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.button),
+          onTap: () => _openJsonDialog(el),
+          child: SizedBox(
+            height: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FcIconGlyph(FcIcons.code, size: 16, color: fc.muted),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Edit JSON',
+                    style: AppTypography.bodyBase.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: fc.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -965,7 +1361,6 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
               // A 16-line editor plus chrome needs ~450 px; on a shorter
               // window the content scrolls instead of overflowing.
               scrollable: true,
-              backgroundColor: _colorScheme.surfaceContainerHigh,
               title: Text(
                 'Edit element JSON',
                 style: AppTypography.headlineMd.copyWith(
@@ -1035,5 +1430,166 @@ class _PropertiesPanelState extends State<PropertiesPanel> {
       },
     );
     textCtrl.dispose();
+  }
+}
+
+/// A style field the panel displays, used to mark the ones a multi-element
+/// selection disagrees about.
+enum _MixedField {
+  strokeColor,
+  fillColor,
+  strokeWidth,
+  roughness,
+  strokeStyle,
+  fillStyle,
+}
+
+/// One option of a [_GlyphSegmented]: a preview glyph over an optional label.
+class _Seg<T> {
+  const _Seg(
+    this.value,
+    this.label,
+    this.glyph,
+    this.glyphSize, {
+    this.tooltip,
+  });
+  final T value;
+  final String? label;
+  final FcIcon glyph;
+  final double glyphSize;
+  final String? tooltip;
+}
+
+/// The mockup's segmented control with a glyph over its label (stroke/fill
+/// style) or a lone glyph (alignment). [FcSegmented] is text-only, so this is
+/// the inspector's own: same surface2 well (padding 3, radius 10, 2px gaps),
+/// selected segment raised in accentText with the grid's 0 1 2 .12 shadow.
+///
+/// [value] `null` = nothing selected (a mixed multi-selection).
+/// [autoWidth] sizes segments like CSS `flex: 1 1 auto` (content width plus an
+/// equal share of the slack) instead of `flex: 1 1 0` (all equal).
+class _GlyphSegmented<T> extends StatelessWidget {
+  const _GlyphSegmented({
+    super.key,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+    required this.height,
+    this.gap = 6,
+    this.autoWidth = false,
+  });
+
+  final T? value;
+  final List<_Seg<T>> items;
+  final ValueChanged<T> onChanged;
+  final double height;
+  final double gap;
+  final bool autoWidth;
+
+  static TextStyle _text(Color c) =>
+      AppTypography.caption.copyWith(letterSpacing: 0, height: 1.2, color: c);
+
+  Widget _segment(FcTokens fc, _Seg<T> s) {
+    final selected = s.value == value;
+    final color = selected ? fc.accentText : fc.text;
+    Widget w = Semantics(
+      button: true,
+      selected: selected,
+      label: s.label ?? s.tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onChanged(s.value),
+        child: Container(
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? fc.raised : null,
+            borderRadius: BorderRadius.circular(AppRadius.input),
+            boxShadow: selected
+                ? const [
+                    BoxShadow(
+                      color: Color(0x1F000000),
+                      blurRadius: 2,
+                      offset: Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FcIconGlyph(s.glyph, size: s.glyphSize, color: color),
+              if (s.label != null) ...[
+                SizedBox(height: gap),
+                Text(
+                  s.label!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _text(color),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    if (s.tooltip != null) w = Tooltip(message: s.tooltip!, child: w);
+    return w;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fc = context.fc;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: fc.surface2,
+        borderRadius: BorderRadius.circular(AppRadius.button),
+      ),
+      child: autoWidth
+          ? LayoutBuilder(
+              builder: (context, box) {
+                final natural = [
+                  for (final s in items)
+                    8 +
+                        ((TextPainter(
+                          text: TextSpan(
+                            text: s.label ?? '',
+                            style: _text(fc.text),
+                          ),
+                          textDirection: TextDirection.ltr,
+                        )..layout()).width).clamp(s.glyphSize, double.infinity),
+                ];
+                final avail = box.maxWidth - 2 * (items.length - 1);
+                final total = natural.reduce((a, b) => a + b);
+                // Wider than the island (a fallback font, say): shrink every
+                // segment in proportion instead of overflowing.
+                final scale = total > avail ? avail / total : 1.0;
+                final extra = total < avail
+                    ? (avail - total) / items.length
+                    : 0;
+                return Row(
+                  children: [
+                    for (final (i, s) in items.indexed) ...[
+                      if (i > 0) const SizedBox(width: 2),
+                      SizedBox(
+                        width: natural[i] * scale + extra,
+                        child: _segment(fc, s),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            )
+          : Row(
+              children: [
+                for (final (i, s) in items.indexed) ...[
+                  if (i > 0) const SizedBox(width: 2),
+                  Expanded(child: _segment(fc, s)),
+                ],
+              ],
+            ),
+    );
   }
 }

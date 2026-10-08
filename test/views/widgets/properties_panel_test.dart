@@ -1,12 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowcraft/flowcraft.dart';
+import 'package:flowcraft/core/theme/canvas_ink.dart';
+import 'package:flowcraft/core/theme/fc_tokens.dart';
+import 'package:flowcraft/views/widgets/toolbar/palette_popover.dart';
 
-Widget _host(SketchController controller) {
+Widget _host(SketchController controller, {ThemeData? theme}) {
   return MaterialApp(
-    home: Scaffold(body: PropertiesPanel(controller: controller)),
+    theme: theme ?? AppTheme.light(),
+    home: Scaffold(
+      body: Align(
+        alignment: Alignment.topLeft,
+        child: PropertiesPanel(controller: controller),
+      ),
+    ),
   );
 }
+
+/// The inspector is taller than the default 800x600 surface; a viewport that
+/// is too short would leave the lower sections un-hittable.
+void panelTest(String name, Future<void> Function(WidgetTester) body) {
+  testWidgets(name, (tester) async {
+    tester.view.physicalSize = const Size(1000, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await body(tester);
+  });
+}
+
+/// The panel island itself.
+final _island = find.byType(GlassIsland);
 
 SketchRectangle _rect({
   String? id,
@@ -17,31 +41,17 @@ SketchRectangle _rect({
 
 void main() {
   group('PropertiesPanel visibility', () {
-    testWidgets('renders nothing when there is no selection', (tester) async {
+    panelTest('renders nothing when there is no selection', (tester) async {
       final controller = SketchController(initialElements: [_rect()]);
       addTearDown(controller.dispose);
 
       await tester.pumpWidget(_host(controller));
 
-      expect(find.text('PROPERTIES'), findsNothing);
+      expect(_island, findsNothing);
       expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('renders nothing when multiple elements are selected', (
-      tester,
-    ) async {
-      final a = _rect(id: 'a');
-      final b = _rect(id: 'b', rect: const Rect.fromLTWH(200, 200, 40, 40));
-      final controller = SketchController(initialElements: [a, b]);
-      addTearDown(controller.dispose);
-      controller.selectMany(['a', 'b']);
-
-      await tester.pumpWidget(_host(controller));
-
-      expect(find.text('PROPERTIES'), findsNothing);
-    });
-
-    testWidgets('renders the panel when exactly one element is selected', (
+    panelTest('renders the panel when exactly one element is selected', (
       tester,
     ) async {
       final controller = SketchController(initialElements: [_rect(id: 'a')]);
@@ -50,7 +60,9 @@ void main() {
 
       await tester.pumpWidget(_host(controller));
 
-      expect(find.text('PROPERTIES'), findsOneWidget);
+      expect(_island, findsOneWidget);
+      expect(find.text('Rectangle'), findsOneWidget);
+      expect(find.text('PROPERTIES'), findsNothing);
       expect(find.byKey(const ValueKey('properties_field_X')), findsOneWidget);
       expect(find.byKey(const ValueKey('properties_field_Y')), findsOneWidget);
       expect(find.byKey(const ValueKey('properties_field_W')), findsOneWidget);
@@ -65,18 +77,18 @@ void main() {
       expect(fieldByKey('properties_field_H').controller!.text, '50');
     });
 
-    testWidgets('hides again once the selection is cleared', (tester) async {
+    panelTest('hides again once the selection is cleared', (tester) async {
       final controller = SketchController(initialElements: [_rect(id: 'a')]);
       addTearDown(controller.dispose);
       controller.select('a');
 
       await tester.pumpWidget(_host(controller));
-      expect(find.text('PROPERTIES'), findsOneWidget);
+      expect(_island, findsOneWidget);
 
       controller.clearSelection();
       await tester.pump();
 
-      expect(find.text('PROPERTIES'), findsNothing);
+      expect(_island, findsNothing);
     });
   });
 
@@ -89,7 +101,7 @@ void main() {
       fontFamily: fontFamily,
     );
 
-    testWidgets('an unknown font family does not break the panel', (
+    panelTest('an unknown font family does not break the panel', (
       tester,
     ) async {
       // Reachable from "Edit JSON", "Paste JSON…" and "Import from file…":
@@ -104,29 +116,28 @@ void main() {
       await tester.pumpWidget(_host(controller));
 
       expect(tester.takeException(), isNull);
-      expect(find.text('PROPERTIES'), findsOneWidget);
+      expect(_island, findsOneWidget);
       expect(find.text('Arial'), findsOneWidget);
     });
 
-    testWidgets(
-      'a text with no family reads as Inter, which is what paints it',
-      (tester) async {
-        final controller = SketchController(initialElements: [text()]);
-        addTearDown(controller.dispose);
-        controller.select('t');
+    panelTest('a text with no family reads as Inter, which is what paints it', (
+      tester,
+    ) async {
+      final controller = SketchController(initialElements: [text()]);
+      addTearDown(controller.dispose);
+      controller.select('t');
 
-        await tester.pumpWidget(_host(controller));
+      await tester.pumpWidget(_host(controller));
 
-        expect(find.text(TextMetrics.resolveFontFamily(null)), findsOneWidget);
-        expect(find.text('Inter'), findsOneWidget);
-      },
-    );
+      expect(find.text(TextMetrics.resolveFontFamily(null)), findsOneWidget);
+      expect(find.text('Inter'), findsOneWidget);
+    });
   });
 
   group('PropertiesPanel stroke width', () {
-    testWidgets('a half-step width keeps its own label', (tester) async {
-      // The toolbar slider steps by 0.5; rounding every label to an integer
-      // put "2px" (1.5) next to "2px" (2.0).
+    panelTest('a half-step width keeps its own label', (tester) async {
+      // The slider steps by 0.5; rounding the label to an integer would
+      // show 1.5 as "2".
       final controller = SketchController(
         initialElements: [
           SketchRectangle.create(
@@ -141,13 +152,13 @@ void main() {
 
       await tester.pumpWidget(_host(controller));
 
-      expect(find.text('1.5px'), findsOneWidget);
-      expect(find.text('2px', skipOffstage: false), findsOneWidget);
+      // The slider steps by halves; the mono value keeps one decimal.
+      expect(find.text('1.5'), findsOneWidget);
     });
   });
 
   group('PropertiesPanel dimension edits', () {
-    testWidgets(
+    panelTest(
       'submitting X/Y/W/H fields resizes the element via the controller',
       (tester) async {
         final controller = SketchController(initialElements: [_rect(id: 'a')]);
@@ -182,7 +193,7 @@ void main() {
       },
     );
 
-    testWidgets(
+    panelTest(
       'dimension fields are disabled (not resizable) for elements without a rect',
       (tester) async {
         final line = SketchLine.create(
@@ -196,7 +207,7 @@ void main() {
 
         await tester.pumpWidget(_host(controller));
 
-        expect(find.text('PROPERTIES'), findsOneWidget);
+        expect(_island, findsOneWidget);
         final field = tester.widget<TextField>(
           find.byKey(const ValueKey('properties_field_X')),
         );
@@ -214,7 +225,7 @@ void main() {
 
     SketchElement only(SketchController c) => c.elements.single;
 
-    testWidgets('elbow switch toggles elbowed', (tester) async {
+    panelTest('elbow switch toggles elbowed', (tester) async {
       final c = seeded(
         SketchArrow.create(
           id: 'a',
@@ -230,7 +241,7 @@ void main() {
       expect((only(c) as SketchArrow).elbowed, isFalse);
     });
 
-    testWidgets('head picker sets endHead', (tester) async {
+    panelTest('head picker sets endHead', (tester) async {
       final c = seeded(
         SketchArrow.create(
           id: 'a',
@@ -246,7 +257,7 @@ void main() {
       expect((only(c) as SketchArrow).endHead, ArrowheadStyle.zeroOrMany);
     });
 
-    testWidgets('bold toggle updates element', (tester) async {
+    panelTest('bold toggle updates element', (tester) async {
       final c = seeded(
         SketchText.create(id: 't', position: Offset.zero, text: 'hi'),
       );
@@ -256,7 +267,7 @@ void main() {
       expect((only(c) as SketchText).bold, isTrue);
     });
 
-    testWidgets('align segment updates text', (tester) async {
+    panelTest('align segment updates text', (tester) async {
       final c = seeded(
         SketchText.create(id: 't', position: Offset.zero, text: 'a\nbbb'),
       );
@@ -266,7 +277,7 @@ void main() {
       expect((only(c) as SketchText).align, TextAlign.right);
     });
 
-    testWidgets('frame name edit', (tester) async {
+    panelTest('frame name edit', (tester) async {
       final c = seeded(
         SketchFrame.create(
           id: 'f',
@@ -284,7 +295,7 @@ void main() {
       expect((only(c) as SketchFrame).name, 'API');
     });
 
-    testWidgets('entity attributes textarea parses rows and refits height', (
+    panelTest('entity attributes textarea parses rows and refits height', (
       tester,
     ) async {
       final c = seeded(
@@ -318,7 +329,7 @@ void main() {
       name: id,
     );
 
-    testWidgets('typing in entity A then selecting B commits to A, not B', (
+    panelTest('typing in entity A then selecting B commits to A, not B', (
       tester,
     ) async {
       final c = SketchController(initialElements: [entity('a'), entity('b')]);
@@ -338,7 +349,7 @@ void main() {
       expect(b.attributes, isEmpty);
     });
 
-    testWidgets('clearing selection mid-edit still commits to the element', (
+    panelTest('clearing selection mid-edit still commits to the element', (
       tester,
     ) async {
       final c = SketchController(initialElements: [entity('a')]);
@@ -355,7 +366,7 @@ void main() {
       expect((c.elements.single as SketchEntity).attributes.single.name, 'id');
     });
 
-    testWidgets('frame name edit survives selection change', (tester) async {
+    panelTest('frame name edit survives selection change', (tester) async {
       final f = SketchFrame.create(
         id: 'f',
         rect: const Rect.fromLTWH(0, 0, 200, 100),
@@ -380,7 +391,7 @@ void main() {
       expect((c.elements.first as SketchFrame).name, 'API');
     });
 
-    testWidgets('duplicate attribute names show an error and do not commit', (
+    panelTest('duplicate attribute names show an error and do not commit', (
       tester,
     ) async {
       final c = SketchController(initialElements: [entity('a')]);
@@ -396,6 +407,458 @@ void main() {
 
       expect(find.text('Duplicate attribute name'), findsOneWidget);
       expect((c.elements.single as SketchEntity).attributes, isEmpty);
+    });
+  });
+
+  // ── style sections (ported from the toolbar's popover tests) ────────────
+
+  // Index 1 of the default fill palette — index 0 is the "none" sentinel.
+  final fill = defaultFillPalette[1]!;
+  final stroke = defaultPalette[1];
+
+  SketchRectangle styled(String id, SketchStyle style, {double left = 0}) =>
+      SketchRectangle.create(
+        id: id,
+        rect: Rect.fromLTWH(left, 0, 100, 60),
+        style: style,
+      );
+
+  // The stroke grid comes first (10 swatches), then the fill grid.
+  Finder strokeSwatch(int i) => find.byType(Swatch).at(i);
+  Finder fillSwatch(int i) => find.byType(Swatch).at(defaultPalette.length + i);
+
+  Future<void> pickFill(WidgetTester tester, int i) async {
+    await tester.tap(fillSwatch(i));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> pickStroke(WidgetTester tester, int i) async {
+    await tester.tap(strokeSwatch(i));
+    await tester.pumpAndSettle();
+  }
+
+  bool strokeCurrent(WidgetTester tester, int i) =>
+      tester.widget<Swatch>(strokeSwatch(i)).current;
+
+  group('PropertiesPanel fill colour', () {
+    panelTest('recolours the selected shape and makes the fill visible', (
+      tester,
+    ) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+
+      await tester.pumpWidget(_host(controller));
+      expect(controller.elements.single.style.fillColor, isNull);
+      expect(controller.elements.single.style.fillStyle, FillStyle.none);
+
+      await pickFill(tester, 1);
+
+      final style = controller.elements.single.style;
+      expect(style.fillColor, fill);
+      // Without the promotion the painter skips the fill entirely.
+      expect(style.fillStyle, FillStyle.solid);
+      // The pick is still the default for the next element drawn, too.
+      expect(controller.currentStyle.fillColor, fill);
+      expect(controller.currentStyle.fillStyle, FillStyle.solid);
+    });
+
+    panelTest('one undo reverts the pick across a multi-element selection', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b', rect: const Rect.fromLTWH(200, 0, 100, 60)),
+          _rect(id: 'c', rect: const Rect.fromLTWH(400, 0, 100, 60)),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.selectMany({'a', 'b'});
+
+      await tester.pumpWidget(_host(controller));
+      expect(controller.canUndo, isFalse);
+
+      await pickFill(tester, 1);
+
+      expect(controller.elements[0].style.fillColor, fill);
+      expect(controller.elements[1].style.fillColor, fill);
+      expect(controller.elements[2].style.fillColor, isNull);
+
+      controller.undo();
+
+      expect(
+        controller.elements.map((e) => e.style.fillColor),
+        everyElement(isNull),
+      );
+      expect(
+        controller.elements.map((e) => e.style.fillStyle),
+        everyElement(FillStyle.none),
+      );
+      expect(controller.canUndo, isFalse);
+    });
+
+    panelTest('the "none" swatch clears the fill again', (tester) async {
+      final controller = SketchController(
+        initialElements: [
+          styled('a', SketchStyle(fillColor: fill, fillStyle: FillStyle.solid)),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.select('a');
+
+      await tester.pumpWidget(_host(controller));
+      await pickFill(tester, 0);
+
+      final style = controller.elements.single.style;
+      expect(style.fillColor, isNull);
+      expect(style.fillStyle, FillStyle.none);
+    });
+
+    panelTest('nothing selected + rectangle tool edits only currentStyle', (
+      tester,
+    ) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.currentTool = SketchTool.rectangle;
+
+      await tester.pumpWidget(_host(controller));
+      expect(find.text('Rectangle tool'), findsOneWidget);
+      // Style sections only: no geometry, no Edit JSON.
+      expect(find.byKey(const ValueKey('properties_field_X')), findsNothing);
+      expect(find.text('Edit JSON'), findsNothing);
+
+      await pickFill(tester, 1);
+
+      expect(controller.currentStyle.fillColor, fill);
+      expect(controller.elements.single.style.fillColor, isNull);
+      // Nothing changed on the canvas, so nothing to undo.
+      expect(controller.canUndo, isFalse);
+    });
+
+    panelTest('hidden again with a non-drawing tool and no selection', (
+      tester,
+    ) async {
+      final controller = SketchController();
+      addTearDown(controller.dispose);
+      controller.currentTool = SketchTool.rectangle;
+      await tester.pumpWidget(_host(controller));
+      expect(_island, findsOneWidget);
+
+      controller.currentTool = SketchTool.eraser;
+      await tester.pump();
+      expect(_island, findsNothing);
+    });
+  });
+
+  group('PropertiesPanel stroke colour', () {
+    panelTest('recolours the selected shape and is undone in one step', (
+      tester,
+    ) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+
+      final before = controller.elements.single.style.strokeColor;
+      await tester.pumpWidget(_host(controller));
+
+      await pickStroke(tester, 1);
+
+      expect(controller.elements.single.style.strokeColor, stroke);
+      expect(controller.currentStyle.strokeColor, stroke);
+
+      controller.undo();
+      expect(controller.elements.single.style.strokeColor, before);
+      expect(controller.canUndo, isFalse);
+    });
+
+    panelTest('a hex typed with several shapes selected restyles all', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b', rect: const Rect.fromLTWH(200, 0, 100, 60)),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.selectMany({'a', 'b'});
+      await tester.pumpWidget(_host(controller));
+
+      await tester.enterText(
+        find.byKey(const ValueKey('properties_hex_Stroke')),
+        '#E03131',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      expect(
+        controller.elements.map((e) => e.style.strokeColor),
+        everyElement(stroke),
+      );
+      controller.undo();
+      expect(controller.canUndo, isFalse);
+    });
+  });
+
+  group('PropertiesPanel reflects the selection', () {
+    panelTest('shows the selected element, not the pending default', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [
+          styled('a', SketchStyle(strokeColor: stroke, strokeWidth: 6)),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.select('a');
+
+      await tester.pumpWidget(_host(controller));
+
+      // `currentStyle` is still the untouched default here, so anything the
+      // panel shows from it would be describing the wrong element.
+      expect(controller.currentStyle.strokeColor, isNot(stroke));
+      expect(strokeCurrent(tester, 1), isTrue);
+      expect(strokeCurrent(tester, 0), isFalse);
+      expect(find.text('6.0'), findsOneWidget);
+    });
+
+    panelTest('falls back to currentStyle when nothing is selected', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [
+          styled('a', SketchStyle(strokeColor: stroke, strokeWidth: 6)),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.currentTool = SketchTool.ellipse;
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.text('Ellipse tool'), findsOneWidget);
+      expect(find.text('6.0'), findsNothing);
+      expect(
+        find.text(controller.currentStyle.strokeWidth.toStringAsFixed(1)),
+        findsOneWidget,
+      );
+    });
+
+    panelTest('follows the selection as it changes', (tester) async {
+      final controller = SketchController(
+        initialElements: [
+          styled('a', SketchStyle(strokeColor: stroke)),
+          styled(
+            'b',
+            const SketchStyle(strokeColor: Color(0xFF0CA678)),
+            left: 200,
+          ),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.select('a');
+      await tester.pumpWidget(_host(controller));
+      expect(strokeCurrent(tester, 1), isTrue);
+
+      controller.select('b');
+      await tester.pump();
+      expect(strokeCurrent(tester, 1), isFalse);
+      expect(strokeCurrent(tester, 6), isTrue); // #0CA678
+    });
+
+    panelTest('a disagreeing multi-selection reads as mixed', (tester) async {
+      final controller = SketchController(
+        initialElements: [
+          // Same stroke width, different stroke colour: one field is mixed,
+          // the other is genuinely shared and must still show its value.
+          styled('a', SketchStyle(strokeColor: stroke, strokeWidth: 6)),
+          styled('b', const SketchStyle(strokeWidth: 6), left: 200),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.selectMany({'a', 'b'});
+
+      await tester.pumpWidget(_host(controller));
+
+      // No stroke swatch is ringed, and the hex field says why.
+      for (var i = 0; i < defaultPalette.length; i++) {
+        expect(strokeCurrent(tester, i), isFalse, reason: 'swatch $i');
+      }
+      expect(find.text('mixed'), findsOneWidget);
+      // The shared width still reads out; the slider is not mixed.
+      expect(find.text('6.0'), findsOneWidget);
+    });
+
+    panelTest('a mixed slider reads as a dash, not the first value', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [
+          styled('a', const SketchStyle(strokeWidth: 6)),
+          styled('b', const SketchStyle(strokeWidth: 2), left: 200),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.selectMany({'a', 'b'});
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.text('—'), findsOneWidget);
+      expect(find.text('6.0'), findsNothing);
+    });
+
+    panelTest('an agreeing multi-selection is not mixed', (tester) async {
+      final controller = SketchController(
+        initialElements: [
+          styled('a', SketchStyle(strokeColor: stroke)),
+          styled('b', SketchStyle(strokeColor: stroke), left: 200),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.selectMany({'a', 'b'});
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.text('mixed'), findsNothing);
+      expect(strokeCurrent(tester, 1), isTrue);
+    });
+
+    panelTest('multi-selection shows only the style sections', (tester) async {
+      final controller = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b', rect: const Rect.fromLTWH(200, 0, 100, 60)),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.selectMany({'a', 'b'});
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.text('2 selected'), findsOneWidget);
+      expect(find.byType(Swatch), findsNWidgets(20));
+      expect(find.byType(Slider), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('properties_field_X')), findsNothing);
+      expect(find.text('Edit JSON'), findsNothing);
+      expect(find.text('FONT'), findsNothing);
+    });
+  });
+
+  group('PropertiesPanel theme and layout', () {
+    panelTest("the stroke palette's first swatch is the theme's ink", (
+      tester,
+    ) async {
+      final dark = FcTokens.dark;
+      final controller = SketchController(
+        initialElements: [
+          styled('a', SketchStyle(strokeColor: inkFor(Brightness.dark))),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.select('a');
+
+      await tester.pumpWidget(_host(controller, theme: AppTheme.dark()));
+      await tester.pumpAndSettle();
+
+      final first = tester.widget<Swatch>(find.byType(Swatch).first);
+      expect(first.color, inkFor(Brightness.dark));
+      expect(
+        first.dot,
+        dark.swatchInk,
+        reason: 'painted in the swatchInk token',
+      );
+      expect(first.current, isTrue, reason: 'it is what the shape is drawn in');
+    });
+
+    panelTest('inspector matches the mockup width of 264', (tester) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+
+      await tester.pumpWidget(_host(controller));
+
+      expect(tester.getSize(_island).width, 264);
+    });
+
+    panelTest('swatches are named controls', (tester) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.byTooltip('#E03131'), findsOneWidget);
+      expect(find.byTooltip('No fill'), findsOneWidget);
+      expect(find.byType(Swatch), findsNWidgets(20));
+    });
+
+    panelTest('the stroke-width slider follows a change of selection', (
+      tester,
+    ) async {
+      final controller = SketchController(
+        initialElements: [
+          styled('a', const SketchStyle(strokeWidth: 6)),
+          styled('b', const SketchStyle(strokeWidth: 2), left: 200),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.select('a');
+      await tester.pumpWidget(_host(controller));
+      expect(find.text('6.0'), findsOneWidget);
+
+      controller.select('b');
+      await tester.pumpAndSettle();
+
+      expect(find.text('2.0'), findsOneWidget);
+      expect(find.text('6.0'), findsNothing);
+    });
+
+    panelTest('dragging a slider is one undo entry', (tester) async {
+      final controller = SketchController(
+        initialElements: [
+          _rect(id: 'a'),
+          _rect(id: 'b', rect: const Rect.fromLTWH(200, 0, 100, 60)),
+        ],
+      );
+      addTearDown(controller.dispose);
+      controller.selectMany({'a', 'b'});
+      await tester.pumpWidget(_host(controller));
+
+      await tester.drag(find.byType(Slider).first, const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(controller.elements[0].style.strokeWidth, greaterThan(2));
+
+      controller.undo();
+      expect(controller.elements[0].style.strokeWidth, 2);
+      expect(controller.elements[1].style.strokeWidth, 2);
+      expect(controller.canUndo, isFalse);
+    });
+
+    panelTest('style choices read as words, not identifiers', (tester) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+      await tester.pumpWidget(_host(controller));
+
+      expect(find.text('Cross-hatch'), findsOneWidget);
+      expect(find.text('crossHatch'), findsNothing);
+      expect(find.text('Dashed'), findsOneWidget);
+    });
+
+    panelTest('stroke and fill style segments restyle the selection', (
+      tester,
+    ) async {
+      final controller = SketchController(initialElements: [_rect(id: 'a')]);
+      addTearDown(controller.dispose);
+      controller.select('a');
+      await tester.pumpWidget(_host(controller));
+
+      await tester.tap(find.text('Dashed'));
+      await tester.pump();
+      expect(controller.elements.single.style.strokeStyle, StrokeStyle.dashed);
+
+      await tester.tap(find.text('Hachure'));
+      await tester.pump();
+      expect(controller.elements.single.style.fillStyle, FillStyle.hachure);
     });
   });
 }
